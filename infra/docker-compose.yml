@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ultron
+      POSTGRES_PASSWORD: ultron
+      POSTGRES_DB: ultron
+    ports:
+      - "5432:5432"
+    volumes:
+      - ultron_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  ultron_postgres_data:
