@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import HTTPException, status
 
 from app.common.pagination import Paginated, paginate
@@ -15,7 +17,7 @@ def _to_read(row: Conversation) -> ConversationRead:
         id=row.id,
         channel=row.channel,
         external_user_id=row.external_user_id,
-        agent=row.agent,
+        agent_id=row.agent_id,
         title=row.title,
         metadata=row.metadata_,
         created_at=row.created_at,
@@ -33,7 +35,7 @@ class ConversationService:
         row = await self.repo.create(
             channel=input.channel,
             external_user_id=input.external_user_id,
-            agent=input.agent,
+            agent_id=input.agent_id,
             title=input.title,
             metadata_=input.metadata,
         )

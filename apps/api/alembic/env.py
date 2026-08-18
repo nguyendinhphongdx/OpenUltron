@@ -9,7 +9,12 @@ from app.core.config import settings
 from app.db.base import Base
 
 # Import model modules để đăng ký vào Base.metadata (bắt buộc cho autogenerate).
+from app.modules.agent import models as agent_models  # noqa: F401
 from app.modules.conversation import models as conversation_models  # noqa: F401
+from app.modules.knowledge_base import models as knowledge_base_models  # noqa: F401
+from app.modules.model import models as model_models  # noqa: F401
+from app.modules.settings import models as settings_models  # noqa: F401
+from app.modules.tool import models as tool_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

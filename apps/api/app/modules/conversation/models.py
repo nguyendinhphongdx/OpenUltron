@@ -13,7 +13,7 @@ class Conversation(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     channel: Mapped[str] = mapped_column(String(50), index=True)
     external_user_id: Mapped[str | None] = mapped_column(String(255), index=True)
-    agent: Mapped[str | None] = mapped_column(String(100))
+    agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"))
     title: Mapped[str | None] = mapped_column(String(200))
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB().with_variant(JSON, "sqlite"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

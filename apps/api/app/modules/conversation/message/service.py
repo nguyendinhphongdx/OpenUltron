@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.common.pagination import Paginated, paginate
 from app.modules.conversation.message.repository import MessageRepository
 from app.modules.conversation.message.schemas import MessageCreate, MessageRead

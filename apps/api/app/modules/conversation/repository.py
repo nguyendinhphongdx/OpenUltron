@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,8 +38,10 @@ class ConversationRepository:
             stmt = stmt.where(Conversation.external_user_id == external_user_id)
             count_stmt = count_stmt.where(Conversation.external_user_id == external_user_id)
 
-        stmt = stmt.order_by(Conversation.updated_at.desc()).offset((page - 1) * page_size).limit(
-            page_size
+        stmt = (
+            stmt.order_by(Conversation.updated_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         rows = (await self.session.execute(stmt)).scalars().all()
         total = (await self.session.execute(count_stmt)).scalar_one()

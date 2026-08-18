@@ -40,8 +40,10 @@ class MessageRepository:
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        count_stmt = select(func.count()).select_from(Message).where(
-            Message.conversation_id == conversation_id
+        count_stmt = (
+            select(func.count())
+            .select_from(Message)
+            .where(Message.conversation_id == conversation_id)
         )
         rows = (await self.session.execute(stmt)).scalars().all()
         total = (await self.session.execute(count_stmt)).scalar_one()
