@@ -1,24 +1,33 @@
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.session import get_session
-from app.modules.agent.repository import AgentRepository
+from app.modules.agent.deps import get_agent_service
+from app.modules.agent.service import AgentService
 from app.modules.chat.service import ChatService
-from app.modules.conversation.message.repository import MessageRepository
-from app.modules.conversation.repository import ConversationRepository
-from app.modules.model.repository import ModelRepository
-from app.modules.settings.repository import SettingsRepository
+from app.modules.conversation.deps import get_conversation_service
+from app.modules.conversation.message.deps import get_message_service
+from app.modules.conversation.message.service import MessageService
+from app.modules.conversation.service import ConversationService
+from app.modules.model.deps import get_model_service
+from app.modules.model.service import ModelService
+from app.modules.settings.deps import get_settings_service
+from app.modules.settings.service import SettingsService
 
 
-def get_chat_service(session: Annotated[AsyncSession, Depends(get_session)]) -> ChatService:
+def get_chat_service(
+    conversation_service: Annotated[ConversationService, Depends(get_conversation_service)],
+    agent_service: Annotated[AgentService, Depends(get_agent_service)],
+    model_service: Annotated[ModelService, Depends(get_model_service)],
+    settings_service: Annotated[SettingsService, Depends(get_settings_service)],
+    message_service: Annotated[MessageService, Depends(get_message_service)],
+) -> ChatService:
     return ChatService(
-        ConversationRepository(session),
-        AgentRepository(session),
-        ModelRepository(session),
-        SettingsRepository(session),
-        MessageRepository(session),
+        conversation_service,
+        agent_service,
+        model_service,
+        settings_service,
+        message_service,
     )
 
 

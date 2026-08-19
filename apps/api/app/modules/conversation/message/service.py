@@ -39,6 +39,10 @@ class MessageService:
         )
         return message_to_read(row)
 
+    async def list_all(self, conversation_id: int) -> list[Message]:
+        """Không phân trang, trả ORM row — dùng nội bộ (vd nạp history vào LangGraph, `chat/`)."""
+        return await self.repo.list_all_by_conversation(conversation_id)
+
     async def list(
         self, conversation_id: int, *, page: int, page_size: int
     ) -> Paginated[MessageRead]:

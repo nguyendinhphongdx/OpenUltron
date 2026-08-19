@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
-from app.modules.agent.repository import AgentRepository
-from app.modules.model.repository import ModelRepository
+from app.modules.agent.service import AgentService
+from app.modules.model.service import ModelService
 from app.modules.settings.models import AppSettings
 from app.modules.settings.repository import SettingsRepository
 from app.modules.settings.schemas import AppSettingsRead, AppSettingsUpdate
@@ -19,11 +19,11 @@ def settings_to_read(row: AppSettings) -> AppSettingsRead:
 
 class SettingsService:
     def __init__(
-        self, repo: SettingsRepository, model_repo: ModelRepository, agent_repo: AgentRepository
+        self, repo: SettingsRepository, model_service: ModelService, agent_service: AgentService
     ) -> None:
         self.repo = repo
-        self.model_repo = model_repo
-        self.agent_repo = agent_repo
+        self.model_service = model_service
+        self.agent_service = agent_service
 
     async def get(self) -> AppSettingsRead:
         return settings_to_read(await self.repo.get_or_create())
@@ -31,7 +31,7 @@ class SettingsService:
     async def update(self, input: AppSettingsUpdate) -> AppSettingsRead:
         if (
             input.default_model_id is not None
-            and await self.model_repo.get(input.default_model_id) is None
+            and await self.model_service.find(input.default_model_id) is None
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -39,7 +39,7 @@ class SettingsService:
             )
         if (
             input.default_agent_id is not None
-            and await self.agent_repo.get(input.default_agent_id) is None
+            and await self.agent_service.find(input.default_agent_id) is None
         ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

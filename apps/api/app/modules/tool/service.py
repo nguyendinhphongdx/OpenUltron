@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
-from app.modules.agent.repository import AgentRepository
+from app.modules.agent.service import AgentService
 from app.modules.tool.models import Tool
 from app.modules.tool.repository import ToolRepository
 from app.modules.tool.schemas import ToolCreate, ToolRead, ToolUpdate
@@ -22,9 +22,9 @@ def tool_to_read(row: Tool) -> ToolRead:
 
 
 class ToolService:
-    def __init__(self, repo: ToolRepository, agent_repo: AgentRepository) -> None:
+    def __init__(self, repo: ToolRepository, agent_service: AgentService) -> None:
         self.repo = repo
-        self.agent_repo = agent_repo
+        self.agent_service = agent_service
 
     async def create(self, input: ToolCreate) -> ToolRead:
         if await self.repo.get_by_slug(input.slug) is not None:
@@ -59,10 +59,7 @@ class ToolService:
         await self.repo.delete(row)
 
     async def assign_to_agent(self, agent_id: int, tool_id: int) -> None:
-        if await self.agent_repo.get(agent_id) is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent {agent_id} không tồn tại"
-            )
+        await self.agent_service.get_or_404(agent_id)
         await self.get_or_404(tool_id)
         await self.repo.add_agent_tool(agent_id, tool_id)
 

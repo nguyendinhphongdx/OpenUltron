@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from 'next/font/google';
 import { PublicEnvScript } from 'next-runtime-env';
 import type { ReactNode } from 'react';
 
+import { AppShell } from '@/components/layout/AppShell';
 import { Providers } from '@/providers';
 import { cn } from '@/lib/utils';
 
@@ -28,7 +29,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <PublicEnvScript />
       </head>
       <body className={cn('min-h-screen font-sans antialiased', inter.variable, jetbrainsMono.variable)}>
-        <Providers>{children}</Providers>
+        <Providers>
+          <AppShell>{children}</AppShell>
+        </Providers>
       </body>
     </html>
   );

@@ -9,7 +9,7 @@
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
-  - Module `chat` — chạy 1 turn qua LangGraph `create_react_agent`; orchestrator có tool gọi sub-agent (1 tầng)
+  - Module `chat` — chạy 1 turn qua LangGraph (`langchain.agents.create_agent`); orchestrator có tool gọi sub-agent (1 tầng)
   - Module `model` — resource Model (provider ollama/gemini/openai + model_id + base_url), factory `core/providers.py` build đúng LangChain class theo provider
   - Module `settings` — `AppSettings` singleton (`default_model_id`, `default_agent_id`), sửa qua `PATCH /settings`, dùng làm fallback khi conversation không gán agent
   - Module `tool` — CRUD Tool + `AgentTool` (gán tool theo từng agent, `POST/GET/DELETE /agents/{id}/tools`)
@@ -21,6 +21,7 @@
 ## Đang làm / tiếp theo
 
 - [ ] **Gemini/OpenAI provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `GEMINI_API_KEY`/`OPENAI_API_KEY` để chạy thật. Cần test khi có key.
+- [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
 - [ ] Wire `Tool` (đã CRUD) vào chat execution thật — hiện agent có thể được gán tool qua `AgentTool` nhưng `chat/graph.py` chưa đọc danh sách đó để build LangGraph tool tương ứng (chỉ mới tool ẩn "gọi sub-agent" hoạt động)
 - [ ] Wire `KnowledgeBase` (đã CRUD + search) vào chat execution — agent có `AgentKnowledgeBase` nhưng chưa có tool RAG tự động tra KB trong lúc chat
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế

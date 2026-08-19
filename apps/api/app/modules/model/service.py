@@ -37,8 +37,12 @@ class ModelService:
     async def list(self) -> list[ModelRead]:
         return [model_to_read(r) for r in await self.repo.list()]
 
+    async def find(self, model_id: int) -> Model | None:
+        """Existence check dùng bởi service module khác (không import ModelRepository trực tiếp)."""
+        return await self.repo.get(model_id)
+
     async def get_or_404(self, model_id: int) -> Model:
-        row = await self.repo.get(model_id)
+        row = await self.find(model_id)
         if row is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Model {model_id} không tồn tại"

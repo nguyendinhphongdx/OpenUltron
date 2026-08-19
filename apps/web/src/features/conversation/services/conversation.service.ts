@@ -35,4 +35,11 @@ export const conversationService = {
     );
     return res.data;
   },
+
+  sendMessage: async (conversationId: number, content: string): Promise<Message> => {
+    const res = await apiClient.post<Message>(endpoints.conversations.chat(conversationId), {
+      content,
+    });
+    return res.data;
+  },
 };

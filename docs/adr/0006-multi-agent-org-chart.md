@@ -20,7 +20,12 @@ Quan hệ **many-to-many** qua `AgentDelegation` (không phải tree `parent_age
 
 `Conversation.agent` (string) đổi thành `Conversation.agent_id` (FK nullable → `agents.id`). `agent_id = NULL` → dùng agent mặc định hard-code (`DEFAULT_AGENT`, không phải DB row) cho conversation đơn giản không cần chọn agent.
 
-**Thực thi**: dùng `langgraph.prebuilt.create_react_agent` cho MỌI agent (orchestrator và sub-agent) — khác biệt duy nhất là orchestrator có thêm tool `call_agent` cho mỗi sub-agent trong `AgentDelegation` của nó. Tool này chạy graph riêng của sub-agent (system_prompt/model của chính sub-agent đó), trả text kết quả làm tool result cho orchestrator tiếp tục xử lý.
+**Thực thi**: dùng `create_agent` (`langchain.agents`, LangGraph ≥ 1.2 — trước đó là
+`langgraph.prebuilt.create_react_agent`, upstream deprecate và di dời sang `langchain.agents` giữ
+nguyên hành vi/return type, chỉ đổi import path + `prompt=` → `system_prompt=`) cho MỌI agent
+(orchestrator và sub-agent) — khác biệt duy nhất là orchestrator có thêm tool `call_agent` cho mỗi
+sub-agent trong `AgentDelegation` của nó. Tool này chạy graph riêng của sub-agent (system_prompt/model
+của chính sub-agent đó), trả text kết quả làm tool result cho orchestrator tiếp tục xử lý.
 
 ## Consequences
 

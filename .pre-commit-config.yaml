@@ -1,0 +1,35 @@
+# Harness convention (AGENTS.md): mọi commit tự động qua các check dưới đây —
+# không dựa vào AI/reviewer nhớ đọc docs/conventions/ mỗi session.
+#
+# Cài 1 lần: pipx install pre-commit (hoặc uv tool install pre-commit) && pre-commit install
+
+repos:
+  - repo: local
+    hooks:
+      - id: api-ruff-check
+        name: apps/api — ruff check
+        entry: bash -c 'cd apps/api && uv run ruff check .'
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
+
+      - id: api-ruff-format
+        name: apps/api — ruff format --check
+        entry: bash -c 'cd apps/api && uv run ruff format --check .'
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
+
+      - id: api-module-boundaries
+        name: apps/api — module boundary guard (docs/conventions/01-backend-fastapi.md)
+        entry: bash -c 'cd apps/api && uv run python scripts/check_module_boundaries.py'
+        language: system
+        files: ^apps/api/app/modules/.*\.py$
+        pass_filenames: false
+
+      - id: web-lint
+        name: apps/web — lint + typecheck
+        entry: bash -c 'pnpm --filter @ultron/web lint && pnpm --filter @ultron/web typecheck'
+        language: system
+        files: ^apps/web/.*\.(ts|tsx)$
+        pass_filenames: false

@@ -64,3 +64,39 @@ uv run alembic upgrade head
 uv run fastapi dev app/main.py
 uv run pytest
 ```
+
+## Harness — convention được enforce tự động, không dựa vào AI nhớ
+
+Đừng chỉ đọc AGENTS.md rồi tự giác — các rule quan trọng đã được gắn vào tooling, chạy được bất kể
+session nào đang code:
+
+- `apps/api/scripts/check_module_boundaries.py` — fail nếu `service.py` module A import
+  `repository` của module B (rule "Service không import repository của module khác" trong
+  [docs/conventions/01-backend-fastapi.md](docs/conventions/01-backend-fastapi.md)). Chạy:
+  `cd apps/api && uv run python scripts/check_module_boundaries.py`.
+- `.pre-commit-config.yaml` (repo root) — ruff check/format + module boundary guard (`apps/api`),
+  lint + typecheck (`apps/web`) chạy trước mỗi commit. Cài 1 lần: `pre-commit install`.
+- `.github/workflows/ci.yml` — backstop khi hook không chạy (chưa cài, `--no-verify`, máy khác):
+  cùng bộ check trên mỗi push/PR.
+
+Thêm rule cứng mới → ưu tiên viết thành 1 check tự động (script/lint rule/CI job) thay vì chỉ thêm
+dòng vào file này.
+
+## Claude Code trong repo này (`.claude/`)
+
+- **Skill `ultron-conventions`** — nạp bảng "đọc gì trước khi làm" + rule cứng + layering
+  `apps/api` vào context. Tự trigger khi task liên quan module/endpoint/entity/dependency mới;
+  gọi tay qua `Skill` nếu cần chắc chắn.
+- **Subagent `api-reviewer`** — review diff `apps/api` theo đúng convention/ADR của repo này
+  (không phải review Python chung chung), chạy hộ ruff/format/module-boundary/pytest.
+- **Subagent `web-reviewer`** — review diff `apps/web` theo
+  [`docs/conventions/02-frontend-nextjs.md`](docs/conventions/02-frontend-nextjs.md) (feature-folder
+  layering, type khớp schema BE, không hardcode URL/env), chạy hộ lint/typecheck/build.
+- **Subagent `adr-writer`** — soạn ADR mới đúng format/numbering hiện có khi có quyết định kiến
+  trúc (rule 3).
+- **Slash command `/check`** — chạy nguyên bộ check (giống pre-commit/CI) và báo pass/fail.
+- **Slash command `/new-module <name> <purpose>`** — scaffold 1 module `apps/api` đúng layering
+  (model/schema/repository/service/router/deps), nhắc migration + đăng ký router.
+- **Slash command `/new-adr <mô tả>`** — giao cho `adr-writer` soạn ADR mới.
+- `.claude/settings.json` — allowlist sẵn các lệnh đọc/check an toàn (ruff, pytest, lint, git
+  read-only) để đỡ prompt permission lặp lại mỗi session.

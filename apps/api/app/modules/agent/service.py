@@ -10,7 +10,7 @@ from app.modules.agent.schemas import (
     AgentRead,
     AgentUpdate,
 )
-from app.modules.model.repository import ModelRepository
+from app.modules.model.service import ModelService
 
 
 def agent_to_read(row: Agent) -> AgentRead:
@@ -28,9 +28,9 @@ def agent_to_read(row: Agent) -> AgentRead:
 
 
 class AgentService:
-    def __init__(self, repo: AgentRepository, model_repo: ModelRepository) -> None:
+    def __init__(self, repo: AgentRepository, model_service: ModelService) -> None:
         self.repo = repo
-        self.model_repo = model_repo
+        self.model_service = model_service
 
     async def create(self, input: AgentCreate) -> AgentRead:
         existing = await self.repo.get_by_slug(input.slug)
@@ -38,7 +38,7 @@ class AgentService:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=f"Agent slug '{input.slug}' đã tồn tại"
             )
-        if await self.model_repo.get(input.model_id) is None:
+        if await self.model_service.find(input.model_id) is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Model {input.model_id} không tồn tại — tạo Model trước (POST /models)",
@@ -49,8 +49,12 @@ class AgentService:
     async def list(self) -> list[AgentRead]:
         return [agent_to_read(r) for r in await self.repo.list()]
 
+    async def find(self, agent_id: int) -> Agent | None:
+        """Existence check dùng bởi service module khác (không import AgentRepository trực tiếp)."""
+        return await self.repo.get(agent_id)
+
     async def get_or_404(self, agent_id: int) -> Agent:
-        row = await self.repo.get(agent_id)
+        row = await self.find(agent_id)
         if row is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent {agent_id} không tồn tại"

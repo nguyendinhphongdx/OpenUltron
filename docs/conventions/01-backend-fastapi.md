@@ -26,10 +26,10 @@ apps/api/
 │           │   ├── models.py, schemas.py, repository.py, service.py, router.py
 │           └── tool_call/          # Sub-resource — nested route dưới message
 │               ├── models.py, schemas.py, repository.py, service.py, router.py
-│       └── agent/                 # LangGraph — KHÔNG import OpenJarvis (ADR-0001)
-│           ├── state.py            # Graph state (TypedDict/Pydantic)
-│           ├── graph.py             # Graph definition (node/edge)
-│           └── tools/               # Tool tự viết (tham khảo pattern OpenJarvis)
+│       └── agent/                 # CRUD Agent (org chart, ADR-0006) — KHÔNG chứa LangGraph
+│       └── chat/                  # LangGraph — KHÔNG import OpenJarvis (ADR-0001)
+│           ├── graph.py             # Graph definition (langchain.agents.create_agent, tool call_agent)
+│           └── service.py           # Chạy 1 turn: resolve agent/model, gọi graph, lưu message
 ├── alembic/
 │   ├── env.py
 │   └── versions/
@@ -57,7 +57,8 @@ apps/api/
 ## Schema (Pydantic)
 
 - `schemas.py`: `<Feature>Create`, `<Feature>Update` (field optional, tương đương `.partial()`), `<Feature>Read` (response).
-- Không duplicate field giữa Create/Update — `Update` kế thừa `Create` với `Optional[...] = None`.
+- `Update` là `BaseModel` riêng (không kế thừa `Create`) với field optional — tránh kéo theo field bất biến của
+  Create (vd `slug`) hoặc field bắt buộc không hợp lý khi update từng phần. Đọc `exclude_unset=True` khi apply.
 
 ## Persistence — SQLAlchemy + Alembic
 
@@ -74,9 +75,10 @@ apps/api/
 
 ## Agent execution (LangGraph)
 
-- Graph/node/tool đặt ở `app/modules/agent/` — xem [ADR-0005](../adr/0005-langgraph-agent-execution.md).
+- `app/modules/agent/` = CRUD Agent + `AgentDelegation` (org chart, [ADR-0006](../adr/0006-multi-agent-org-chart.md)) — không chứa LangGraph.
+- `app/modules/chat/` = LangGraph thật (`graph.py` dùng `create_react_agent`, `service.py` chạy 1 turn) — xem [ADR-0005](../adr/0005-langgraph-agent-execution.md).
 - **KHÔNG** `import openjarvis` — tool tự viết, tham khảo pattern (không copy code) từ OpenJarvis khi cần.
-- Checkpoint qua Postgres (cùng DB, [ADR-0003](../adr/0003-db-postgres-pgvector.md)).
+- Checkpoint qua Postgres (cùng DB, [ADR-0003](../adr/0003-db-postgres-pgvector.md)) — chưa làm, xem roadmap.
 
 ## Naming
 

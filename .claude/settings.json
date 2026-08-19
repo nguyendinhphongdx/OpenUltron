@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd apps/api && uv run ruff check *)",
+      "Bash(cd apps/api && uv run ruff format --check *)",
+      "Bash(cd apps/api && uv run python scripts/check_module_boundaries.py)",
+      "Bash(cd apps/api && uv run pytest*)",
+      "Bash(cd apps/api && uv sync*)",
+      "Bash(cd apps/api && uv run alembic *)",
+      "Bash(pnpm --filter @ultron/web lint)",
+      "Bash(pnpm --filter @ultron/web typecheck)",
+      "Bash(pnpm --filter @ultron/web build)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ]
+  }
+}

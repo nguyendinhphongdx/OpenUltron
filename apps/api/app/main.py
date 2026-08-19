@@ -1,5 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.modules.agent.router import router as agent_router
 from app.modules.chat.router import router as chat_router
@@ -15,6 +17,14 @@ from app.modules.tool.agent_tool_router import router as agent_tool_router
 from app.modules.tool.router import router as tool_router
 
 app = FastAPI(title="Ultron API", version="0.0.1")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 register_exception_handlers(app)
 

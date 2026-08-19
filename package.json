@@ -2,7 +2,8 @@
   "name": "ultron",
   "version": "0.0.1",
   "private": true,
-  "description": "Ultron — personal AI agent platform (API + web + mobile + desktop) trên nền OpenJarvis agent-engine",
+  "packageManager": "pnpm@10.14.0",
+  "description": "Ultron — personal AI agent platform (API + web + mobile + desktop), tự viết toàn bộ runtime (xem docs/adr/0001-single-python-runtime.md)",
   "engines": {
     "node": ">=22"
   },

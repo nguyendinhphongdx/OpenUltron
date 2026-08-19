@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException, status
 
 from app.core.providers import build_embeddings
-from app.modules.agent.repository import AgentRepository
+from app.modules.agent.service import AgentService
 from app.modules.knowledge_base.models import KnowledgeBase, KnowledgeChunk
 from app.modules.knowledge_base.repository import KnowledgeBaseRepository
 from app.modules.knowledge_base.schemas import (
@@ -14,7 +14,7 @@ from app.modules.knowledge_base.schemas import (
     KnowledgeBaseUpdate,
     SearchResult,
 )
-from app.modules.model.repository import ModelRepository
+from app.modules.model.service import ModelService
 
 
 def kb_to_read(row: KnowledgeBase) -> KnowledgeBaseRead:
@@ -43,12 +43,12 @@ class KnowledgeBaseService:
     def __init__(
         self,
         repo: KnowledgeBaseRepository,
-        model_repo: ModelRepository,
-        agent_repo: AgentRepository,
+        model_service: ModelService,
+        agent_service: AgentService,
     ) -> None:
         self.repo = repo
-        self.model_repo = model_repo
-        self.agent_repo = agent_repo
+        self.model_service = model_service
+        self.agent_service = agent_service
 
     async def create(self, input: KnowledgeBaseCreate) -> KnowledgeBaseRead:
         if await self.repo.get_by_slug(input.slug) is not None:
@@ -56,7 +56,7 @@ class KnowledgeBaseService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"KnowledgeBase slug '{input.slug}' đã tồn tại",
             )
-        embedding_model = await self.model_repo.get(input.embedding_model_id)
+        embedding_model = await self.model_service.find(input.embedding_model_id)
         if embedding_model is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -95,7 +95,7 @@ class KnowledgeBaseService:
         await self.repo.delete(row)
 
     async def _embed(self, kb: KnowledgeBase, text: str) -> list[float]:
-        embedding_model = await self.model_repo.get(kb.embedding_model_id)
+        embedding_model = await self.model_service.find(kb.embedding_model_id)
         assert embedding_model is not None  # validate ở create(), FK còn nguyên vẹn
         embeddings = build_embeddings(
             provider=embedding_model.provider,
@@ -119,10 +119,7 @@ class KnowledgeBaseService:
         return [SearchResult(chunk=chunk_to_read(c), score=score) for c, score in results]
 
     async def assign_to_agent(self, agent_id: int, kb_id: int) -> None:
-        if await self.agent_repo.get(agent_id) is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"Agent {agent_id} không tồn tại"
-            )
+        await self.agent_service.get_or_404(agent_id)
         await self.get_or_404(kb_id)
         await self.repo.add_agent_kb(agent_id, kb_id)
 
