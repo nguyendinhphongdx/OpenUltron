@@ -89,6 +89,19 @@ class AgentService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Agent '{orchestrator.slug}' chưa đánh dấu is_orchestrator=true",
             )
+        if await self.repo.get_delegation(orchestrator.id, sub_agent.id) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Agent '{sub_agent.slug}' đã được delegate cho '{orchestrator.slug}'",
+            )
+        if await self._creates_cycle(orchestrator.id, sub_agent.id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Gán '{sub_agent.slug}' làm sub-agent của '{orchestrator.slug}' sẽ tạo vòng "
+                    "lặp (agent gọi ngược lại chính nó qua chuỗi delegate) — không cho phép."
+                ),
+            )
         row = await self.repo.add_delegation(orchestrator.id, sub_agent.id)
         return AgentDelegationRead(
             id=row.id,
@@ -98,3 +111,30 @@ class AgentService:
 
     async def list_sub_agents(self, orchestrator_agent_id: int) -> list[AgentRead]:
         return [agent_to_read(r) for r in await self.repo.list_sub_agents(orchestrator_agent_id)]
+
+    async def remove_delegation(self, orchestrator_agent_id: int, sub_agent_id: int) -> None:
+        removed = await self.repo.remove_delegation(orchestrator_agent_id, sub_agent_id)
+        if not removed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {sub_agent_id} chưa được delegate cho {orchestrator_agent_id}",
+            )
+
+    async def _creates_cycle(self, orchestrator_agent_id: int, sub_agent_id: int) -> bool:
+        """BFS xuôi theo chiều delegate (orchestrator -> sub-agent) bắt đầu từ `sub_agent_id`.
+
+        Nếu đi tới được `orchestrator_agent_id` nghĩa là cạnh mới sẽ tạo vòng lặp — orchestrator
+        gián tiếp gọi ngược lại chính nó qua chuỗi sub-agent (đa tầng, ADR-0006 mở rộng).
+        """
+        visited: set[int] = set()
+        queue: list[int] = [sub_agent_id]
+        while queue:
+            current = queue.pop(0)
+            if current == orchestrator_agent_id:
+                return True
+            if current in visited:
+                continue
+            visited.add(current)
+            children = await self.repo.list_delegations(current)
+            queue.extend(d.sub_agent_id for d in children)
+        return False

@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { ChunkAdder } from '@/features/knowledge-base/components/ChunkAdder';
+import { FolderTree } from '@/features/knowledge-base/components/FolderTree';
 import { KnowledgeBaseForm } from '@/features/knowledge-base/components/KnowledgeBaseForm';
 import { KnowledgeSearchPanel } from '@/features/knowledge-base/components/KnowledgeSearchPanel';
 import { useDeleteKnowledgeBase } from '@/features/knowledge-base/hooks/useDeleteKnowledgeBase';
@@ -46,7 +47,18 @@ export default function KnowledgeBaseDetailPage() {
       <KnowledgeBaseForm knowledgeBase={knowledgeBase} />
 
       <section className="flex flex-col gap-2 border-t border-border pt-6">
-        <h2 className="text-sm font-semibold">Thêm chunk</h2>
+        <h2 className="text-sm font-semibold">Folder / File</h2>
+        <p className="text-xs text-foreground/60">
+          Nested folder kiểu Google Drive — mỗi file có trạng thái chunking riêng.
+        </p>
+        <FolderTree kbId={kbId} />
+      </section>
+
+      <section className="flex flex-col gap-2 border-t border-border pt-6">
+        <h2 className="text-sm font-semibold">Thêm chunk trực tiếp vào KB</h2>
+        <p className="text-xs text-foreground/60">
+          Không gắn file nào — tương thích ngược với chunk tạo trước khi có Folder/File.
+        </p>
         <ChunkAdder kbId={kbId} />
       </section>
 

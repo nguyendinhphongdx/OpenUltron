@@ -3,7 +3,7 @@
  * service/hook/component không tự đoán field.
  */
 
-export type Provider = 'ollama' | 'gemini' | 'openai';
+export type Provider = 'ollama' | 'gemini' | 'openai' | 'sglang';
 
 export interface Model {
   id: number;

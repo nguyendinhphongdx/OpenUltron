@@ -38,4 +38,8 @@ export const agentService = {
     });
     return res.data;
   },
+
+  removeDelegation: async (orchestratorId: number, subAgentId: number): Promise<void> => {
+    await apiClient.delete(endpoints.agents.unassignDelegation(orchestratorId, subAgentId));
+  },
 };

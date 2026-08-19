@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-Provider = Literal["ollama", "gemini", "openai"]
+Provider = Literal["ollama", "gemini", "openai", "sglang"]
 
 
 class ModelCreate(BaseModel):

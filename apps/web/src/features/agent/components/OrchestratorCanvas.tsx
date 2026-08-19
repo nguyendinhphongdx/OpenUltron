@@ -1,0 +1,244 @@
+'use client';
+
+import {
+  Background,
+  Controls,
+  Handle,
+  MiniMap,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { cn } from '@/lib/utils';
+import { useModels } from '@/features/model/hooks';
+import { agentService } from '../services/agent.service';
+import { useAgents } from '../hooks/useAgents';
+import { orchestratorTreeQueryKey, useOrchestratorTree } from '../hooks/useOrchestratorTree';
+import type { Agent, OrchestratorTreeNode } from '../types/agent.types';
+
+const COL_WIDTH = 200;
+const ROW_HEIGHT = 130;
+
+interface PosNode {
+  key: string;
+  x: number;
+  y: number;
+  agent: Agent;
+  parentKey: string | null;
+  parentAgentId: number | null;
+}
+
+function layout(
+  node: OrchestratorTreeNode,
+  depth: number,
+  parentKey: string | null,
+  parentAgentId: number | null,
+  counter: { n: number },
+  out: PosNode[],
+): number {
+  const key = parentKey ? `${parentKey}::${node.agent.id}` : `${node.agent.id}`;
+  if (node.children.length === 0) {
+    const x = counter.n * COL_WIDTH;
+    counter.n += 1;
+    out.push({ key, x, y: depth * ROW_HEIGHT, agent: node.agent, parentKey, parentAgentId });
+    return x;
+  }
+  const childXs = node.children.map((c) => layout(c, depth + 1, key, node.agent.id, counter, out));
+  const x = (Math.min(...childXs) + Math.max(...childXs)) / 2;
+  out.push({ key, x, y: depth * ROW_HEIGHT, agent: node.agent, parentKey, parentAgentId });
+  return x;
+}
+
+function AgentNodeCard({ data, selected }: NodeProps<Node<{ agent: Agent; modelLabel: string }>>) {
+  const { agent, modelLabel } = data;
+  return (
+    <div
+      className={cn(
+        'w-44 rounded-lg border bg-background shadow-sm',
+        agent.is_orchestrator ? 'border-accent' : 'border-border',
+        selected && 'ring-2 ring-accent ring-offset-2 ring-offset-background',
+      )}
+    >
+      <Handle type="target" position={Position.Top} className="bg-accent!" />
+      <div
+        className={cn(
+          'flex items-center gap-2 rounded-t-lg border-b border-border px-2.5 py-2',
+          agent.is_orchestrator && 'bg-accent/10',
+        )}
+      >
+        <span className={cn('h-1.5 w-1.5 rounded-full', 'bg-green-500')} />
+        <span className="truncate text-xs font-semibold">{agent.slug}</span>
+        {agent.is_orchestrator && (
+          <span className="ml-auto shrink-0 font-mono text-[9px] uppercase text-accent">
+            supervisor
+          </span>
+        )}
+      </div>
+      <div className="px-2.5 py-2">
+        <span className="rounded border border-border bg-foreground/5 px-1.5 py-0.5 font-mono text-[10px] text-foreground/70">
+          {modelLabel}
+        </span>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="bg-accent!" />
+    </div>
+  );
+}
+
+const nodeTypes = { agentNode: AgentNodeCard };
+
+export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
+  const { data: tree, isPending, isError } = useOrchestratorTree(rootAgentId);
+  const { data: allAgents } = useAgents();
+  const { data: models } = useModels();
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+
+  const addDelegation = useMutation({
+    mutationFn: ({ orchestratorId, subAgentId }: { orchestratorId: number; subAgentId: number }) =>
+      agentService.addDelegation(orchestratorId, subAgentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: orchestratorTreeQueryKey(rootAgentId) });
+    },
+  });
+
+  const removeDelegation = useMutation({
+    mutationFn: ({ orchestratorId, subAgentId }: { orchestratorId: number; subAgentId: number }) =>
+      agentService.removeDelegation(orchestratorId, subAgentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: orchestratorTreeQueryKey(rootAgentId) });
+    },
+  });
+
+  const modelLabel = (modelId: number) =>
+    models?.find((m) => m.id === modelId)?.slug ?? `model #${modelId}`;
+
+  const { nodes, edges, positions } = useMemo(() => {
+    if (!tree) return { nodes: [] as Node[], edges: [] as Edge[], positions: [] as PosNode[] };
+    const out: PosNode[] = [];
+    layout(tree, 0, null, null, { n: 0 }, out);
+
+    const nodes: Node[] = out.map((p) => ({
+      id: p.key,
+      type: 'agentNode',
+      position: { x: p.x, y: p.y },
+      data: { agent: p.agent, modelLabel: modelLabel(p.agent.model_id) },
+      selected: p.agent.id === selectedAgentId,
+    }));
+
+    const edges: Edge[] = out
+      .filter((p) => p.parentKey !== null && p.parentAgentId !== null)
+      .map((p) => ({
+        id: `${p.parentKey}->${p.key}`,
+        source: p.parentKey as string,
+        target: p.key,
+        label: 'delegate',
+        data: { orchestratorAgentId: p.parentAgentId, subAgentId: p.agent.id },
+      }));
+
+    return { nodes, edges, positions: out };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tree, models, selectedAgentId]);
+
+  if (isPending) return <p className="p-4 text-sm text-foreground/60">Đang tải graph…</p>;
+  if (isError || !tree) {
+    return <p className="p-4 text-sm text-red-500">Không tải được orchestrator này.</p>;
+  }
+
+  const selectedPos = positions.find((p) => p.agent.id === selectedAgentId);
+  const directChildAgentIds = new Set(
+    positions.filter((p) => p.parentAgentId === selectedAgentId).map((p) => p.agent.id),
+  );
+  const candidateAgents = (allAgents ?? []).filter(
+    (a) => a.id !== selectedAgentId && !directChildAgentIds.has(a.id),
+  );
+
+  return (
+    <div className="flex h-[calc(100vh-3.5rem)]">
+      <div className="flex-1">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodeClick={(_, node) => {
+            const pos = positions.find((p) => p.key === node.id);
+            setSelectedAgentId(pos?.agent.id ?? null);
+          }}
+          onEdgesDelete={(deleted: Edge[]) => {
+            deleted.forEach((edge) => {
+              const data = edge.data as { orchestratorAgentId: number; subAgentId: number };
+              removeDelegation.mutate({
+                orchestratorId: data.orchestratorAgentId,
+                subAgentId: data.subAgentId,
+              });
+            });
+          }}
+          fitView
+        >
+          <Background />
+          <Controls />
+          <MiniMap pannable zoomable />
+        </ReactFlow>
+      </div>
+
+      <aside className="w-72 shrink-0 overflow-y-auto border-l border-border p-4">
+        {!selectedPos ? (
+          <p className="text-sm text-foreground/60">Chọn 1 node để xem chi tiết.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div>
+              <h3 className="text-sm font-semibold">{selectedPos.agent.slug}</h3>
+              <p className="font-mono text-xs text-foreground/60">{selectedPos.agent.name}</p>
+            </div>
+            <div className="text-xs">
+              <p className="mb-1 font-mono uppercase tracking-wide text-foreground/50">Model</p>
+              <p>{modelLabel(selectedPos.agent.model_id)}</p>
+            </div>
+
+            {selectedPos.agent.is_orchestrator && (
+              <div>
+                <p className="mb-2 font-mono text-xs uppercase tracking-wide text-foreground/50">
+                  Thêm sub-agent
+                </p>
+                <select
+                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const subAgentId = Number(e.target.value);
+                    if (subAgentId && selectedAgentId) {
+                      addDelegation.mutate({ orchestratorId: selectedAgentId, subAgentId });
+                    }
+                    e.target.value = '';
+                  }}
+                >
+                  <option value="" disabled>
+                    Chọn agent…
+                  </option>
+                  {candidateAgents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.slug}
+                    </option>
+                  ))}
+                </select>
+                {addDelegation.isError && (
+                  <p className="mt-1 text-xs text-red-500">
+                    Không gán được — có thể tạo vòng lặp hoặc đã tồn tại.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs text-foreground/50">
+              Chọn 1 cạnh (edge) trên canvas rồi nhấn Delete/Backspace để gỡ delegation đó.
+            </p>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}

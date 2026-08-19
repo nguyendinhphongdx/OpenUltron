@@ -32,6 +32,16 @@ def build_chat_model(*, provider: str, model_id: str, base_url: str | None) -> B
             raise ProviderConfigError("Thiếu OPENAI_API_KEY trong .env (ADR-0007)")
         return ChatOpenAI(model=model_id, api_key=api_key)
 
+    if provider == "sglang":
+        from langchain_openai import ChatOpenAI
+
+        # SGLang serve API tương thích OpenAI (self-host) — không cần API key thật.
+        if not base_url:
+            raise ProviderConfigError(
+                "Provider sglang cần base_url (địa chỉ SGLang server tự host)"
+            )
+        return ChatOpenAI(model=model_id, api_key="EMPTY", base_url=base_url)
+
     raise ValueError(f"Unknown provider: {provider}")
 
 
@@ -56,5 +66,14 @@ def build_embeddings(*, provider: str, model_id: str, base_url: str | None) -> E
         if not api_key:
             raise ProviderConfigError("Thiếu OPENAI_API_KEY trong .env (ADR-0007)")
         return OpenAIEmbeddings(model=model_id, api_key=api_key)
+
+    if provider == "sglang":
+        from langchain_openai import OpenAIEmbeddings
+
+        if not base_url:
+            raise ProviderConfigError(
+                "Provider sglang cần base_url (địa chỉ SGLang server tự host)"
+            )
+        return OpenAIEmbeddings(model=model_id, api_key="EMPTY", base_url=base_url)
 
     raise ValueError(f"Unknown embedding provider: {provider}")

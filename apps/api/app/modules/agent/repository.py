@@ -30,6 +30,15 @@ class AgentRepository:
     async def delete(self, row: Agent) -> None:
         await self.session.delete(row)
 
+    async def get_delegation(
+        self, orchestrator_agent_id: int, sub_agent_id: int
+    ) -> AgentDelegation | None:
+        stmt = select(AgentDelegation).where(
+            AgentDelegation.orchestrator_agent_id == orchestrator_agent_id,
+            AgentDelegation.sub_agent_id == sub_agent_id,
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def add_delegation(
         self, orchestrator_agent_id: int, sub_agent_id: int
     ) -> AgentDelegation:
@@ -53,3 +62,10 @@ class AgentRepository:
             AgentDelegation.orchestrator_agent_id == orchestrator_agent_id
         )
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def remove_delegation(self, orchestrator_agent_id: int, sub_agent_id: int) -> bool:
+        row = await self.get_delegation(orchestrator_agent_id, sub_agent_id)
+        if row is None:
+            return False
+        await self.session.delete(row)
+        return True

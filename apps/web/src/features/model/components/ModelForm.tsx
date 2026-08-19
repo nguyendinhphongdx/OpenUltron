@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/api';
 
 import type { Model, ModelCreateInput, Provider } from '../types/model.types';
@@ -84,14 +84,16 @@ export function ModelForm({ model, onSubmit, isPending, isError, error, submitLa
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="provider">Provider</Label>
-        <Select
-          id="provider"
-          value={provider}
-          onChange={(e) => setProvider(e.target.value as Provider)}
-        >
-          <option value="ollama">ollama</option>
-          <option value="gemini">gemini</option>
-          <option value="openai">openai</option>
+        <Select value={provider} onValueChange={(v) => setProvider(v as Provider)}>
+          <SelectTrigger id="provider" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ollama">ollama</SelectItem>
+            <SelectItem value="gemini">gemini</SelectItem>
+            <SelectItem value="openai">openai</SelectItem>
+            <SelectItem value="sglang">sglang</SelectItem>
+          </SelectContent>
         </Select>
       </div>
 
@@ -117,14 +119,14 @@ export function ModelForm({ model, onSubmit, isPending, isError, error, submitLa
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder="vd. http://localhost:11434"
         />
-        <p className="text-xs text-foreground/60">Chỉ cần thiết với provider ollama.</p>
+        <p className="text-xs text-foreground/60">Bắt buộc với provider ollama/sglang (tự host).</p>
       </div>
 
       <div className="flex items-center gap-2">
         <Checkbox
           id="is_embedding"
           checked={isEmbedding}
-          onChange={(e) => setIsEmbedding(e.target.checked)}
+          onCheckedChange={(checked) => setIsEmbedding(checked === true)}
         />
         <Label htmlFor="is_embedding" className="font-normal">
           Dùng cho embedding

@@ -1,9 +1,13 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.modules.knowledge_base.deps import KnowledgeBaseServiceDep
 from app.modules.knowledge_base.schemas import (
     ChunkCreate,
     ChunkRead,
+    FileCreate,
+    FileRead,
+    FolderCreate,
+    FolderRead,
     KnowledgeBaseCreate,
     KnowledgeBaseRead,
     KnowledgeBaseUpdate,
@@ -53,3 +57,52 @@ async def search_kb(
     kb_id: int, body: SearchRequest, service: KnowledgeBaseServiceDep
 ) -> list[SearchResult]:
     return await service.search(kb_id, body.query, body.top_k)
+
+
+@router.post("/{kb_id}/folders", response_model=FolderRead, status_code=status.HTTP_201_CREATED)
+async def create_folder(
+    kb_id: int, body: FolderCreate, service: KnowledgeBaseServiceDep
+) -> FolderRead:
+    return await service.create_folder(kb_id, body)
+
+
+@router.get("/{kb_id}/folders", response_model=list[FolderRead])
+async def list_folders(
+    kb_id: int,
+    service: KnowledgeBaseServiceDep,
+    parent_folder_id: int | None = Query(default=None),
+) -> list[FolderRead]:
+    return await service.list_folders(kb_id, parent_folder_id)
+
+
+@router.delete("/{kb_id}/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_folder(kb_id: int, folder_id: int, service: KnowledgeBaseServiceDep) -> None:
+    await service.delete_folder(kb_id, folder_id)
+
+
+@router.post("/{kb_id}/files", response_model=FileRead, status_code=status.HTTP_201_CREATED)
+async def create_file(kb_id: int, body: FileCreate, service: KnowledgeBaseServiceDep) -> FileRead:
+    return await service.create_file(kb_id, body)
+
+
+@router.get("/{kb_id}/files", response_model=list[FileRead])
+async def list_files(
+    kb_id: int,
+    service: KnowledgeBaseServiceDep,
+    folder_id: int | None = Query(default=None),
+) -> list[FileRead]:
+    return await service.list_files(kb_id, folder_id)
+
+
+@router.delete("/{kb_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_file(kb_id: int, file_id: int, service: KnowledgeBaseServiceDep) -> None:
+    await service.delete_file(kb_id, file_id)
+
+
+@router.post(
+    "/{kb_id}/files/{file_id}/chunks", response_model=ChunkRead, status_code=status.HTTP_201_CREATED
+)
+async def add_file_chunk(
+    kb_id: int, file_id: int, body: ChunkCreate, service: KnowledgeBaseServiceDep
+) -> ChunkRead:
+    return await service.add_file_chunk(kb_id, file_id, body)

@@ -16,6 +16,8 @@ export const endpoints = {
     create: '/agents',
     byId: (id: number) => `/agents/${id}`,
     delegations: (id: number) => `/agents/${id}/delegations`,
+    unassignDelegation: (orchestratorId: number, subAgentId: number) =>
+      `/agents/${orchestratorId}/delegations/${subAgentId}`,
     subAgents: (id: number) => `/agents/${id}/sub-agents`,
     tools: (id: number) => `/agents/${id}/tools`,
     unassignTool: (agentId: number, toolId: number) => `/agents/${agentId}/tools/${toolId}`,
@@ -37,6 +39,12 @@ export const endpoints = {
     byId: (id: number) => `/knowledge-bases/${id}`,
     chunks: (id: number) => `/knowledge-bases/${id}/chunks`,
     search: (id: number) => `/knowledge-bases/${id}/search`,
+    folders: (id: number) => `/knowledge-bases/${id}/folders`,
+    folderById: (kbId: number, folderId: number) => `/knowledge-bases/${kbId}/folders/${folderId}`,
+    files: (id: number) => `/knowledge-bases/${id}/files`,
+    fileById: (kbId: number, fileId: number) => `/knowledge-bases/${kbId}/files/${fileId}`,
+    fileChunks: (kbId: number, fileId: number) =>
+      `/knowledge-bases/${kbId}/files/${fileId}/chunks`,
   },
   settings: {
     get: '/settings',

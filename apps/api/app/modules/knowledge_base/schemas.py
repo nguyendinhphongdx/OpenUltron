@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
+
+FileStatus = Literal["pending", "chunking", "done", "error"]
 
 
 class KnowledgeBaseCreate(BaseModel):
@@ -26,6 +28,36 @@ class KnowledgeBaseRead(BaseModel):
     updated_at: datetime
 
 
+class FolderCreate(BaseModel):
+    name: str
+    parent_folder_id: int | None = None
+
+
+class FolderRead(BaseModel):
+    id: int
+    kb_id: int
+    parent_folder_id: int | None
+    name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class FileCreate(BaseModel):
+    name: str
+    folder_id: int | None = None
+
+
+class FileRead(BaseModel):
+    id: int
+    kb_id: int
+    folder_id: int | None
+    name: str
+    status: FileStatus
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ChunkCreate(BaseModel):
     content: str
     metadata: dict[str, Any] | None = None
@@ -34,6 +66,7 @@ class ChunkCreate(BaseModel):
 class ChunkRead(BaseModel):
     id: int
     kb_id: int
+    file_id: int | None
     content: str
     metadata: dict[str, Any] | None = None
     created_at: datetime

@@ -6,6 +6,7 @@ import {
   Cpu,
   MessagesSquare,
   Settings as SettingsIcon,
+  Workflow,
   Wrench,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { href: '/conversations', label: 'Hội thoại', icon: MessagesSquare },
   { href: '/agents', label: 'Agents', icon: Bot },
+  { href: '/orchestrators', label: 'Orchestrators', icon: Workflow },
   { href: '/models', label: 'Models', icon: Cpu },
   { href: '/tools', label: 'Tools', icon: Wrench },
   { href: '/knowledge-bases', label: 'Knowledge Bases', icon: BookOpen },

@@ -25,6 +25,7 @@ export type KnowledgeBaseUpdateInput = Partial<Pick<KnowledgeBase, 'name' | 'des
 export interface KnowledgeChunk {
   id: number;
   kb_id: number;
+  file_id: number | null;
   content: string;
   metadata: Record<string, unknown> | null;
   created_at: string;
@@ -33,6 +34,38 @@ export interface KnowledgeChunk {
 export interface ChunkCreateInput {
   content: string;
   metadata?: Record<string, unknown> | null;
+}
+
+export interface KnowledgeFolder {
+  id: number;
+  kb_id: number;
+  parent_folder_id: number | null;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FolderCreateInput {
+  name: string;
+  parent_folder_id?: number | null;
+}
+
+export type FileStatus = 'pending' | 'chunking' | 'done' | 'error';
+
+export interface KnowledgeFile {
+  id: number;
+  kb_id: number;
+  folder_id: number | null;
+  name: string;
+  status: FileStatus;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FileCreateInput {
+  name: string;
+  folder_id?: number | null;
 }
 
 export interface SearchResult {

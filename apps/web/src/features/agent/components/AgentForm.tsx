@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { getApiErrorMessage } from '@/lib/api';
 import { useModels } from '@/features/model';
@@ -118,13 +118,17 @@ export function AgentForm({ agent, onSuccess }: AgentFormProps) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="model_id">Model</Label>
-        <Select id="model_id" value={modelId} onChange={(e) => setModelId(e.target.value)} required>
-          <option value="">— Chọn model —</option>
-          {models?.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name} ({model.provider}/{model.model_id})
-            </option>
-          ))}
+        <Select value={modelId || null} onValueChange={(v) => setModelId(v ?? '')}>
+          <SelectTrigger id="model_id" className="w-full">
+            <SelectValue placeholder="— Chọn model —" />
+          </SelectTrigger>
+          <SelectContent>
+            {models?.map((model) => (
+              <SelectItem key={model.id} value={model.id.toString()}>
+                {model.name} ({model.provider}/{model.model_id})
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </div>
 
@@ -132,7 +136,7 @@ export function AgentForm({ agent, onSuccess }: AgentFormProps) {
         <Checkbox
           id="is_orchestrator"
           checked={isOrchestrator}
-          onChange={(e) => setIsOrchestrator(e.target.checked)}
+          onCheckedChange={(checked) => setIsOrchestrator(checked === true)}
         />
         <Label htmlFor="is_orchestrator">Là orchestrator (có thể quản lý sub-agent)</Label>
       </div>

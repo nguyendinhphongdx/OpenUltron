@@ -49,6 +49,11 @@ async def add_delegation(
     return await service.add_delegation(agent_id, body.sub_agent_id)
 
 
+@router.delete("/{agent_id}/delegations/{sub_agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_delegation(agent_id: int, sub_agent_id: int, service: AgentServiceDep) -> None:
+    await service.remove_delegation(agent_id, sub_agent_id)
+
+
 @router.get("/{agent_id}/sub-agents", response_model=list[AgentRead])
 async def list_sub_agents(agent_id: int, service: AgentServiceDep) -> list[AgentRead]:
     return await service.list_sub_agents(agent_id)

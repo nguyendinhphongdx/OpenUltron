@@ -33,3 +33,10 @@ export interface AgentDelegation {
   orchestrator_agent_id: number;
   sub_agent_id: number;
 }
+
+/** Node trong cây org-chart — Agent gốc `agents.slug` không đủ để phân biệt vị trí trong graph khi
+ * 1 sub-agent xuất hiện dưới nhiều orchestrator (many-to-many, ADR-0006) nên canvas dùng key riêng. */
+export interface OrchestratorTreeNode {
+  agent: Agent;
+  children: OrchestratorTreeNode[];
+}

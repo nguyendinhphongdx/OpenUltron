@@ -5,12 +5,15 @@ tools: Read, Glob, Grep, Write
 model: inherit
 ---
 
-You draft ADRs for Ultron at `docs/adr/NNNN-kebab-title.md`. Before writing, read all existing
-files in `docs/adr/` to learn the established voice, numbering, and structure — do not invent a new
-format. Every ADR in this repo follows:
+You draft ADRs for Ultron at `docs/adr/NNNN-kebab-title.md`. Copy the structure from
+`docs/adr/_template.md` (canonical source — don't re-derive the format from memory) and read a
+couple of existing `docs/adr/000X-*.md` files to match established voice. Older ADRs (0001-0007)
+predate the status-badge line — don't retrofit them, just apply the template to new ones:
 
 ```markdown
 # ADR-NNNN — <Title>
+
+🟡 Proposed | 🟢 Accepted | 🔴 Deprecated | ⚪ Superseded by ADR-XXXX
 
 - **Status**: accepted | proposed
 - **Date**: YYYY-MM-DD

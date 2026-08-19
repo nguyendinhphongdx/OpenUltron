@@ -42,8 +42,8 @@ export function ModelList() {
               </p>
             </Link>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" asChild>
-                <Link href={`/models/${model.id}`}>Sửa</Link>
+              <Button size="sm" variant="outline" render={<Link href={`/models/${model.id}`} />}>
+                Sửa
               </Button>
               <Button
                 size="sm"

@@ -6,7 +6,7 @@ import { useAgents } from '@/features/agent';
 import { useModels } from '@/features/model';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/api';
 
 import { useSettings, useUpdateSettings } from '../hooks';
@@ -42,16 +42,20 @@ export function SettingsForm() {
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="default_agent_id">Default agent</Label>
         <Select
-          id="default_agent_id"
-          value={defaultAgentId}
-          onChange={(e) => setDefaultAgentId(e.target.value)}
+          value={defaultAgentId || 'none'}
+          onValueChange={(v) => setDefaultAgentId(!v || v === 'none' ? '' : v)}
         >
-          <option value="">— Không đặt —</option>
-          {agents?.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.name} ({agent.slug})
-            </option>
-          ))}
+          <SelectTrigger id="default_agent_id" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">— Không đặt —</SelectItem>
+            {agents?.map((agent) => (
+              <SelectItem key={agent.id} value={agent.id.toString()}>
+                {agent.name} ({agent.slug})
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
         <p className="text-xs text-foreground/60">
           Dùng khi conversation không gán agent cụ thể.
@@ -61,16 +65,20 @@ export function SettingsForm() {
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="default_model_id">Default model</Label>
         <Select
-          id="default_model_id"
-          value={defaultModelId}
-          onChange={(e) => setDefaultModelId(e.target.value)}
+          value={defaultModelId || 'none'}
+          onValueChange={(v) => setDefaultModelId(!v || v === 'none' ? '' : v)}
         >
-          <option value="">— Không đặt —</option>
-          {models?.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name} ({model.provider}/{model.model_id})
-            </option>
-          ))}
+          <SelectTrigger id="default_model_id" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">— Không đặt —</SelectItem>
+            {models?.map((model) => (
+              <SelectItem key={model.id} value={model.id.toString()}>
+                {model.name} ({model.provider}/{model.model_id})
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
         <p className="text-xs text-foreground/60">
           Fallback cuối cùng khi conversation không gán agent và default agent cũng chưa có model.

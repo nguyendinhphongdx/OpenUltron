@@ -5,3 +5,5 @@ export { useUpdateAgent } from './useUpdateAgent';
 export { useDeleteAgent } from './useDeleteAgent';
 export { useSubAgents, subAgentsQueryKey } from './useSubAgents';
 export { useAddDelegation } from './useAddDelegation';
+export { useRemoveDelegation } from './useRemoveDelegation';
+export { useOrchestratorTree, orchestratorTreeQueryKey } from './useOrchestratorTree';

@@ -1,0 +1,597 @@
+<title>Orchestrator Canvas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #eef0f3;
+    --panel: #ffffff;
+    --panel-alt: #f4f5f8;
+    --canvas: #e7e9ee;
+    --border: #d7dae1;
+    --text: #14161a;
+    --text-dim: #5b5f6a;
+    --text-faint: #8b8f99;
+    --accent: #5b4bd6;
+    --accent-dim: #ece9fb;
+    --accent-line: #b9aef1;
+    --good: #1f9d5c;
+    --good-bg: #e3f6ec;
+    --warn: #b4780b;
+    --warn-bg: #fbf0dd;
+    --bad: #d43d5c;
+    --bad-bg: #fbe6ea;
+    --dot: #c7cbd4;
+    --shadow: 0 1px 2px rgba(20,22,26,0.04), 0 8px 24px -12px rgba(20,22,26,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0c0e;
+      --panel: #16181c;
+      --panel-alt: #1c1e23;
+      --canvas: #101114;
+      --border: #2b2e33;
+      --text: #ecedee;
+      --text-dim: #9a9da6;
+      --text-faint: #6b6e77;
+      --accent: #8677f2;
+      --accent-dim: #241f3d;
+      --accent-line: #4a3f8c;
+      --good: #33d17a;
+      --good-bg: #12291d;
+      --warn: #e8a93b;
+      --warn-bg: #2e2410;
+      --bad: #f0576b;
+      --bad-bg: #331419;
+      --dot: #2c2f36;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px -16px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0c0e;
+    --panel: #16181c;
+    --panel-alt: #1c1e23;
+    --canvas: #101114;
+    --border: #2b2e33;
+    --text: #ecedee;
+    --text-dim: #9a9da6;
+    --text-faint: #6b6e77;
+    --accent: #8677f2;
+    --accent-dim: #241f3d;
+    --accent-line: #4a3f8c;
+    --good: #33d17a;
+    --good-bg: #12291d;
+    --warn: #e8a93b;
+    --warn-bg: #2e2410;
+    --bad: #f0576b;
+    --bad-bg: #331419;
+    --dot: #2c2f36;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px -16px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1280px; margin: 0 auto; padding: 40px 24px 80px; }
+  .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .wordmark { font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 22px; letter-spacing: -0.01em; }
+  .wordmark span { color: var(--accent); }
+  .masthead-meta { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--text-faint); letter-spacing: 0.02em; }
+  .subhead { color: var(--text-dim); font-size: 14.5px; margin: 0 0 24px; max-width: 66ch; line-height: 1.55; }
+  .subhead b { color: var(--text-dim); }
+
+  .frame { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; }
+  .frame-bar { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--border); background: var(--panel-alt); }
+  .frame-bar .dots { display: flex; gap: 6px; }
+  .frame-bar .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--border); display: block; }
+  .frame-bar .path { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--text-faint); margin-left: 6px; }
+  .frame-bar .run-pill {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: 0.03em;
+    background: var(--good-bg); color: var(--good); border-radius: 10px; padding: 3px 9px;
+  }
+  .run-pill .blip { width: 6px; height: 6px; border-radius: 50%; background: var(--good); animation: blip 1.4s ease-in-out infinite; }
+  @keyframes blip { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .run-pill .blip { animation: none; } }
+
+  .toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .toolbar .grp { display: flex; gap: 4px; padding-right: 10px; margin-right: 10px; border-right: 1px solid var(--border); }
+  .toolbar .grp:last-child { border-right: none; }
+  .tbtn {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; letter-spacing: 0.01em;
+    background: none; border: 1px solid transparent; border-radius: 6px; padding: 6px 10px;
+    color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: 6px;
+  }
+  .tbtn:hover { background: var(--panel-alt); border-color: var(--border); }
+  .tbtn.primary { background: var(--accent); color: #fff; }
+  .tbtn.primary:hover { background: var(--accent); opacity: 0.92; }
+  .zoom { margin-left: auto; display: flex; align-items: center; gap: 8px; font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--text-faint); }
+
+  .workspace { display: grid; grid-template-columns: 220px 1fr 260px; min-height: 600px; }
+  .rail { padding: 14px 12px; }
+  .rail-left { border-right: 1px solid var(--border); background: var(--panel-alt); }
+  .rail-right { border-left: 1px solid var(--border); background: var(--panel-alt); }
+  .rail-title { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); padding: 4px 6px 10px; }
+
+  .palette-item {
+    display: flex; align-items: center; gap: 9px; padding: 9px 9px; border-radius: 7px;
+    border: 1px dashed var(--border); margin-bottom: 7px; cursor: grab; background: var(--panel);
+  }
+  .palette-item:hover { border-color: var(--accent-line); }
+  .palette-icon {
+    width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 700; background: var(--accent-dim); color: var(--accent);
+  }
+  .palette-label { font-size: 12.5px; font-weight: 500; }
+  .palette-sub { font-size: 10.5px; color: var(--text-faint); font-family: "IBM Plex Mono", monospace; }
+
+  /* Canvas */
+  .canvas {
+    position: relative; overflow: hidden;
+    background-color: var(--canvas);
+    background-image: radial-gradient(circle, var(--dot) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .edge { fill: none; stroke: var(--accent-line); stroke-width: 1.8; }
+  .edge-arrow { fill: var(--accent-line); }
+  .edge-label {
+    font-family: "IBM Plex Mono", monospace; font-size: 9.5px; fill: var(--text-faint);
+  }
+  .edge-label-bg { fill: var(--canvas); }
+
+  .node {
+    position: absolute; width: 176px; border-radius: 10px; background: var(--panel);
+    border: 1px solid var(--border); box-shadow: var(--shadow); overflow: hidden;
+  }
+  .node.supervisor { border-color: var(--accent); width: 196px; }
+  .node-head { display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  .node.supervisor .node-head { background: var(--accent-dim); }
+  .node-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .node-dot.good { background: var(--good); }
+  .node-dot.warn { background: var(--warn); }
+  .node-title { font-size: 12.5px; font-weight: 600; }
+  .node.supervisor .node-title { color: var(--accent); }
+  .node-role {
+    margin-left: auto; font-family: "IBM Plex Mono", monospace; font-size: 8.5px; letter-spacing: 0.05em;
+    color: var(--text-faint); text-transform: uppercase;
+  }
+  .node-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 5px; }
+  .node-tag {
+    display: inline-flex; align-items: center; gap: 4px; font-family: "IBM Plex Mono", monospace; font-size: 9.5px;
+    color: var(--text-dim); background: var(--panel-alt); border: 1px solid var(--border); border-radius: 5px;
+    padding: 2px 6px; width: fit-content;
+  }
+  .node-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .node.selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .port { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--panel); border: 1.8px solid var(--accent); }
+
+  .minimap {
+    position: absolute; right: 14px; bottom: 14px; width: 130px; height: 90px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); opacity: 0.9;
+  }
+  .minimap-node { position: absolute; background: var(--accent-line); border-radius: 2px; }
+
+  /* Inspector */
+  .inspector-card { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 12px; margin-bottom: 12px; }
+  .inspector-card h3 { margin: 0 0 3px; font-size: 13px; }
+  .inspector-card .slug { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--text-faint); margin-bottom: 10px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-family: "IBM Plex Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 4px; }
+  .field .value { font-size: 12.5px; border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; background: var(--panel-alt); color: var(--text-dim); }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-family: "IBM Plex Mono", monospace; font-size: 10px; border: 1px solid var(--border); border-radius: 12px; padding: 3px 9px; color: var(--text-dim); background: var(--panel-alt); }
+  .chip.accent { border-color: var(--accent-line); color: var(--accent); background: var(--accent-dim); }
+
+  .stream-card { border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 10px 12px; }
+  .stream-line { display: flex; gap: 8px; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; padding: 3px 0; align-items: baseline; }
+  .stream-line .who { color: var(--text-faint); width: 74px; flex-shrink: 0; }
+  .stream-line .txt { color: var(--text-dim); }
+  .cursor { display: inline-block; width: 6px; height: 11px; background: var(--accent); margin-left: 2px; vertical-align: -1px; animation: caret 1s step-end infinite; }
+  @keyframes caret { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+
+  footer.note { margin-top: 22px; font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--text-faint); line-height: 1.7; }
+  footer.note b { color: var(--text-dim); }
+
+  @media (max-width: 900px) {
+    .workspace { grid-template-columns: 1fr; }
+    .rail-left, .rail-right { display: none; }
+  }
+
+  /* Tabs + resource list screens */
+  .tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .tab {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: 0.02em; color: var(--text-faint);
+    background: none; border: none; padding: 9px 4px 11px; margin-right: 20px; cursor: pointer;
+    border-bottom: 2px solid transparent; transform: translateY(1px);
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab:not(.active):hover { color: var(--text-dim); }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  .res-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 16px 20px 0; flex-wrap: wrap; }
+  .res-top p { margin: 4px 0 0; font-size: 13px; color: var(--text-dim); max-width: 60ch; line-height: 1.6; }
+  .res-body { padding: 16px 20px 22px; }
+  .res-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .res-card { border: 1px solid var(--border); border-radius: 9px; background: var(--panel-alt); padding: 13px; }
+  .res-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+  .res-card h4 { margin: 0; font-size: 13.5px; }
+  .res-card .slug { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--text-faint); margin-bottom: 9px; }
+  .res-card .desc { font-size: 11.5px; color: var(--text-dim); line-height: 1.5; margin-bottom: 10px; min-height: 32px; }
+  .res-meta { display: flex; align-items: center; justify-content: space-between; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--text-dim); border-top: 1px solid var(--border); padding-top: 8px; }
+  .res-meta .used { font-size: 9.5px; color: var(--text-faint); }
+  .provider-badge { font-family: "IBM Plex Mono", monospace; font-size: 9px; letter-spacing: 0.03em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; }
+  .provider-badge.sglang { background: var(--accent-dim); color: var(--accent); }
+  .provider-badge.ollama { background: var(--good-bg); color: var(--good); }
+  .provider-badge.gemini { background: var(--warn-bg); color: var(--warn); }
+  .provider-badge.openai { background: var(--panel); border: 1px solid var(--border); color: var(--text-dim); }
+
+  .form-card { border: 1px solid var(--border); border-radius: 9px; background: var(--panel-alt); padding: 16px 18px; max-width: 480px; }
+  .form-field { margin-bottom: 13px; }
+  .form-field label { display: block; font-family: "IBM Plex Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 5px; }
+  .form-field .value { font-size: 12.5px; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; background: var(--panel); color: var(--text-dim); }
+  .search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+  .search-row .value { flex: 1; }
+  .search-result { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); margin-bottom: 6px; font-size: 12px; }
+  .search-result .score { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--good); flex-shrink: 0; }
+</style>
+
+<div class="page">
+  <div class="masthead">
+    <div class="wordmark">ultron<span>::</span>orchestrator</div>
+    <div class="masthead-meta">apps/web — mockup, chưa code · để chốt hình dung</div>
+  </div>
+  <p class="subhead">
+    Canvas kiểu ReactFlow để lắp <b>1 supervisor + nhiều agent liên kết tự do</b> (không giới hạn 1 tầng
+    như <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px">AgentDelegation</span> hiện tại),
+    thực thi bằng LangGraph, xem token stream khi chạy thử ngay trong canvas. Các tab bên dưới là mockup
+    trang quản lý resource khác (Model/Tool/Knowledge base/Settings) — cùng ngôn ngữ thiết kế với canvas.
+  </p>
+
+  <div class="tabs">
+    <button class="tab active" data-target="canvas-screen">Canvas</button>
+    <button class="tab" data-target="models-screen">Models</button>
+    <button class="tab" data-target="tools-screen">Tools</button>
+    <button class="tab" data-target="kb-screen">Knowledge bases</button>
+    <button class="tab" data-target="settings-screen">Settings</button>
+  </div>
+
+  <div class="screen active" id="canvas-screen">
+  <div class="frame">
+    <div class="frame-bar">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="path">ultron.local/orchestrators/research-desk</div>
+      <div class="run-pill"><span class="blip"></span> streaming</div>
+    </div>
+
+    <div class="toolbar">
+      <div class="grp">
+        <button class="tbtn">+ Node</button>
+        <button class="tbtn">+ Nhóm</button>
+      </div>
+      <div class="grp">
+        <button class="tbtn">↶ Undo</button>
+        <button class="tbtn">↷ Redo</button>
+      </div>
+      <div class="grp">
+        <button class="tbtn primary">▶ Run thử</button>
+        <button class="tbtn">Lưu</button>
+      </div>
+      <div class="zoom">100% <span style="opacity:.5">·</span> LangGraph runtime</div>
+    </div>
+
+    <div class="workspace">
+      <div class="rail rail-left">
+        <div class="rail-title">Thêm agent vào canvas</div>
+        <div class="palette-item">
+          <div class="palette-icon">RS</div>
+          <div><div class="palette-label">research</div><div class="palette-sub">sonnet-5</div></div>
+        </div>
+        <div class="palette-item">
+          <div class="palette-icon">DV</div>
+          <div><div class="palette-label">devops-runner</div><div class="palette-sub">sonnet-5</div></div>
+        </div>
+        <div class="palette-item">
+          <div class="palette-icon">CM</div>
+          <div><div class="palette-label">comms</div><div class="palette-sub">haiku-4.5</div></div>
+        </div>
+        <div class="palette-item">
+          <div class="palette-icon">SC</div>
+          <div><div class="palette-label">scheduler</div><div class="palette-sub">SGLang · qwen3-14b</div></div>
+        </div>
+        <div class="rail-title" style="margin-top:14px">Nhóm (dự kiến)</div>
+        <div class="palette-item" style="opacity:.55">
+          <div class="palette-icon" style="background:var(--panel-alt);color:var(--text-faint)">?</div>
+          <div><div class="palette-label">sub-orchestrator</div><div class="palette-sub">chưa hỗ trợ — cần bỏ giới hạn 1 tầng</div></div>
+        </div>
+      </div>
+
+      <div class="canvas" id="canvas">
+        <svg viewBox="0 0 720 480" preserveAspectRatio="none">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path class="edge-arrow" d="M0,0 L6,3 L0,6 Z"/>
+            </marker>
+          </defs>
+          <!-- supervisor(center ~360,90) -> research(120,230) -->
+          <path class="edge" marker-end="url(#arrow)" d="M300,118 C 220,160 160,180 128,222"/>
+          <!-- supervisor -> devops(360,230) -->
+          <path class="edge" marker-end="url(#arrow)" d="M370,130 C 372,165 370,195 368,222"/>
+          <!-- supervisor -> comms(600,230) -->
+          <path class="edge" marker-end="url(#arrow)" d="M440,120 C 510,155 565,180 598,222"/>
+          <!-- devops -> scheduler(360,370) chain -->
+          <path class="edge" marker-end="url(#arrow)" d="M368,278 C 368,305 368,330 368,362"/>
+
+          <rect x="76" y="196" width="8" height="8" class="edge-label-bg"/>
+          <text class="edge-label" x="182" y="185">delegate</text>
+          <text class="edge-label" x="380" y="195">delegate</text>
+          <text class="edge-label" x="500" y="185">delegate</text>
+          <text class="edge-label" x="380" y="325">on success</text>
+        </svg>
+
+        <div class="node supervisor" style="left:270px; top:60px;">
+          <div class="node-head">
+            <span class="node-dot good"></span>
+            <span class="node-title">research-desk</span>
+            <span class="node-role">supervisor</span>
+          </div>
+          <div class="node-body">
+            <div class="node-tag">sonnet-5</div>
+            <div class="node-tags">
+              <span class="node-tag">3 sub-agent</span>
+            </div>
+          </div>
+          <span class="port" style="left:-4px; top:50%;"></span>
+          <span class="port" style="right:-4px; top:50%;"></span>
+          <span class="port" style="bottom:-4px; left:50%;"></span>
+        </div>
+
+        <div class="node selected" style="left:40px; top:222px;">
+          <div class="node-head">
+            <span class="node-dot good"></span>
+            <span class="node-title">research</span>
+            <span class="node-role">agent</span>
+          </div>
+          <div class="node-body">
+            <div class="node-tags">
+              <span class="node-tag">sonnet-5</span>
+              <span class="node-tag">2 tool</span>
+              <span class="node-tag">1 kb</span>
+            </div>
+          </div>
+          <span class="port" style="left:-4px; top:50%;"></span>
+        </div>
+
+        <div class="node" style="left:282px; top:222px;">
+          <div class="node-head">
+            <span class="node-dot good"></span>
+            <span class="node-title">devops-runner</span>
+            <span class="node-role">agent</span>
+          </div>
+          <div class="node-body">
+            <div class="node-tags">
+              <span class="node-tag">sonnet-5</span>
+              <span class="node-tag">1 tool</span>
+            </div>
+          </div>
+          <span class="port" style="left:50%; top:-4px;"></span>
+          <span class="port" style="left:50%; bottom:-4px;"></span>
+        </div>
+
+        <div class="node" style="left:512px; top:222px;">
+          <div class="node-head">
+            <span class="node-dot warn"></span>
+            <span class="node-title">comms</span>
+            <span class="node-role">agent</span>
+          </div>
+          <div class="node-body">
+            <div class="node-tags">
+              <span class="node-tag">haiku-4.5</span>
+              <span class="node-tag">1 tool</span>
+            </div>
+          </div>
+          <span class="port" style="left:-4px; top:50%;"></span>
+        </div>
+
+        <div class="node" style="left:282px; top:362px; opacity:.9;">
+          <div class="node-head">
+            <span class="node-dot good"></span>
+            <span class="node-title">scheduler</span>
+            <span class="node-role">agent</span>
+          </div>
+          <div class="node-body">
+            <div class="node-tags">
+              <span class="node-tag">SGLang</span>
+              <span class="node-tag">qwen3-14b</span>
+            </div>
+          </div>
+          <span class="port" style="left:50%; top:-4px;"></span>
+        </div>
+
+        <div class="minimap">
+          <div class="minimap-node" style="left:44px; top:14px; width:26px; height:12px; background:var(--accent);"></div>
+          <div class="minimap-node" style="left:8px; top:44px; width:20px; height:10px;"></div>
+          <div class="minimap-node" style="left:40px; top:44px; width:20px; height:10px;"></div>
+          <div class="minimap-node" style="left:80px; top:44px; width:20px; height:10px;"></div>
+          <div class="minimap-node" style="left:40px; top:66px; width:20px; height:10px;"></div>
+        </div>
+      </div>
+
+      <div class="rail rail-right">
+        <div class="rail-title">Node đang chọn</div>
+        <div class="inspector-card">
+          <h3>research</h3>
+          <div class="slug">agent · research</div>
+          <div class="field">
+            <label>Model</label>
+            <div class="value">sonnet-5</div>
+          </div>
+          <div class="field">
+            <label>Tools</label>
+            <div class="chip-row"><span class="chip">web_search</span><span class="chip">arxiv_read</span></div>
+          </div>
+          <div class="field">
+            <label>Knowledge base</label>
+            <div class="chip-row"><span class="chip accent">papers-2026</span></div>
+          </div>
+        </div>
+
+        <div class="rail-title">Token stream (run thử)</div>
+        <div class="stream-card">
+          <div class="stream-line"><span class="who">supervisor</span><span class="txt">→ delegate "research"</span></div>
+          <div class="stream-line"><span class="who">research</span><span class="txt">Đang tra papers-2026<span class="cursor"></span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="note">
+    <b>Đây là mockup, chưa phải implementation.</b> Mục đích: chốt hình dung "graph tự do, không giới hạn 1 tầng" trước khi viết docs/features/&lt;slug&gt;.md chi tiết (schema node/edge, cách LangGraph build graph động, giao thức SGLang, transport streaming) ở pass sau.<br>
+    Node "sub-orchestrator" bên trái đang mờ = chưa hỗ trợ, cần ADR bỏ giới hạn 1 tầng của ADR-0006 trước.
+  </footer>
+  </div>
+
+  <!-- MODELS -->
+  <div class="screen" id="models-screen">
+    <div class="frame">
+      <div class="frame-bar"><div class="dots"><i></i><i></i><i></i></div><div class="path">ultron.local/models</div></div>
+      <div class="res-top">
+        <div>
+          <h2 style="margin:0;font-size:15px;">Models</h2>
+          <p>Mỗi Model là 1 cấu hình provider + model_id để Agent tham chiếu. SGLang thêm vào như 1 provider mới cạnh ollama/gemini/openai (ADR-0007 mở rộng).</p>
+        </div>
+        <button class="tbtn primary">+ Model mới</button>
+      </div>
+      <div class="res-body">
+        <div class="res-grid">
+          <div class="res-card">
+            <div class="res-card-head"><h4>sonnet-5</h4></div>
+            <div class="slug">sonnet-5</div>
+            <div class="desc">Chat model chính cho orchestrator + phần lớn agent.</div>
+            <div class="res-meta"><span class="provider-badge openai">anthropic</span><span class="used">4 agent</span></div>
+          </div>
+          <div class="res-card">
+            <div class="res-card-head"><h4>qwen3-14b</h4></div>
+            <div class="slug">qwen3-14b</div>
+            <div class="desc">Chạy local qua SGLang server tự host — dùng cho agent chạy liên tục/rẻ.</div>
+            <div class="res-meta"><span class="provider-badge sglang">sglang</span><span class="used">1 agent</span></div>
+          </div>
+          <div class="res-card">
+            <div class="res-card-head"><h4>nomic-embed-text</h4></div>
+            <div class="slug">nomic-embed-text</div>
+            <div class="desc">Embedding model cho Knowledge base (dim 768).</div>
+            <div class="res-meta"><span class="provider-badge ollama">ollama</span><span class="used">is_embedding</span></div>
+          </div>
+          <div class="res-card">
+            <div class="res-card-head"><h4>gemini-flash</h4></div>
+            <div class="slug">gemini-flash</div>
+            <div class="desc">Dự phòng — chưa live-test (thiếu GEMINI_API_KEY ở môi trường hiện tại).</div>
+            <div class="res-meta"><span class="provider-badge gemini">gemini</span><span class="used">0 agent</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOOLS -->
+  <div class="screen" id="tools-screen">
+    <div class="frame">
+      <div class="frame-bar"><div class="dots"><i></i><i></i><i></i></div><div class="path">ultron.local/tools</div></div>
+      <div class="res-top">
+        <div>
+          <h2 style="margin:0;font-size:15px;">Tools</h2>
+          <p>Gán vào từng agent qua AgentTool (n-n) — agent nào không gắn tool nào thì chỉ trả lời bằng model, không gọi được gì ra ngoài.</p>
+        </div>
+        <button class="tbtn primary">+ Tool mới</button>
+      </div>
+      <div class="res-body">
+        <div class="res-grid">
+          <div class="res-card">
+            <div class="res-card-head"><h4>web_search</h4></div>
+            <div class="slug">web_search · http</div>
+            <div class="desc">Tìm kiếm web, trả danh sách kết quả + snippet.</div>
+            <div class="res-meta"><span>2 agent dùng</span><span class="used">research, comms</span></div>
+          </div>
+          <div class="res-card">
+            <div class="res-card-head"><h4>run_shell</h4></div>
+            <div class="slug">run_shell · exec</div>
+            <div class="desc">Chạy lệnh trên máy — có approval gate (ADR-0005), không auto-run.</div>
+            <div class="res-meta"><span>1 agent dùng</span><span class="used">devops-runner</span></div>
+          </div>
+          <div class="res-card">
+            <div class="res-card-head"><h4>send_telegram</h4></div>
+            <div class="slug">send_telegram · http</div>
+            <div class="desc">Gửi tin nhắn Telegram thay mặt user.</div>
+            <div class="res-meta"><span>1 agent dùng</span><span class="used">comms</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KNOWLEDGE BASES -->
+  <div class="screen" id="kb-screen">
+    <div class="frame">
+      <div class="frame-bar"><div class="dots"><i></i><i></i><i></i></div><div class="path">ultron.local/knowledge-bases/papers-2026</div></div>
+      <div class="res-top">
+        <div>
+          <h2 style="margin:0;font-size:15px;">Knowledge base — papers-2026</h2>
+          <p>pgvector, embedding qua nomic-embed-text (dim 768). Agent tra cứu qua tool RAG khi được gắn KB (AgentKnowledgeBase).</p>
+        </div>
+        <button class="tbtn primary">+ Thêm chunk</button>
+      </div>
+      <div class="res-body">
+        <div class="search-row">
+          <div class="value" style="flex:1">"kỹ thuật giảm hallucination cho agent nhiều bước"</div>
+          <button class="tbtn">Search</button>
+        </div>
+        <div class="search-result"><span>Multi-agent verification giảm lỗi bằng cách cho 2-3 agent độc lập refute cùng 1 claim…</span><span class="score">0.19</span></div>
+        <div class="search-result"><span>Chain-of-thought prompting cải thiện reasoning nhưng không trực tiếp giảm hallucination…</span><span class="score">0.34</span></div>
+        <div class="search-result" style="opacity:.5"><span>Giá thuê GPU cloud theo giờ, so sánh nhà cung cấp…</span><span class="score">0.71</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="screen" id="settings-screen">
+    <div class="frame">
+      <div class="frame-bar"><div class="dots"><i></i><i></i><i></i></div><div class="path">ultron.local/settings</div></div>
+      <div class="res-top">
+        <div>
+          <h2 style="margin:0;font-size:15px;">Settings</h2>
+          <p>AppSettings — singleton, dùng làm fallback khi 1 conversation/orchestrator chưa gán agent/model cụ thể.</p>
+        </div>
+      </div>
+      <div class="res-body">
+        <div class="form-card">
+          <div class="form-field"><label>Default model</label><div class="value">sonnet-5</div></div>
+          <div class="form-field"><label>Default agent</label><div class="value">research-desk (supervisor)</div></div>
+          <button class="tbtn primary">Lưu thay đổi</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="note" style="margin-top:0;">
+    Tab Models/Tools/Knowledge bases/Settings ở đây là mockup phối lại giao diện quản lý resource đã có
+    (CRUD thật hiện đang chạy phẳng trong apps/web) theo cùng ngôn ngữ thiết kế với canvas orchestrator —
+    chưa phải bản build lại thật, chỉ để xem có đồng bộ hình dung không.
+  </footer>
+</div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+      document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.target).classList.add('active');
+    });
+  });
+</script>

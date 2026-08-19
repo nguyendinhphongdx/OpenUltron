@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Inter, JetBrains_Mono, Geist } from 'next/font/google';
 import { PublicEnvScript } from 'next-runtime-env';
 import type { ReactNode } from 'react';
 
@@ -8,6 +8,8 @@ import { Providers } from '@/providers';
 import { cn } from '@/lib/utils';
 
 import './globals.css';
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const inter = Inter({ variable: '--font-inter', subsets: ['latin'], display: 'swap' });
 const jetbrainsMono = JetBrains_Mono({
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="vi" suppressHydrationWarning>
+    <html lang="vi" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
       <head>
         {/* Inject NEXT_PUBLIC_* vào window.__ENV — đọc runtime thay vì bake lúc build */}
         <PublicEnvScript />

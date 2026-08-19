@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/api';
 
 import { useAddDelegation } from '../hooks/useAddDelegation';
@@ -60,13 +60,17 @@ export function DelegationManager({ agent }: DelegationManagerProps) {
       )}
 
       <div className="flex items-center gap-2">
-        <Select value={subAgentId} onChange={(e) => setSubAgentId(e.target.value)} className="w-56">
-          <option value="">— Chọn agent —</option>
-          {candidateAgents?.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>
-              {candidate.name} ({candidate.slug})
-            </option>
-          ))}
+        <Select value={subAgentId || null} onValueChange={(v) => setSubAgentId(v ?? '')}>
+          <SelectTrigger className="w-56">
+            <SelectValue placeholder="— Chọn agent —" />
+          </SelectTrigger>
+          <SelectContent>
+            {candidateAgents?.map((candidate) => (
+              <SelectItem key={candidate.id} value={candidate.id.toString()}>
+                {candidate.name} ({candidate.slug})
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
         <Button
           size="sm"

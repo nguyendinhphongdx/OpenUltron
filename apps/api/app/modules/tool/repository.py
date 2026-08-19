@@ -30,6 +30,10 @@ class ToolRepository:
     async def delete(self, row: Tool) -> None:
         await self.session.delete(row)
 
+    async def get_agent_tool(self, agent_id: int, tool_id: int) -> AgentTool | None:
+        stmt = select(AgentTool).where(AgentTool.agent_id == agent_id, AgentTool.tool_id == tool_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def add_agent_tool(self, agent_id: int, tool_id: int) -> AgentTool:
         row = AgentTool(agent_id=agent_id, tool_id=tool_id)
         self.session.add(row)
@@ -37,8 +41,7 @@ class ToolRepository:
         return row
 
     async def remove_agent_tool(self, agent_id: int, tool_id: int) -> bool:
-        stmt = select(AgentTool).where(AgentTool.agent_id == agent_id, AgentTool.tool_id == tool_id)
-        row = (await self.session.execute(stmt)).scalar_one_or_none()
+        row = await self.get_agent_tool(agent_id, tool_id)
         if row is None:
             return False
         await self.session.delete(row)

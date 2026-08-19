@@ -8,8 +8,8 @@ export default function ToolsPage() {
     <main className="mx-auto max-w-2xl">
       <div className="flex items-center justify-between border-b border-border px-4 py-4">
         <h1 className="text-lg font-semibold">Tools</h1>
-        <Button size="sm" asChild>
-          <Link href="/tools/new">+ Tool mới</Link>
+        <Button size="sm" render={<Link href="/tools/new" />}>
+          + Tool mới
         </Button>
       </div>
       <ToolList />

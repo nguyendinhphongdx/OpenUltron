@@ -9,7 +9,7 @@
 - **Tên**: `ultron` — personal AI agent platform (API + web + mobile + desktop).
 - **Loại**: Monorepo — `apps/api` là project **Python** (FastAPI + LangGraph), `apps/web`/`apps/mobile`/`apps/desktop` là TypeScript (pnpm workspace + turbo).
 - **QUAN TRỌNG — không phụ thuộc OpenJarvis**: Ultron **tự viết toàn bộ code** (tool, connector, MCP client, agent execution). [OpenJarvis](../OpenJarvis) chỉ dùng làm **tài liệu tham khảo** khi thiết kế — KHÔNG import package, KHÔNG gọi sang process/service của nó. Xem [ADR-0001](docs/adr/0001-single-python-runtime.md).
-- **Trạng thái**: Scaffold ban đầu — `apps/api` có skeleton (conversation/message/tool_call + health), chưa có agent graph/tool thật, chưa có `web`/`mobile`/`desktop`. Xem [docs/roadmap/](docs/roadmap/).
+- **Trạng thái**: `apps/api` có conversation/message/tool_call + agent org-chart (1 tầng) + model/tool/knowledge_base/settings; `apps/web` có scaffold Next.js (chưa full feature). `mobile`/`desktop` chưa scaffold. Xem [docs/roadmap/](docs/roadmap/) (mục "Tầm nhìn sản phẩm" cho toàn cảnh feature dự kiến).
 - **`apps/api`**: Python ≥ 3.11, **uv** làm package manager (KHÔNG pip/poetry trực tiếp).
 - **`apps/web`/`mobile`/`desktop`**: Node ≥ 22, **pnpm** (KHÔNG npm/yarn).
 - **Stack đã chốt**: FastAPI + SQLAlchemy 2.0 + Alembic ([ADR-0002](docs/adr/0002-orm-sqlalchemy.md)), **PostgreSQL + pgvector** ([ADR-0003](docs/adr/0003-db-postgres-pgvector.md)), Pydantic v2 ([ADR-0004](docs/adr/0004-validation-pydantic.md)), **LangGraph** cho agent execution ([ADR-0005](docs/adr/0005-langgraph-agent-execution.md)). Web: Next.js. Mobile: Expo/React Native. Desktop: Tauri.
@@ -19,14 +19,15 @@
 ```text
 apps/
   api/                # FastAPI + LangGraph (Python, uv) — conversation/message/tool_call + agent graph
-  web/                # (chưa scaffold) Next.js
+  web/                # Next.js scaffold — feature conversation, chưa full
   mobile/             # (chưa scaffold) Expo
   desktop/            # (chưa scaffold) Tauri
 docs/
-  adr/                # Architecture Decision Records
+  adr/                # Architecture Decision Records (_template.md = nguồn copy khi soạn ADR mới)
   conventions/        # Convention canonical per app
   domain/             # Domain model (Conversation/Message/ToolCall)
-  roadmap/            # Progress board — đọc đầu mỗi session
+  features/           # Feature spec viết TRƯỚC khi code (_template.md = nguồn copy)
+  roadmap/            # Progress board + tầm nhìn sản phẩm — đọc đầu mỗi session
 ```
 
 ## Đọc gì trước khi làm
@@ -36,7 +37,9 @@ docs/
 | Tiến độ / đang làm gì / làm tiếp gì   | [docs/roadmap/](docs/roadmap/) ← **đọc đầu tiên mỗi session**   |
 | Domain model (Conversation/Message/ToolCall) | [docs/domain/](docs/domain/)                              |
 | Convention FastAPI (`apps/api`)        | [docs/conventions/01-backend-fastapi.md](docs/conventions/01-backend-fastapi.md) |
+| Convention Next.js (`apps/web`)        | [docs/conventions/02-frontend-nextjs.md](docs/conventions/02-frontend-nextjs.md) |
 | Quyết định kiến trúc / "tại sao chọn X"| [docs/adr/](docs/adr/)                                          |
+| Thiết kế tính năng mới / chốt scope trước khi code | [docs/features/](docs/features/) — viết bằng skill `feature-spec` / `/spec`, xem [docs/roadmap/README.md](docs/roadmap/README.md) mục "Tầm nhìn sản phẩm" trước |
 
 > **Đừng đoán từ kiến thức FastAPI/NestJS chung** khi đã có ADR/convention quyết định khác. Chưa có decision → hỏi / propose ADR.
 
@@ -78,6 +81,10 @@ session nào đang code:
   lint + typecheck (`apps/web`) chạy trước mỗi commit. Cài 1 lần: `pre-commit install`.
 - `.github/workflows/ci.yml` — backstop khi hook không chạy (chưa cài, `--no-verify`, máy khác):
   cùng bộ check trên mỗi push/PR.
+- `.claude/hooks/session-start.mjs` (wired qua `hooks.SessionStart` trong `.claude/settings.json`) —
+  đầu mỗi session nhắc: task không nhỏ → viết/đọc `docs/features/<slug>.md` trước khi code; quyết
+  định kiến trúc → ADR trước. Soft nudge (không block), nhưng khiến rule 2/3 "dính" thay vì chỉ nằm
+  trong file này chờ model tự nhớ.
 
 Thêm rule cứng mới → ưu tiên viết thành 1 check tự động (script/lint rule/CI job) thay vì chỉ thêm
 dòng vào file này.
@@ -93,10 +100,14 @@ dòng vào file này.
   [`docs/conventions/02-frontend-nextjs.md`](docs/conventions/02-frontend-nextjs.md) (feature-folder
   layering, type khớp schema BE, không hardcode URL/env), chạy hộ lint/typecheck/build.
 - **Subagent `adr-writer`** — soạn ADR mới đúng format/numbering hiện có khi có quyết định kiến
-  trúc (rule 3).
+  trúc (rule 3), copy structure từ `docs/adr/_template.md`.
+- **Skill `feature-spec`** — scaffold `docs/features/<slug>.md` từ `docs/features/_template.md`
+  trước khi code 1 feature không nhỏ (UI surface mới, đổi kiến trúc/lưu trữ) — đúng workflow
+  "spec trước, code sau".
 - **Slash command `/check`** — chạy nguyên bộ check (giống pre-commit/CI) và báo pass/fail.
 - **Slash command `/new-module <name> <purpose>`** — scaffold 1 module `apps/api` đúng layering
   (model/schema/repository/service/router/deps), nhắc migration + đăng ký router.
 - **Slash command `/new-adr <mô tả>`** — giao cho `adr-writer` soạn ADR mới.
+- **Slash command `/spec <tên feature>`** — gọi skill `feature-spec` để scaffold spec mới.
 - `.claude/settings.json` — allowlist sẵn các lệnh đọc/check an toàn (ruff, pytest, lint, git
   read-only) để đỡ prompt permission lặp lại mỗi session.

@@ -5,7 +5,7 @@ import { useState } from 'react';
 
 import { useAgents } from '@/features/agent';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/api';
 
 import { useCreateConversation } from '../hooks/useCreateConversation';
@@ -39,13 +39,17 @@ export function NewConversationButton() {
 
   return (
     <div className="flex items-center gap-2">
-      <Select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="w-48">
-        <option value="">Agent mặc định</option>
-        {agents?.map((agent) => (
-          <option key={agent.id} value={agent.id}>
-            {agent.name}
-          </option>
-        ))}
+      <Select value={agentId || null} onValueChange={(v) => setAgentId(v ?? '')}>
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="Agent mặc định" />
+        </SelectTrigger>
+        <SelectContent>
+          {agents?.map((agent) => (
+            <SelectItem key={agent.id} value={agent.id.toString()}>
+              {agent.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
       </Select>
       <Button size="sm" onClick={handleCreate} disabled={createConversation.isPending}>
         {createConversation.isPending ? 'Đang tạo…' : 'Tạo'}

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useModels } from '@/features/model';
 import { getApiErrorMessage } from '@/lib/api';
@@ -95,18 +95,20 @@ export function KnowledgeBaseForm({ knowledgeBase, onSuccess }: KnowledgeBaseFor
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="embedding_model_id">Embedding model</Label>
         <Select
-          id="embedding_model_id"
-          value={embeddingModelId}
-          onChange={(e) => setEmbeddingModelId(e.target.value)}
+          value={embeddingModelId || null}
+          onValueChange={(v) => setEmbeddingModelId(v ?? '')}
           disabled={isEditing}
-          required
         >
-          <option value="">— Chọn embedding model —</option>
-          {embeddingModels.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name} ({model.provider}/{model.model_id})
-            </option>
-          ))}
+          <SelectTrigger id="embedding_model_id" className="w-full">
+            <SelectValue placeholder="— Chọn embedding model —" />
+          </SelectTrigger>
+          <SelectContent>
+            {embeddingModels.map((model) => (
+              <SelectItem key={model.id} value={model.id.toString()}>
+                {model.name} ({model.provider}/{model.model_id})
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
         <p className="text-xs text-foreground/60">
           Chỉ hiển thị model có <code>is_embedding: true</code>. Không đổi được sau khi tạo.

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { getApiErrorMessage } from '@/lib/api';
 
@@ -106,12 +106,17 @@ export function ToolForm({ tool }: { tool?: Tool }) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="kind">Loại</Label>
-        <Select id="kind" value={kind} onChange={(e) => setKind(e.target.value as ToolKind)}>
-          {TOOL_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
+        <Select value={kind} onValueChange={(v) => setKind(v as ToolKind)}>
+          <SelectTrigger id="kind" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TOOL_KINDS.map((k) => (
+              <SelectItem key={k} value={k}>
+                {k}
+              </SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </div>
 

@@ -3,7 +3,12 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from app.modules.agent.schemas import AgentRead
 from app.modules.agent.service import AgentService
-from app.modules.chat.graph import ModelConfig, SubAgentSpec, build_agent_executor
+from app.modules.chat.graph import (
+    MAX_DELEGATION_DEPTH,
+    ModelConfig,
+    SubAgentSpec,
+    build_agent_executor,
+)
 from app.modules.conversation.message.schemas import MessageCreate, MessageRead
 from app.modules.conversation.message.service import MessageService
 from app.modules.conversation.models import Message
@@ -50,13 +55,22 @@ class ChatService:
         self.settings_service = settings_service
         self.message_service = message_service
 
-    async def _resolve_sub_agent_spec(self, agent: AgentRead) -> SubAgentSpec:
+    async def _resolve_sub_agent_spec(self, agent: AgentRead, *, depth: int = 0) -> SubAgentSpec:
         model_row = await self.model_service.get_or_404(agent.model_id)
+        sub_agents: list[SubAgentSpec] = []
+        # Đa tầng (ADR-0006 mở rộng): 1 sub-agent có is_orchestrator=true vẫn được tiếp tục gọi
+        # sub-agent riêng của nó — chặn ở MAX_DELEGATION_DEPTH phòng cycle lọt qua check tạo cạnh.
+        if agent.is_orchestrator and depth < MAX_DELEGATION_DEPTH:
+            sub_agents = [
+                await self._resolve_sub_agent_spec(sa, depth=depth + 1)
+                for sa in await self.agent_service.list_sub_agents(agent.id)
+            ]
         return SubAgentSpec(
             slug=agent.slug,
             description=agent.description,
             system_prompt=agent.system_prompt,
             model=_to_config(model_row),
+            sub_agents=sub_agents,
         )
 
     async def _resolve_default_model(self) -> ModelConfig:

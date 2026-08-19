@@ -61,6 +61,11 @@ class ToolService:
     async def assign_to_agent(self, agent_id: int, tool_id: int) -> None:
         await self.agent_service.get_or_404(agent_id)
         await self.get_or_404(tool_id)
+        if await self.repo.get_agent_tool(agent_id, tool_id) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Agent {agent_id} đã được gán tool {tool_id}",
+            )
         await self.repo.add_agent_tool(agent_id, tool_id)
 
     async def unassign_from_agent(self, agent_id: int, tool_id: int) -> None:
