@@ -38,6 +38,12 @@ docs/
 | Domain model (Conversation/Message/ToolCall) | [docs/domain/](docs/domain/)                              |
 | Convention FastAPI (`apps/api`)        | [docs/conventions/01-backend-fastapi.md](docs/conventions/01-backend-fastapi.md) |
 | Convention Next.js (`apps/web`)        | [docs/conventions/02-frontend-nextjs.md](docs/conventions/02-frontend-nextjs.md) |
+| Testing (`apps/api` + `apps/web`)      | [docs/conventions/03-testing.md](docs/conventions/03-testing.md) |
+| Error handling (code/exception)        | [docs/conventions/04-error-handling.md](docs/conventions/04-error-handling.md) |
+| Naming (casing, wire format, glossary) | [docs/conventions/05-naming.md](docs/conventions/05-naming.md) |
+| Security (secret, input/output, tool)  | [docs/conventions/06-security.md](docs/conventions/06-security.md) |
+| Logging/Observability (`apps/api`)     | [docs/conventions/07-logging-observability.md](docs/conventions/07-logging-observability.md) |
+| Review checklist (severity 🔴🟡🟢)     | [docs/conventions/08-code-review.md](docs/conventions/08-code-review.md) |
 | Quyết định kiến trúc / "tại sao chọn X"| [docs/adr/](docs/adr/)                                          |
 | Thiết kế tính năng mới / chốt scope trước khi code | [docs/features/](docs/features/) — viết bằng skill `feature-spec` / `/spec`, xem [docs/roadmap/README.md](docs/roadmap/README.md) mục "Tầm nhìn sản phẩm" trước |
 
@@ -54,7 +60,12 @@ docs/
 1. **Không import/gọi OpenJarvis runtime**. Chỉ đọc code OpenJarvis làm tham khảo khi thiết kế — vi phạm rule này → sửa lại theo [ADR-0001](docs/adr/0001-single-python-runtime.md).
 2. **Không implement vượt scope yêu cầu**. Chưa có spec/decision → hỏi / propose ADR.
 3. **Quyết định kiến trúc → ghi ADR trước khi code** (đổi ORM/DB/lib lớn/thêm multi-tenant...).
-4. **Convention canonical thắng kiến thức chung**. Đụng convention sai → sửa ADR/convention trước, không code lệch.
+4. **Convention canonical thắng kiến thức chung**. Đụng convention sai → sửa ADR/convention trước,
+   không code lệch. Convention **chưa cover** case đang làm → đề xuất bổ sung convention (nói rõ
+   đề xuất, chờ đồng ý) rồi mới code — không tự nghĩ ra pattern riêng rồi làm cho có, sau không ai
+   maintain. **`docs/` là nguồn tri thức duy nhất** cho rule/pattern/checklist — subagent/skill
+   chỉ *trỏ tới* doc tương ứng (link + tên mục), KHÔNG liệt kê lại nội dung rule trong prompt của
+   mình. Sửa 1 rule → sửa đúng 1 chỗ trong `docs/`, không phải lục từng file `.claude/agents/*.md`.
 5. **Không bao giờ commit secret** — `.env` đã gitignore, double-check staged.
 6. **Ultron là công cụ 1 người dùng** — không thêm multi-tenant/workspace/RBAC nếu chưa có ADR quyết định khác.
 
@@ -94,16 +105,28 @@ dòng vào file này.
 - **Skill `ultron-conventions`** — nạp bảng "đọc gì trước khi làm" + rule cứng + layering
   `apps/api` vào context. Tự trigger khi task liên quan module/endpoint/entity/dependency mới;
   gọi tay qua `Skill` nếu cần chắc chắn.
-- **Subagent `api-reviewer`** — review diff `apps/api` theo đúng convention/ADR của repo này
-  (không phải review Python chung chung), chạy hộ ruff/format/module-boundary/pytest.
-- **Subagent `web-reviewer`** — review diff `apps/web` theo
-  [`docs/conventions/02-frontend-nextjs.md`](docs/conventions/02-frontend-nextjs.md) (feature-folder
-  layering, type khớp schema BE, không hardcode URL/env), chạy hộ lint/typecheck/build.
-- **Subagent `adr-writer`** — soạn ADR mới đúng format/numbering hiện có khi có quyết định kiến
-  trúc (rule 3), copy structure từ `docs/adr/_template.md`.
+
+  **Team đủ vai cho 1 feature không nhỏ** (dùng qua `/dev`, hoặc gọi tay từng subagent):
+
+  | Subagent | Vai | Ranh giới |
+  | --- | --- | --- |
+  | `business-analyst` | Làm rõ vấn đề + research sản phẩm/thị trường tương tự, viết draft `docs/features/<slug>.md` + `docs/research/<slug>.md` | Không code, không tự chốt kiến trúc |
+  | `solution-architect` | Đọc spec đã accepted + ADR + convention, ra plan chi tiết (file path/step/agent chịu trách nhiệm) | Không viết code; thiếu ADR/convention → dừng, đề xuất, không tự quyết |
+  | `backend-engineer` | Code `apps/api` đúng [01-backend-fastapi.md](docs/conventions/01-backend-fastapi.md) + ADR | Convention chưa cover case đang làm → đề xuất bổ sung trước, không tự nghĩ pattern riêng |
+  | `frontend-engineer` | Code `apps/web` (Next.js/React/shadcn) đúng [02-frontend-nextjs.md](docs/conventions/02-frontend-nextjs.md) | Same rule; không tự viết test suite (đó là `qa-engineer`) |
+  | `qa-engineer` | Viết + **chạy thật** test theo Acceptance Criteria của spec (pytest backend, Vitest+Testing Library frontend) | Không sửa code sản phẩm ngoài phạm vi test, không tự relax AC |
+  | `code-reviewer` | Review độc lập diff `apps/api`/`apps/web` sau khi engineer code xong (tự phân loại file, áp đúng checklist convention của app đó) | Review only, không tự sửa code |
+  | `adr-writer` | Soạn ADR đúng format khi có quyết định kiến trúc (rule 3) | Chỉ viết ADR, không quyết kiến trúc thay user |
+
+  Reviewer (`code-reviewer`) và implementer (`backend-engineer`/`frontend-engineer`) là 2 vai khác
+  nhau — implementer không tự review sâu, reviewer không tự sửa code. `qa-engineer` đảm bảo có
+  test/test xanh, khác việc reviewer kiểm convention — không thay thế nhau.
 - **Skill `feature-spec`** — scaffold `docs/features/<slug>.md` từ `docs/features/_template.md`
   trước khi code 1 feature không nhỏ (UI surface mới, đổi kiến trúc/lưu trữ) — đúng workflow
-  "spec trước, code sau".
+  "spec trước, code sau". `business-analyst` dùng skill này khi viết draft.
+- **Slash command `/dev <mô tả task>`** — chạy full flow business-analyst → solution-architect →
+  backend/frontend-engineer → qa-engineer → `code-reviewer`, có APPROVE gate giữa mỗi bước. Task
+  nhỏ thì tự bỏ qua flow này (xem nội dung command).
 - **Slash command `/check`** — chạy nguyên bộ check (giống pre-commit/CI) và báo pass/fail.
 - **Slash command `/new-module <name> <purpose>`** — scaffold 1 module `apps/api` đúng layering
   (model/schema/repository/service/router/deps), nhắc migration + đăng ký router.

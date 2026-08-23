@@ -12,6 +12,12 @@ guess differently. Before writing code, check the actual source of truth instead
 |---|---|
 | "What's the current state / what's next?" | `docs/roadmap/README.md` — read this first, every session |
 | "How should this module be laid out?" | `docs/conventions/01-backend-fastapi.md` (apps/api) or `docs/conventions/02-frontend-nextjs.md` (apps/web) |
+| "How should I write a test?" | `docs/conventions/03-testing.md` — pytest+testcontainer (apps/api), Vitest+Testing Library (apps/web) |
+| "How should I raise/handle an error?" | `docs/conventions/04-error-handling.md` — domain error class + code table |
+| "What casing/wire format?" | `docs/conventions/05-naming.md` — Python snake_case, wire format stays snake_case (not camelCase) |
+| "Security concern?" | `docs/conventions/06-security.md` |
+| "How should I log something?" | `docs/conventions/07-logging-observability.md` — structlog, no `print()` |
+| "Full review checklist with severity?" | `docs/conventions/08-code-review.md` |
 | "Why was X chosen over Y?" | `docs/adr/*.md` — one file per accepted decision |
 | "What are the domain entities?" | `docs/domain/01-entities.md` |
 | "Is this a hard rule or a suggestion?" | `AGENTS.md` (root) — "Quy tắc cứng" section |
@@ -30,7 +36,8 @@ guess differently. Before writing code, check the actual source of truth instead
    all of these are ADR-first. `docs/adr/0001`–`0007` already cover: single Python runtime,
    SQLAlchemy, Postgres+pgvector, Pydantic v2, LangGraph execution, multi-agent org chart
    (orchestrator + `AgentDelegation`, 1 tier deep), and the Model/Tool/KnowledgeBase/Settings
-   resource split. Read the relevant one before assuming how something works.
+   resource split. `0008` covers testing (testcontainers Postgres) + logging (structlog)
+   foundations. Read the relevant one before assuming how something works.
 4. **Convention docs are canonical over general framework knowledge.** If `docs/conventions/`
    describes something differently than how FastAPI/NestJS "usually" do it, the doc wins — or gets
    updated first, but code doesn't quietly diverge from it.
@@ -52,7 +59,7 @@ service that needs another module's data.
 
 ## Before calling a backend task done
 
-Run (or ask the `api-reviewer` subagent to run) the actual harness — this is not optional politeness,
+Run (or ask the `code-reviewer` subagent to run) the actual harness — this is not optional politeness,
 these checks are what CI/pre-commit will run anyway:
 
 ```bash

@@ -3,6 +3,44 @@
 > Canonical convention cho code trong `apps/api/app/`. Tinh thần giống convention NestJS ở `muong-kho-api` (module = router + service + repository + schema), chuyển sang Python.
 > ORM = **SQLAlchemy 2.0 + Alembic** ([ADR-0002](../adr/0002-orm-sqlalchemy.md)). DB = **PostgreSQL + pgvector** ([ADR-0003](../adr/0003-db-postgres-pgvector.md)). Agent execution = **LangGraph** ([ADR-0005](../adr/0005-langgraph-agent-execution.md)).
 
+## Nguyên tắc thiết kế — tránh over-engineering (đọc trước, áp dụng cho MỌI section dưới)
+
+Đây là rule quan trọng nhất của file này. Code AI sinh ra có xu hướng thêm abstraction/pattern
+"cho chắc, phòng sau cần" — Ultron là 1 người dùng, codebase phải giữ đủ đơn giản để đọc hiểu trong
+1 lần đọc, không phải để show off design pattern.
+
+- **Trừu tượng hoá chỉ khi có ≥ 2 cài đặt THẬT đang tồn tại**, không phải vì "có thể cần sau". Ví
+  dụ đúng: `app/core/providers.py` — 4 provider thật (ollama/gemini/openai/sglang) nhưng viết bằng
+  **if/else + import động trong từng nhánh**, KHÔNG có abstract `Provider` base class/interface,
+  KHÔNG có `ProviderFactory` class riêng, KHÔNG dùng registry pattern. Đây là chuẩn cần giữ — thêm
+  provider thứ 5 thì thêm 1 nhánh `if`, không "refactor lên pattern" trước khi thật sự đau (ví dụ
+  file vượt quá dài để đọc).
+- **Không tạo class cho pure function không có state.** Hàm module-level (`def foo(x): ...`) là đủ
+  — không bọc trong 1 class chỉ để "tổ chức" khi class đó không giữ state gì giữa các lần gọi.
+- **Không thêm design pattern (Strategy/Observer/Builder/Factory) khi 1 `if/else` hoặc 1 hàm rõ
+  ràng đã giải quyết được.** Nếu thấy mình đang viết `AbstractXxxHandler`/`XxxFactory`/`XxxStrategy`
+  cho 1 case chưa có 2 biến thể thật — dừng, viết thẳng.
+- **Không tự thêm layer/indirection mới** (ví dụ 1 "manager" đứng giữa router và service, hoặc
+  service gọi qua 1 interface trong khi chỉ có 1 implementation) — router → service → repository
+  là đủ tầng cho quy mô này (xem "Folder layout" dưới), không thêm tầng thứ 4.
+- **Function/method nên đọc hiểu trong 1 lần đọc** — không có rule cứng đếm dòng, nhưng service
+  hiện tại dài nhất là 257 dòng (`knowledge_base/service.py`) và đa số 50-140 dòng; method dài hơn
+  ~40-50 dòng hoặc lồng `if` quá 3 cấp là dấu hiệu nên tách hàm con, không phải thêm class.
+- **Không viết code "phòng hờ mở rộng"** (tham số chưa ai gọi, field chưa ai dùng, hook điểm mở rộng
+  chưa có ca dùng thật) — AGENTS.md rule 2 (không vượt scope). Cần mở rộng thật thì sửa lúc đó,
+  không trả giá phức tạp trước khi cần.
+
+## Đọc bức tranh tổng thể trước khi code
+
+Trước khi thêm/sửa 1 module, đọc (không chỉ file định sửa):
+
+1. Toàn bộ 5-6 file của module đó (`models.py`/`schemas.py`/`repository.py`/`service.py`/
+   `router.py`/`deps.py`) — biết method/field đã có gì, tránh viết lại.
+2. 1 module tương tự đã có (`app/modules/model/` là mẫu CRUD đơn giản nhất) — pattern đã chốt là
+   gì, đừng tự nghĩ pattern khác cho case tương tự.
+3. `docs/adr/*.md` liên quan + convention chuyên đề liên quan (xem bảng "Đọc gì trước khi làm" ở
+   `AGENTS.md`).
+
 ## Folder layout
 
 ```text
@@ -11,7 +49,9 @@ apps/api/
 │   ├── main.py                  # Bootstrap FastAPI app, include routers
 │   ├── core/
 │   │   ├── config.py             # Pydantic Settings (env)
-│   │   └── errors.py             # Exception handler chuẩn hoá response
+│   │   ├── errors.py             # UltronError + exception handler (04-error-handling.md)
+│   │   ├── logging.py            # structlog setup (07-logging-observability.md)
+│   │   └── providers.py          # Provider if/else — KHÔNG abstract class, xem "Nguyên tắc" trên
 │   ├── db/
 │   │   ├── base.py               # Declarative Base
 │   │   └── session.py            # engine + get_session() dependency
@@ -35,30 +75,63 @@ apps/api/
 │   └── versions/
 ├── alembic.ini
 ├── pyproject.toml                 # uv
-└── tests/
+└── tests/                          # xem 03-testing.md
 ```
+
+**Module luôn đủ 4 file `models/schemas/repository/service` + `router.py`** — dù module chỉ CRUD
+đơn giản không có business rule gì thêm, `service.py` vẫn tồn tại (có thể "mỏng", chỉ gọi thẳng
+`repository`) để giữ layering nhất quán — không bỏ layer service "vì lúc này chưa cần gì", tránh
+phải đổi chữ ký gọi ở router khi sau này thêm logic thật.
 
 ## Router (~ Controller)
 
-- Chỉ điều phối HTTP ↔ service. **KHÔNG** business logic.
+- Chỉ điều phối HTTP ↔ service. **KHÔNG** business logic, không transform data phức tạp (đó là
+  service/schema).
 - Route prefix số nhiều: `@router.post("/conversations")`.
 - Response model khai rõ qua `response_model=` hoặc return type annotation.
+- 1 route = vài dòng: parse path/query param → gọi 1 method service → return. Route dài hơn ~10
+  dòng thân hàm là dấu hiệu có logic lẽ ra thuộc service.
 
 ## Service
 
 - Chứa business logic. Nhận `repository` qua constructor/dependency, không tự mở session.
-- Raise `HTTPException` (hoặc subclass domain exception) khi lỗi — không trả raw dict lỗi.
-- Không import repository của module khác — gọi qua service đã export.
+- Raise domain error (`UltronError`/subclass — xem [`04-error-handling.md`](04-error-handling.md)),
+  KHÔNG raise `HTTPException` trực tiếp, không trả raw dict lỗi.
+- Không import repository của module khác — gọi qua service đã export (constructor nhận
+  `<Module>Service`, không nhận `<Module>Repository`) — enforced bằng
+  `scripts/check_module_boundaries.py`.
+- Method service nên **1 hành động nghiệp vụ = 1 method** (`create`, `delete`, `add_delegation`) —
+  không gộp nhiều hành động khác nhau vào 1 method có flag `mode: str` để chọn nhánh.
 
 ## Repository
 
 - Chỉ query (SQLAlchemy `select`/`insert`/`update`), không business logic, không raise `HTTPException` (raise domain exception nếu cần, service convert sang HTTP).
+- Method đặt tên theo truy vấn thật làm (`find_by_slug`, `list_by_agent_id`) — không đặt tên chung
+  `query()`/`get_data()` rồi nhận tham số filter tuỳ ý (khó theo dõi ai gọi gì).
 
 ## Schema (Pydantic)
 
 - `schemas.py`: `<Feature>Create`, `<Feature>Update` (field optional, tương đương `.partial()`), `<Feature>Read` (response).
 - `Update` là `BaseModel` riêng (không kế thừa `Create`) với field optional — tránh kéo theo field bất biến của
   Create (vd `slug`) hoặc field bắt buộc không hợp lý khi update từng phần. Đọc `exclude_unset=True` khi apply.
+
+## Thiết kế DB
+
+- Mọi bảng có `id` (PK), `created_at`, `updated_at` (đã áp dụng ở mọi module hiện có) — giữ nhất
+  quán, không bỏ qua cho bảng "phụ".
+- **FK bắt buộc khi quan hệ bắt buộc** — cột FK không nullable khi record không có nghĩa nếu thiếu
+  quan hệ đó (ví dụ `Message.conversation_id`); nullable chỉ khi quan hệ thật sự optional.
+- **JSON column (`JSONB`) chỉ cho dữ liệu thật sự không có shape cố định** (`Model.extra_config`,
+  `ToolCall.arguments`/`result` — khác nhau theo từng tool/provider, không thể định nghĩa cột riêng
+  cho từng field). KHÔNG dùng JSON cho dữ liệu có shape rõ, biết trước field gì — cái đó nên là cột
+  riêng hoặc bảng riêng (query/index/validate được, JSON thì không).
+- **Không tách bảng quá mức** cho mỗi thuộc tính nhỏ (over-normalize) — nhưng cũng không dồn nhiều
+  entity khác nhau vào 1 bảng qua cột `type` phân loại (under-normalize, kiểu "bảng thần thánh") —
+  1 bảng = 1 khái niệm domain rõ ràng (xem `docs/domain/01-entities.md`).
+- Cột embedding dùng `Vector` (`pgvector.sqlalchemy.Vector`), dimension theo model embedding thật
+  đang dùng (xem ADR-0007 — không fix cứng 768 nữa, linh hoạt theo `KnowledgeBase`).
+- Entity mới → luôn đối chiếu `docs/domain/01-entities.md` trước, cập nhật file đó nếu thêm entity
+  thật (không để domain doc lệch code).
 
 ## Persistence — SQLAlchemy + Alembic
 
@@ -70,8 +143,8 @@ apps/api/
 
 ## Error handling
 
-- Raise `HTTPException(status_code=..., detail=...)` từ service.
-- 1 exception handler chung ở `app/core/errors.py` chuẩn hoá response: `{status_code, error, message, timestamp, path}`.
+Xem [`04-error-handling.md`](04-error-handling.md) — canonical duy nhất (domain error class,
+bảng error code, wire format). Không liệt kê lại ở đây.
 
 ## Agent execution (LangGraph)
 
@@ -82,27 +155,45 @@ apps/api/
 
 ## Naming
 
-| Loại          | Quy ước       | Ví dụ                     |
-| ------------- | ------------- | -------------------------- |
-| File          | snake_case    | `tool_call.py`             |
-| Class         | PascalCase    | `ConversationService`      |
-| Module folder | singular snake| `modules/conversation/`    |
-| Route path    | plural        | `/conversations`           |
-| Var / function| snake_case    | `find_by_channel`          |
-| DB column     | snake_case    | `external_user_id`         |
-| Env var       | UPPER_SNAKE   | `DATABASE_URL`              |
+Xem [`05-naming.md`](05-naming.md) — canonical duy nhất (casing per-language, wire format
+`snake_case`, domain glossary). Không liệt kê lại ở đây. Riêng cho `apps/api`: module folder
+singular (`modules/conversation/`), route path plural (`/conversations`).
 
-## Anti-pattern
+## Anti-pattern (tránh over-engineering do AI tự thêm)
 
 - ❌ Business logic trong router.
 - ❌ `import openjarvis` hoặc gọi sang service OpenJarvis (vi phạm ADR-0001).
 - ❌ Tạo session SQLAlchemy rải rác thay vì dependency `get_session()`.
 - ❌ Đổi DB/ORM/agent-framework mà không có ADR.
+- ❌ Abstract base class/interface cho 1 implementation duy nhất — xem "Nguyên tắc thiết kế" trên.
+- ❌ Class bọc quanh pure function không có state.
+- ❌ Thêm tầng indirection mới (manager/interface) giữa router → service → repository.
+- ❌ JSON column cho dữ liệu có shape rõ biết trước (nên là cột/bảng riêng).
+- ❌ Bảng "thần thánh" dồn nhiều entity khác nhau qua cột `type`, hoặc ngược lại tách bảng quá vụn
+  cho từng thuộc tính nhỏ.
+- ❌ Code "phòng hờ mở rộng" — tham số/field/hook chưa ai gọi tới.
 
 ## Self-check trước khi xong
 
-- [ ] Router không chứa business logic?
-- [ ] Schema Pydantic validate input, không duplicate field?
-- [ ] Không có `import openjarvis` ở đâu?
-- [ ] `uv run pytest` xanh, `alembic upgrade head` chạy được?
-- [ ] Quyết định kiến trúc mới → có ADR?
+> Checklist canonical duy nhất cho `apps/api` — `backend-engineer`/`code-reviewer`/`qa-engineer`
+> trỏ vào đây, KHÔNG liệt kê lại trong prompt agent (AGENTS.md rule 4). Sửa checklist → sửa ở đây.
+
+- [ ] Router không chứa business logic, thân route ngắn (parse param → gọi service → return)?
+- [ ] Schema Pydantic đúng shape `<Feature>Create`/`Update` (own `BaseModel`, field optional,
+      KHÔNG kế thừa `Create`)/`Read`?
+- [ ] Service không import `repository` của module khác (chỉ import `Service`)?
+- [ ] Không có abstraction mới (interface/factory/manager/base class) cho case chỉ có 1 cài đặt
+      thật — xem "Nguyên tắc thiết kế"?
+- [ ] Model mới: FK không-null khi quan hệ bắt buộc, JSON column chỉ dùng cho data không có shape
+      cố định, đã đối chiếu `docs/domain/01-entities.md`?
+- [ ] Không có `import openjarvis` ở đâu (`grep -rn openjarvis apps/api/app`)?
+- [ ] Không hardcode secret/API key (đọc qua `app/core/config.py`/`.env`)?
+- [ ] Không có multi-tenant/workspace/RBAC mới (AGENTS.md rule 6) trừ khi có ADR quyết định khác?
+- [ ] `cd apps/api && uv run ruff check . && uv run ruff format --check .` xanh?
+- [ ] `uv run python scripts/check_module_boundaries.py` xanh?
+- [ ] `uv run pytest -q` xanh (exit 5 = chưa có test collected, không tính là fail — nhưng flag code
+      mới chưa có test)?
+- [ ] Model mới/đổi → đã tạo + review migration (`uv run alembic revision --autogenerate`, đọc lại
+      trước khi tin) và `uv run alembic upgrade head` chạy được?
+- [ ] Quyết định kiến trúc mới → có ADR? Convention chưa cover case này → đã đề xuất bổ sung
+      convention trước khi code (không tự nghĩ pattern riêng)?
