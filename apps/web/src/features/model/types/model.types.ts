@@ -5,6 +5,14 @@
 
 export type Provider = 'ollama' | 'gemini' | 'openai' | 'sglang';
 
+export interface ModelCapabilities {
+  tools: boolean | null;
+  vision: boolean | null;
+  json_mode: boolean | null;
+  thinking: boolean | null;
+  context_window: number | null;
+}
+
 export interface Model {
   id: number;
   slug: string;
@@ -14,6 +22,7 @@ export interface Model {
   base_url: string | null;
   is_embedding: boolean;
   extra_config: Record<string, unknown> | null;
+  capabilities: ModelCapabilities | null;
   created_at: string;
   updated_at: string;
 }

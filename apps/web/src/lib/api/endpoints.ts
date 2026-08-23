@@ -33,6 +33,12 @@ export const endpoints = {
     create: '/tools',
     byId: (id: number) => `/tools/${id}`,
   },
+  credentials: {
+    list: '/credentials',
+    upsert: (provider: string) => `/credentials/${provider}`,
+    delete: (provider: string) => `/credentials/${provider}`,
+    testConnection: (provider: string) => `/credentials/${provider}/test-connection`,
+  },
   knowledgeBases: {
     list: '/knowledge-bases',
     create: '/knowledge-bases',
