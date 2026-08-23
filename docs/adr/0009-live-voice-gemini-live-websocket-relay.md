@@ -62,9 +62,7 @@ Realtime) để không phải viết lại khi thêm provider thứ hai** — d�
 - Kiến trúc relay 2 chặng, `apps/api` làm cầu nối — **browser không nói thẳng tới Gemini**:
 
   ```
-  apps/web  ──WebSocket (binary PCM frame)──▶  apps/api (module mới, tên module quyết lúc code
-                                                 theo docs/conventions/01-backend-fastapi.md,
-                                                 vd voice_session)
+  apps/web  ──WebSocket (binary PCM frame)──▶  apps/api (module `voice`)
                                                       │
                                                       ▼
                                               WebSocket ──▶ Gemini Live API

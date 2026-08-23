@@ -62,10 +62,12 @@ biệt khi đang làm việc khác (di chuyển, nấu ăn, rảnh tay). Thiếu
 
 ### Kiến trúc mức cao (cần ADR trước khi code, không quyết ở đây)
 
-- `apps/web`: client dùng WebRTC (hoặc WebSocket — tuỳ ADR) để stream mic audio, nhận lại audio +
-  event (transcript delta, tool-call event, state change).
-- `apps/api`: thêm 1 module mới (ví dụ `voice_session` hoặc tương đương — tên module thật quyết lúc
-  code theo `docs/conventions/01-backend-fastapi.md`) chịu trách nhiệm:
+- `apps/web`: client dùng **WebSocket** (đã chốt [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md)
+  — không WebRTC, khớp protocol native Gemini Live) để stream mic audio (PCM qua Web Audio
+  API/AudioWorklet), nhận lại audio + event (transcript delta, tool-call event, state change).
+- `apps/api`: module **`voice`** (đã chốt tên — ADR-0009), tự viết WebSocket client theo protocol
+  thật của Gemini Live (không dùng SDK `google-genai`, xem [research](../research/live-voice-agent.md)),
+  chịu trách nhiệm:
   - Tạo/quản lý realtime session với provider (token/session bootstrap).
   - Cầu nối event provider ↔ agent core (tool call, RAG, sub-agent delegation) — dùng lại
     `AgentService`/`chat/graph.py` logic, không viết lại orchestrator riêng cho voice.

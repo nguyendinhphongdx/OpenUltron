@@ -35,7 +35,7 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       convention giờ cover đủ case thiết kế như 1 monorepo trưởng thành (đối chiếu với `cap`), chưa
       áp dụng vào code thật (chưa cài `structlog`/`testcontainers`, chưa viết test đầu tiên)
 - [x] ADR-0009 (Live Voice Agent: provider Gemini Live, transport WebSocket relay qua `apps/api` —
-      chưa code, chốt kiến trúc trước khi làm module `voice_session`)
+      chưa code, chốt kiến trúc trước khi làm module `voice`)
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -62,7 +62,7 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
 - [ ] Streaming: `apps/api` → client (SSE) cho cả chat thường và quá trình orchestrator gọi sub-agent
 - [ ] Tool thật tự viết (tham khảo pattern OpenJarvis, không import): GitHub search/read, MCP client (Jira/Confluence), tool chạy lệnh trên máy (có approval gate — ADR-0005)
-- [ ] Live Voice Agent — code module `voice_session` (`apps/api`, relay WebSocket ↔ Gemini Live) +
+- [ ] Live Voice Agent — code module `voice` (`apps/api`, relay WebSocket ↔ Gemini Live) +
       client audio capture (`apps/web`), theo [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md)
       và [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md) — còn 2 câu hỏi mở
       chưa quyết (text fallback trả lời audio/text, có lưu file audio hay chỉ transcript) cần chốt
