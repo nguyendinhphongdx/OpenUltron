@@ -14,6 +14,7 @@ from app.modules.health.router import router as health_router
 from app.modules.knowledge_base.agent_kb_router import router as agent_kb_router
 from app.modules.knowledge_base.router import router as kb_router
 from app.modules.model.router import router as model_router
+from app.modules.ollama.router import router as ollama_router
 from app.modules.settings.router import router as settings_router
 from app.modules.tool.agent_tool_router import router as agent_tool_router
 from app.modules.tool.router import router as tool_router
@@ -47,3 +48,4 @@ app.include_router(agent_tool_router)
 app.include_router(kb_router)
 app.include_router(agent_kb_router)
 app.include_router(voice_router)
+app.include_router(ollama_router)
