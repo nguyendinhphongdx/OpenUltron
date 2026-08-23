@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { useModels } from '@/features/model';
 import type { Model, Provider } from '@/features/model';
+import { OllamaCatalogPanel } from '@/features/ollama';
 import { cn } from '@/lib/utils';
 
 import { useCredentials, useDeleteCredential, useTestConnection, useUpsertCredential } from '../hooks';
@@ -124,6 +125,15 @@ export function CredentialManageDialog() {
                   </div>
                 </div>
               ))
+            )}
+
+            {activeProvider === 'ollama' && (
+              <>
+                <p className="mt-2 border-t border-border pt-3 text-xs font-semibold text-muted-foreground">
+                  Catalog Ollama — pull model về máy
+                </p>
+                <OllamaCatalogPanel />
+              </>
             )}
           </div>
 

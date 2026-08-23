@@ -39,6 +39,11 @@ export const endpoints = {
     delete: (provider: string) => `/credentials/${provider}`,
     testConnection: (provider: string) => `/credentials/${provider}/test-connection`,
   },
+  ollama: {
+    catalog: '/ollama/catalog',
+    installed: '/ollama/installed',
+    pull: (model: string) => `/ollama/pull?model=${encodeURIComponent(model)}`,
+  },
   knowledgeBases: {
     list: '/knowledge-bases',
     create: '/knowledge-bases',
