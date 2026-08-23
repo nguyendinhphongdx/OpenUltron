@@ -33,6 +33,9 @@ Khác với "Self-check trước khi xong" ở từng convention doc ([01](01-ba
 ### 3. Security — 🔴
 
 - [ ] Không hardcode/lưu DB secret (API key provider).
+- [ ] Không đọc secret qua `os.environ.get(...)` trực tiếp — luôn qua `settings.*`
+      (`app/core/config.py`); `os.environ` KHÔNG có giá trị `.env` trừ khi code tự
+      `load_dotenv()` (xem [06-security.md](06-security.md)) — bug thật đã xảy ra 1 lần.
 - [ ] Input HTTP có Pydantic schema validate.
 - [ ] Tool mới có side-effect (file/network/shell) → validate argument, có approval gate nếu chạy
       lệnh máy — không trust argument LLM sinh ra mù.

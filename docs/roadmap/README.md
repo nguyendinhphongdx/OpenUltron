@@ -20,6 +20,7 @@ có **streaming** khi chat/chạy graph.
 | Streaming (SSE) cho chat + graph run | 🔜 Dự kiến | chưa có `docs/features/` |
 | Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Dự kiến — spec draft, kiến trúc đã chốt (tự code protocol, không dùng SDK) | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
 | Knowledge base v2 (folder nested kiểu Google Drive, per-file chunking status, embedding dimension linh hoạt thay vì fix 768) | ✅ Đã có (backend) | làm thẳng không qua ADR/spec riêng (quyết định của user) — `KnowledgeFolder`/`KnowledgeFile`, migration `a1c2e3f4b5d6` |
+| Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | 🔜 Dự kiến — **đã quyết đảo ngược ADR-0007**, kiến trúc chốt xong, còn code | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 
 Feature mới nào không nhỏ → viết `docs/features/<slug>.md` (skill `feature-spec` / `/spec`) trước,
 cập nhật link ở bảng trên, rồi mới code — xem `.claude/hooks/session-start.mjs`.
@@ -48,6 +49,20 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       tại) — cần chạy thật trước khi coi module này là done, đặc biệt xác nhận đúng field
       `setup`/`realtimeInput.audio` (tài liệu không nêu tường minh 100%, xem
       `docs/research/live-voice-agent.md`). `apps/web` (client capture audio) **chưa code**.
+- [x] ADR-0010 — quyết định đảo ngược 1 phần ADR-0007: lưu API key provider (Gemini/OpenAI) trong
+      DB (entity `Credential`, mã hoá AES-256-GCM với 1 key duy nhất từ `APP_ENCRYPTION_KEY`), thay
+      vì chỉ `.env`. Động lực: đổi key phải sửa `.env` + restart tay, bug thật
+      `os.environ.get()` không đọc được giá trị `pydantic-settings` nạp từ `.env` (gây confusion
+      lúc debug voice module), và không biết key sai cho tới khi chat/voice fail giữa chừng. Chốt
+      luôn: 1 credential/provider (không rotate), capability catalog là static code (không DB
+      table, học bài học `cap` đã park hướng này), không FK `Model → Credential` (tra theo
+      `provider`), không auto-migrate key cũ trong `.env`. **Module `credential` (`apps/api`) đã
+      code xong** (model/schema/repo/service/router/deps + migration + `app/core/crypto.py`
+      AES-256-GCM + `app/core/model_catalog.py` static catalog + wire `core/providers.py`/`chat`/
+      `voice`/`knowledge_base` sang tra DB thay `.env`) — đã qua `code-reviewer` (0 blocker), live-
+      verify thật qua `curl` (encrypt/decrypt roundtrip, test-connection thật, reject
+      `ollama`/`sglang`). **Còn thiếu**: unit test cho `crypto.py`/`credential/service.py` (gap
+      review đã flag), dialog UI 3 cột (`apps/web`) **chưa code**.
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -90,6 +105,10 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] `apps/mobile` — Expo (React Native)
 - [ ] `apps/desktop` — Tauri
 - [ ] Channel điện thoại: chọn 1 trong Telegram/WhatsApp làm kênh chính
+- [ ] Quản lý provider credential qua DB + UI — backend (`apps/api` module `credential`) **đã code
+      xong** (xem "Đã xong"), còn: unit test `crypto.py`/`credential/service.py`, dialog 3 cột
+      `apps/web` (đang implement), và user cần nhập lại API key qua UI mới sau khi deploy (không
+      auto-migrate từ `.env` cũ — quyết định có chủ đích, [ADR-0010](../adr/0010-provider-credential-in-db.md)).
 
 ## Chưa quyết (cần ADR trước khi code)
 

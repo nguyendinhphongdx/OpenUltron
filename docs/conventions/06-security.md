@@ -6,9 +6,16 @@
 
 ## Áp dụng cho Ultron (đã lược bỏ phần tenant/RBAC không liên quan)
 
-1. **No secret committed** — API key Gemini/OpenAI không hardcode, không lưu DB (xem
-   [ADR-0007](../adr/0007-resource-model-provider-tool-kb.md) — quyết định rõ không mã hoá secret
-   tại rest vì single-user, nhưng vẫn không commit secret vào code/`.env` không gitignore).
+1. **No secret committed** — API key Gemini/OpenAI không hardcode, không commit vào code/`.env`
+   không gitignore. **Cập nhật (ADR-0010, supersede phần "secret" của
+   [ADR-0007](../adr/0007-resource-model-provider-tool-kb.md))**: provider credential (Gemini/
+   OpenAI API key) giờ lưu trong bảng `credentials` (module `app/modules/credential/`), **mã hoá
+   AES-256-GCM tại rest** qua `app/core/crypto.py` (`encrypt`/`decrypt`, pure function — không bọc
+   class), key mã hoá đọc từ `APP_ENCRYPTION_KEY` (`.env`, qua `app/core/config.py`, KHÔNG bao giờ
+   lưu key mã hoá này trong DB). Vẫn giữ nguyên rule cứng: **không bao giờ log plaintext API
+   key/`APP_ENCRYPTION_KEY`** (chỉ log `provider`, `is_valid` — xem
+   [`07-logging-observability.md`](07-logging-observability.md)); response API (`CredentialRead`)
+   chỉ trả `masked_key` (vd `"sk-...ab12"`), không bao giờ trả plaintext hay ciphertext thô.
 2. **Validate ở boundary** — input HTTP qua Pydantic schema (`schemas.py`), không trust input nội
    bộ giữa service (nhưng cũng không validate lại y hệt ở mọi layer — Pydantic ở router/schema là
    đủ, service tin schema đã validate).
@@ -29,11 +36,22 @@ infra/                   ← docker-compose, KHÔNG chứa secret thật committ
 ```
 
 Đọc secret qua `app/core/config.py` (`pydantic-settings`, `BaseSettings` đọc `.env`) — service
-import `settings` từ đây, **không** `os.environ["X"]` rải rác trong code. Thêm biến env mới → thêm
+import `settings` từ đây, **không** `os.environ["X"]`/`os.environ.get("X")` rải rác trong code.
+
+**Lý do kỹ thuật, không chỉ là style**: `pydantic-settings` đọc `.env` vào field của `Settings`
+object — nó **không** export biến đó ra `os.environ` của process (khác `python-dotenv`'s
+`load_dotenv()`). Code nào lỡ đọc `os.environ.get("GEMINI_API_KEY")` thay vì `settings.gemini_api_key`
+sẽ **luôn nhận `None`** dù `.env` có giá trị thật — bug này từng xảy ra thật ở `core/providers.py`
+và `voice/gemini_live_client.py` (phát hiện lúc live-test với `GEMINI_API_KEY` thật, không phải lúc
+review code). Thêm biến env mới → thêm
 field vào `Settings` class (fail-fast nếu thiếu, do Pydantic validate lúc khởi động).
 
-Provider API key (Gemini/OpenAI) là secret nhạy cảm nhất trong repo — chỉ đọc từ env, **không**
-bao giờ lưu vào cột DB của `Model`/`Agent` (dù có field `extra_config` JSON, không nhét key vào đó).
+Provider API key (Gemini/OpenAI) là secret nhạy cảm nhất trong repo. **Cập nhật (ADR-0010)**: key
+không còn đọc từ env lúc runtime nữa — lưu mã hoá trong bảng `credentials`, tra theo `provider` qua
+`CredentialService.get_decrypted_key` (chỉ dùng nội bộ bởi `app/core/providers.py`, KHÔNG expose
+qua router). Vẫn giữ nguyên: **không** bao giờ lưu key vào cột DB của `Model`/`Agent` (dù có field
+`extra_config` JSON, không nhét key vào đó) — `Model`/`Agent` không tham chiếu `Credential`, chỉ
+tra theo `provider` (ADR-0010, tránh thêm FK không cần thiết cho use-case 1 người dùng).
 
 ## Input validation (boundary)
 
@@ -81,7 +99,10 @@ thật sự expose public.
 ## Anti-pattern
 
 - ❌ Hardcode API key "tạm để test" — quên revert, leak nếu commit.
-- ❌ Lưu API key provider vào DB (cột `extra_config` hay bất kỳ đâu) — luôn qua env.
+- ❌ Lưu API key provider **plaintext** vào DB (cột `extra_config` hay bất kỳ đâu) — chỉ
+  `Credential.ciphertext` (mã hoá qua `app/core/crypto.py`, ADR-0010) mới được lưu, và chỉ ở bảng
+  `credentials`, không lẫn vào `Model`/`Agent`.
+- ❌ Trả plaintext/ciphertext của `Credential` ra response API — chỉ trả `masked_key`.
 - ❌ `subprocess`/`eval`/`exec` với input từ LLM tool call chưa qua allowlist/schema.
 - ❌ Log raw request body chứa token/API key.
 - ❌ Catch lỗi security rồi nuốt (`except: pass`).
