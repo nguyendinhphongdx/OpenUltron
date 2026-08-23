@@ -32,10 +32,22 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [x] ADR-0001..0007 (single Python runtime tự viết toàn bộ, SQLAlchemy, Postgres+pgvector, Pydantic, LangGraph, multi-agent org chart many-to-many, resource Model/Tool/KB/Settings)
 - [x] ADR-0008 (testing qua testcontainers Postgres thật, logging qua `structlog`) +
       `docs/conventions/03-08` (testing/error-handling/naming/security/logging/code-review) —
-      convention giờ cover đủ case thiết kế như 1 monorepo trưởng thành (đối chiếu với `cap`), chưa
-      áp dụng vào code thật (chưa cài `structlog`/`testcontainers`, chưa viết test đầu tiên)
-- [x] ADR-0009 (Live Voice Agent: provider Gemini Live, transport WebSocket relay qua `apps/api` —
-      chưa code, chốt kiến trúc trước khi làm module `voice`)
+      convention giờ cover đủ case thiết kế như 1 monorepo trưởng thành (đối chiếu với `cap`).
+      **Logging đã áp dụng thật** (`app/core/logging.py`, `structlog`, gọi lúc bootstrap
+      `main.py`). Test: đã có `apps/api/tests/unit/voice/` (8 case, pass thật) nhưng
+      `testcontainers[postgres]`/`tests/conftest.py`/integration test **chưa làm** — vẫn còn nợ.
+      `errors.py` **chưa migrate** sang `UltronError` (04-error-handling.md).
+- [x] ADR-0009 + module `voice` (`apps/api`) — relay WebSocket ↔ Gemini Live, tự viết protocol
+      client (không SDK), forward tool-call vào `run_sub_agent` (tái dùng `chat/graph.py`), lưu
+      transcript vào `Message` qua session DB riêng ngắn (không giữ transaction mở suốt session).
+      Đã qua 1 vòng review độc lập (`code-reviewer`, REQUEST_CHANGES → đã fix hết 6 blocker: lộ
+      transcript khi lỗi/transaction giữ mở, exception nuốt lặng lẽ, frame text làm crash session,
+      conversation_id sai làm vỡ giao thức ASGI, thiếu `generationConfig.responseModalities`/
+      transcription trong `setup` khiến transcript không thể sinh ra, API key lộ qua query
+      string). **Chưa live-test với `GEMINI_API_KEY` thật** (không có key trong môi trường hiện
+      tại) — cần chạy thật trước khi coi module này là done, đặc biệt xác nhận đúng field
+      `setup`/`realtimeInput.audio` (tài liệu không nêu tường minh 100%, xem
+      `docs/research/live-voice-agent.md`). `apps/web` (client capture audio) **chưa code**.
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -50,11 +62,11 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 
 ## Đang làm / tiếp theo
 
-- [ ] **Áp dụng convention 03-08 vào code thật** — thêm `structlog`/`testcontainers[postgres]` vào
-      `apps/api/pyproject.toml`, viết `app/core/logging.py`, migrate `app/core/errors.py` sang
-      `UltronError` (xem [ADR-0008](../adr/0008-testing-logging-foundations.md) +
-      [04-error-handling.md](../conventions/04-error-handling.md)), viết test đầu tiên ở
-      `apps/api/tests/` (chưa có file nào) và cài Vitest cho `apps/web` (chưa cài).
+- [ ] **Áp dụng phần còn lại của convention 03-08 vào code thật** — `testcontainers[postgres]` +
+      `tests/conftest.py` cho integration test, migrate `app/core/errors.py` sang `UltronError`
+      (xem [ADR-0008](../adr/0008-testing-logging-foundations.md) +
+      [04-error-handling.md](../conventions/04-error-handling.md)); logging + unit test đầu tiên
+      đã xong (xem mục "Đã xong"). Cài Vitest cho `apps/web` (chưa cài).
 - [ ] **Gemini/OpenAI/SGLang provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `GEMINI_API_KEY`/`OPENAI_API_KEY` hay SGLang server chạy để test thật. Cần test khi có.
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
 - [ ] Wire `Tool` (đã CRUD) vào chat execution thật — hiện agent có thể được gán tool qua `AgentTool` nhưng `chat/graph.py` chưa đọc danh sách đó để build LangGraph tool tương ứng (chỉ mới tool ẩn "gọi sub-agent" hoạt động)
@@ -62,10 +74,15 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
 - [ ] Streaming: `apps/api` → client (SSE) cho cả chat thường và quá trình orchestrator gọi sub-agent
 - [ ] Tool thật tự viết (tham khảo pattern OpenJarvis, không import): GitHub search/read, MCP client (Jira/Confluence), tool chạy lệnh trên máy (có approval gate — ADR-0005)
-- [ ] Live Voice Agent — code module `voice` (`apps/api`, relay WebSocket ↔ Gemini Live) +
-      client audio capture (`apps/web`), theo [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md)
-      và [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md) — còn 2 câu hỏi mở
-      chưa quyết (text fallback trả lời audio/text, có lưu file audio hay chỉ transcript) cần chốt
+- [ ] Live Voice Agent — `apps/api` module `voice` đã code (xem "Đã xong"), còn: live-test với
+      `GEMINI_API_KEY` thật, client audio capture (`apps/web` — Web Audio API/AudioWorklet gửi PCM
+      qua WebSocket, **chưa code**), UI state `listening/thinking/speaking/using_tool` (spec có,
+      protocol hiện tại mới có `transcript`/`interrupted`/`turn_complete`, chưa có `state` event —
+      cần thêm hoặc quyết derive ở client). Theo
+      [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md) và
+      [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md) — còn 1 câu hỏi mở
+      chưa quyết (có lưu file audio hay chỉ transcript); text fallback đã có đường dẫn code
+      (`send_text` được gọi khi browser gửi text frame) nhưng chưa live-test.
       trước hoặc trong lúc code.
 - [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)

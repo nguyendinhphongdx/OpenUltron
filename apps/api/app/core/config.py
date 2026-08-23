@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     env: str = "development"
     port: int = 8000
+    log_level: str = "INFO"
 
     # Database (ADR-0003)
     database_url: str

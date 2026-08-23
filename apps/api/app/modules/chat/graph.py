@@ -36,6 +36,25 @@ class SubAgentSpec:
     sub_agents: list[SubAgentSpec] = field(default_factory=list)
 
 
+async def run_sub_agent(sub_agent: SubAgentSpec, task: str, *, depth: int = 0) -> str:
+    """Chạy 1 sub-agent với 1 task, trả text kết quả — dùng lại được ở bất kỳ chỗ nào cần
+    delegate cho sub-agent (LangGraph tool cho text chat, hoặc toolCall từ voice module —
+    ADR-0009 — không viết lại logic delegate riêng cho voice)."""
+    chat_model = build_chat_model(
+        provider=sub_agent.model.provider,
+        model_id=sub_agent.model.model_id,
+        base_url=sub_agent.model.base_url,
+    )
+    nested_tools = (
+        [_build_sub_agent_tool(sa, depth=depth + 1) for sa in sub_agent.sub_agents]
+        if depth < MAX_DELEGATION_DEPTH
+        else []
+    )
+    executor = create_agent(chat_model, tools=nested_tools, system_prompt=sub_agent.system_prompt)
+    result = await executor.ainvoke({"messages": [HumanMessage(content=task)]})
+    return str(result["messages"][-1].content)
+
+
 def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, depth: int = 0):
     """Bọc 1 sub-agent thành LangGraph tool cho orchestrator gọi (ADR-0006, đa tầng)."""
 
@@ -43,21 +62,7 @@ def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, depth: int = 0):
         sub_agent.slug, description=sub_agent.description or f"Delegate task to '{sub_agent.slug}'"
     )
     async def _delegate(task: str) -> str:
-        chat_model = build_chat_model(
-            provider=sub_agent.model.provider,
-            model_id=sub_agent.model.model_id,
-            base_url=sub_agent.model.base_url,
-        )
-        nested_tools = (
-            [_build_sub_agent_tool(sa, depth=depth + 1) for sa in sub_agent.sub_agents]
-            if depth < MAX_DELEGATION_DEPTH
-            else []
-        )
-        executor = create_agent(
-            chat_model, tools=nested_tools, system_prompt=sub_agent.system_prompt
-        )
-        result = await executor.ainvoke({"messages": [HumanMessage(content=task)]})
-        return str(result["messages"][-1].content)
+        return await run_sub_agent(sub_agent, task, depth=depth)
 
     return _delegate
 

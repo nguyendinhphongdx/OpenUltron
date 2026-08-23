@@ -1,0 +1,208 @@
+import asyncio
+
+from fastapi import WebSocket
+from fastapi import status as ws_status
+
+from app.core.logging import logger
+from app.db.session import async_session_factory
+from app.modules.chat.graph import SubAgentSpec, run_sub_agent
+from app.modules.chat.service import ChatService
+from app.modules.conversation.message.deps import get_message_service
+from app.modules.conversation.message.schemas import MessageCreate
+from app.modules.voice.events import (
+    AudioDelta,
+    Interrupted,
+    SessionEnding,
+    ToolCallCancelled,
+    ToolCallRequested,
+    TranscriptDelta,
+    TurnComplete,
+)
+from app.modules.voice.gemini_live_client import GeminiLiveClient
+
+# TODO xác nhận model id thật hỗ trợ Live API khi live-test (roadmap "chưa live-test").
+_GEMINI_LIVE_MODEL = "gemini-2.0-flash-live-001"
+
+
+def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[dict]:
+    """Khai cho Gemini Live biết agent orchestrator có thể delegate sub-agent nào. Chỉ khai tool ở
+    tầng ngoài (không đệ quy sub-agent của sub-agent) — đủ cho scope hiện tại; nếu Gemini gọi 1
+    sub-agent orchestrator, `run_sub_agent` vẫn tự xử lý đệ quy nội bộ như chat text."""
+    if not sub_agents:
+        return []
+    return [
+        {
+            "functionDeclarations": [
+                {
+                    "name": sa.slug,
+                    "description": sa.description or f"Delegate task to '{sa.slug}'",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"task": {"type": "string"}},
+                        "required": ["task"],
+                    },
+                }
+                for sa in sub_agents
+            ]
+        }
+    ]
+
+
+class VoiceService:
+    """Relay 1 voice session: browser WebSocket ↔ Gemini Live (ADR-0009). KHÔNG viết lại
+    orchestrator — resolve agent/model/sub-agent qua `ChatService.resolve_context`, tool-call
+    forward vào `run_sub_agent` (chat/graph.py) — y như chat text, transport khác nhau."""
+
+    def __init__(self, chat_service: ChatService) -> None:
+        self.chat_service = chat_service
+
+    async def run(self, websocket: WebSocket, conversation_id: int) -> None:
+        # Resolve TRƯỚC accept() — conversation_id sai (404) phải đóng gọn gàng bằng WS close
+        # code, không để HTTPException lọt qua exception handler HTTP (ghi JSON response lên
+        # transport websocket → uvicorn raise, client nhận socket chết không rõ lý do).
+        try:
+            system_prompt, _model, sub_agents = await self.chat_service.resolve_context(
+                conversation_id
+            )
+        except Exception:
+            logger.warning("voice.session_rejected", conversation_id=conversation_id)
+            await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION)
+            return
+
+        await websocket.accept()
+
+        try:
+            client = GeminiLiveClient(
+                model=_GEMINI_LIVE_MODEL,
+                system_instruction=system_prompt,
+                tools=_tool_declarations(sub_agents),
+            )
+            await client.connect()
+        except Exception as exc:
+            logger.error(
+                "voice.provider_connect_failed", conversation_id=conversation_id, exc_info=exc
+            )
+            await websocket.close(code=ws_status.WS_1011_INTERNAL_ERROR)
+            return
+
+        logger.info("voice.session_started", conversation_id=conversation_id)
+        transcript_buffer: dict[str, list[str]] = {"user": [], "model": []}
+        pending_tool_calls: dict[str, asyncio.Task] = {}
+
+        async def forward_browser_to_gemini() -> None:
+            while True:
+                message = await websocket.receive()
+                if message["type"] == "websocket.disconnect":
+                    return
+                if message.get("bytes") is not None:
+                    await client.send_audio_chunk(message["bytes"])
+                elif message.get("text") is not None:
+                    await client.send_text(message["text"])
+
+        async def handle_tool_call(event: ToolCallRequested) -> None:
+            try:
+                sub_agent = next((sa for sa in sub_agents if sa.slug == event.name), None)
+                if sub_agent is None:
+                    await client.send_tool_result(
+                        event.call_id, {"error": f"Không tìm thấy sub-agent '{event.name}'"}
+                    )
+                    return
+                task_text = event.arguments.get("task", "")
+                result = await run_sub_agent(sub_agent, task_text)
+                await client.send_tool_result(event.call_id, {"result": result})
+                logger.info(
+                    "voice.tool_call_completed",
+                    conversation_id=conversation_id,
+                    tool_name=event.name,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.error(
+                    "voice.tool_call_failed",
+                    conversation_id=conversation_id,
+                    tool_name=event.name,
+                    exc_info=exc,
+                )
+                await client.send_tool_result(event.call_id, {"error": str(exc)})
+            finally:
+                pending_tool_calls.pop(event.call_id, None)
+
+        async def forward_gemini_to_browser() -> None:
+            async for event in client.events():
+                if isinstance(event, AudioDelta):
+                    await websocket.send_bytes(event.pcm)
+                elif isinstance(event, TranscriptDelta):
+                    transcript_buffer[event.role].append(event.text)
+                    await websocket.send_json(
+                        {"type": "transcript", "role": event.role, "text": event.text}
+                    )
+                elif isinstance(event, Interrupted):
+                    # Lời agent đang nói bị cắt giữa câu — transcript model tích luỹ tới đây
+                    # không phải câu hoàn chỉnh, bỏ đi thay vì lưu như đã nói xong. Lời user vẫn
+                    # giữ nguyên (không bị ảnh hưởng bởi việc agent bị ngắt).
+                    transcript_buffer["model"].clear()
+                    await websocket.send_json({"type": "interrupted"})
+                elif isinstance(event, TurnComplete):
+                    await self._flush_transcript(conversation_id, transcript_buffer)
+                    await websocket.send_json({"type": "turn_complete"})
+                elif isinstance(event, ToolCallRequested):
+                    # Chạy tool ở background — không chặn audio/transcript đang chảy trong lúc
+                    # sub-agent (LangGraph) xử lý, có thể tốn vài giây (spec: "vừa nói vừa chạy
+                    # tool ở background").
+                    pending_tool_calls[event.call_id] = asyncio.create_task(handle_tool_call(event))
+                elif isinstance(event, ToolCallCancelled):
+                    task = pending_tool_calls.pop(event.call_id, None)
+                    if task is not None:
+                        task.cancel()
+                elif isinstance(event, SessionEnding):
+                    logger.warning(
+                        "voice.session_ending",
+                        conversation_id=conversation_id,
+                        time_left=event.time_left,
+                    )
+
+        tasks = [
+            asyncio.create_task(forward_browser_to_gemini()),
+            asyncio.create_task(forward_gemini_to_browser()),
+        ]
+        try:
+            # 1 trong 2 chiều đóng (browser disconnect hoặc Gemini đóng kết nối) là đủ để kết
+            # thúc session — không chờ cả 2 xong (chúng chỉ dừng khi có phía đóng kết nối).
+            done, _pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                exc = task.exception()
+                if exc is not None:
+                    logger.error(
+                        "voice.session_failed", conversation_id=conversation_id, exc_info=exc
+                    )
+        finally:
+            # Đóng provider connection trước (websockets khuyên đóng chủ động thay vì cancel task
+            # đang gửi/nhận giữa chừng), rồi mới cancel task còn treo + tool call đang chạy, chờ
+            # tất cả dừng thật trước khi return — tránh "Task was destroyed but it is pending".
+            await client.close()
+            for task in [*tasks, *pending_tool_calls.values()]:
+                task.cancel()
+            await asyncio.gather(*tasks, *pending_tool_calls.values(), return_exceptions=True)
+            logger.info("voice.session_ended", conversation_id=conversation_id)
+
+    async def _flush_transcript(self, conversation_id: int, buffer: dict[str, list[str]]) -> None:
+        """Mở session DB riêng, ngắn, commit ngay — KHÔNG dùng session request-scoped của
+        `ChatService` (session đó sống suốt cả voice session, có thể nhiều phút, giữ transaction
+        mở + rollback hết nếu handler lỗi giữa đường — mất transcript đã lưu trước đó)."""
+        if not buffer["user"] and not buffer["model"]:
+            return
+        async with async_session_factory() as session:
+            message_service = get_message_service(session)
+            if buffer["user"]:
+                await message_service.append(
+                    conversation_id, MessageCreate(role="user", content="".join(buffer["user"]))
+                )
+                buffer["user"].clear()
+            if buffer["model"]:
+                await message_service.append(
+                    conversation_id,
+                    MessageCreate(role="assistant", content="".join(buffer["model"])),
+                )
+                buffer["model"].clear()
+            await session.commit()

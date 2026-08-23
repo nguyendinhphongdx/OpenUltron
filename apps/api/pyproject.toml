@@ -18,6 +18,8 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     "langchain-openai>=0.2.0",
     "langchain>=1.0",
+    "websockets>=13",
+    "structlog>=24",
 ]
 
 [dependency-groups]

@@ -79,15 +79,20 @@ biệt khi đang làm việc khác (di chuyển, nấu ăn, rảnh tay). Thiếu
 
 ## Câu hỏi mở
 
-- Transport: WebRTC hay WebSocket cho browser ↔ `apps/api`? (ảnh hưởng latency, độ phức tạp NAT/ICE)
-  → cần ADR.
-- Provider đầu tiên: đã nghiêng Gemini Live (hỗ trợ tiếng Việt + tái dùng hạ tầng Gemini hiện có) —
-  chốt chính thức trong ADR, không chỉ trong spec.
-- Khi user gõ text giữa voice session: agent trả lời bằng audio hay text? Có cần đồng bộ 2 kênh không?
-- Audio có cần lưu lại (file) hay chỉ lưu transcript? Nếu cần lưu file → có thể phải thêm entity mới
-  (ngoài scope Non-goals hiện tại, cần quay lại spec này trước).
-- Tool call trong lúc voice có cần approval gate giống ADR-0005 (tool chạy lệnh trên máy) không, hay
-  chỉ áp dụng những tool "an toàn" (RAG/lookup) trong giai đoạn đầu?
+- ~~Transport: WebRTC hay WebSocket~~ → **đã chốt WebSocket** ([ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md)).
+- ~~Provider đầu tiên~~ → **đã chốt Gemini Live** (ADR-0009).
+- Khi user gõ text giữa voice session: agent trả lời bằng audio hay text? — code hiện tại forward
+  text frame vào `GeminiLiveClient.send_text` (Gemini tự quyết trả lời gì), **chưa live-test** để
+  biết Gemini thực tế trả lời audio hay text cho trường hợp này.
+- Audio có cần lưu lại (file) hay chỉ lưu transcript? — **vẫn mở**, code hiện tại chỉ lưu transcript
+  vào `Message`. Nếu cần lưu file → thêm entity mới, quay lại spec này trước khi code.
+- Tool call trong lúc voice có cần approval gate giống ADR-0005 (tool chạy lệnh trên máy) không? —
+  **vẫn mở**, code hiện tại chỉ forward tool-call cho sub-agent delegation (không có side-effect
+  nguy hiểm), chưa đụng tool chạy lệnh máy nên chưa cần gate ngay, nhưng phải quyết trước khi thêm
+  loại tool đó vào voice.
+- UI state `listening/thinking/speaking/using_tool` — protocol `apps/api` hiện chỉ gửi
+  `transcript`/`interrupted`/`turn_complete` qua WebSocket, chưa có event `state` riêng. Cần quyết:
+  derive state ở `apps/web` từ các event đã có, hay thêm event `state` mới ở `apps/api`.
 - `apps/api` hiện chưa có streaming (SSE) cho chat text — Live Voice có nên đợi SSE xong trước, hay
   đi trước và dùng chung hạ tầng streaming/event sau?
 

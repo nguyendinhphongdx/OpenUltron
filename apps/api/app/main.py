@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
+from app.core.logging import configure_logging
 from app.modules.agent.router import router as agent_router
 from app.modules.chat.router import router as chat_router
 from app.modules.conversation.message.router import router as message_router
@@ -15,6 +16,9 @@ from app.modules.model.router import router as model_router
 from app.modules.settings.router import router as settings_router
 from app.modules.tool.agent_tool_router import router as agent_tool_router
 from app.modules.tool.router import router as tool_router
+from app.modules.voice.router import router as voice_router
+
+configure_logging(settings.log_level)
 
 app = FastAPI(title="Ultron API", version="0.0.1")
 
@@ -40,3 +44,4 @@ app.include_router(tool_router)
 app.include_router(agent_tool_router)
 app.include_router(kb_router)
 app.include_router(agent_kb_router)
+app.include_router(voice_router)

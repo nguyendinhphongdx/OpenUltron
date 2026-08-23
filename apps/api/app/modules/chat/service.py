@@ -81,7 +81,12 @@ class ChatService:
                 return _to_config(model_row)
         return _BOOTSTRAP_MODEL
 
-    async def send(self, conversation_id: int, user_text: str) -> MessageRead:
+    async def resolve_context(
+        self, conversation_id: int
+    ) -> tuple[str, ModelConfig, list[SubAgentSpec]]:
+        """(system_prompt, model, sub_agent_specs) cho 1 conversation — dùng lại được ở bất kỳ
+        transport nào cần chạy agent cho conversation đó (chat text ở `send()`, hoặc voice module
+        — ADR-0009 — không tự resolve lại agent/model riêng cho voice)."""
         conversation = await self.conversation_service.get_or_404(conversation_id)
 
         sub_agent_specs: list[SubAgentSpec] = []
@@ -98,6 +103,10 @@ class ChatService:
                 ]
         else:
             system_prompt, model = DEFAULT_SYSTEM_PROMPT, await self._resolve_default_model()
+        return system_prompt, model, sub_agent_specs
+
+    async def send(self, conversation_id: int, user_text: str) -> MessageRead:
+        system_prompt, model, sub_agent_specs = await self.resolve_context(conversation_id)
 
         history_rows = await self.message_service.list_all(conversation_id)
         history = [m for row in history_rows if (m := _to_langchain(row)) is not None]
