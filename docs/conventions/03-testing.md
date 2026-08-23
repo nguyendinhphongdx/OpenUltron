@@ -124,6 +124,12 @@ apps/web/
 
 ## Anti-pattern
 
+- ❌ Đặt tên file test trùng basename ở 2 folder khác nhau trong `apps/api/tests/`
+  (vd `tests/unit/credential/test_service.py` và `tests/unit/ollama/test_service.py` cùng lúc) —
+  không có `__init__.py` trong các thư mục test nên pytest coi 2 file là cùng 1 module, lỗi
+  "import file mismatch" khi chạy full suite (dù chạy riêng từng folder thì pass, dễ gây nhầm
+  "test tôi mới viết chắc ổn"). Đặt tên file mô tả đúng nội dung (`test_ollama_service.py`, không
+  phải `test_service.py` chung) — bug thật gặp khi thêm module `ollama` (ADR-0011).
 - ❌ Mock DB/repository ở `apps/api` — dùng testcontainer (ADR-0008).
 - ❌ Test co-located cạnh source (`service.py` + `test_service.py` cùng folder) — luôn ở `tests/`
   (`apps/api`) hoặc `test/` (`apps/web`).
