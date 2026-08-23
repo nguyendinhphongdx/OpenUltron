@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
+from app.core.model_catalog import get_capabilities
 from app.modules.model.models import Model
 from app.modules.model.repository import ModelRepository
 from app.modules.model.schemas import ModelCreate, ModelRead, ModelUpdate
@@ -17,6 +18,7 @@ def model_to_read(row: Model) -> ModelRead:
         base_url=row.base_url,
         is_embedding=row.is_embedding,
         extra_config=row.extra_config,
+        capabilities=get_capabilities(row.provider, row.model_id),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

@@ -222,10 +222,11 @@ class KnowledgeBaseService:
     async def _embed(self, kb: KnowledgeBase, text: str) -> list[float]:
         embedding_model = await self.model_service.find(kb.embedding_model_id)
         assert embedding_model is not None  # validate ở create(), FK còn nguyên vẹn
-        embeddings = build_embeddings(
+        embeddings = await build_embeddings(
             provider=embedding_model.provider,
             model_id=embedding_model.model_id,
             base_url=embedding_model.base_url,
+            session=self.repo.session,  # tra credential provider (ADR-0010)
         )
         return await embeddings.aembed_query(text)
 

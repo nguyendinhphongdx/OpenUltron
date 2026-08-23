@@ -1,7 +1,9 @@
 from typing import Annotated
 
 from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import get_session
 from app.modules.agent.deps import get_agent_service
 from app.modules.agent.service import AgentService
 from app.modules.chat.service import ChatService
@@ -21,6 +23,7 @@ def get_chat_service(
     model_service: Annotated[ModelService, Depends(get_model_service)],
     settings_service: Annotated[SettingsService, Depends(get_settings_service)],
     message_service: Annotated[MessageService, Depends(get_message_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ChatService:
     return ChatService(
         conversation_service,
@@ -28,6 +31,7 @@ def get_chat_service(
         model_service,
         settings_service,
         message_service,
+        session,
     )
 
 

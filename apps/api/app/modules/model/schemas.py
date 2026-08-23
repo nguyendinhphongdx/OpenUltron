@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from app.core.model_catalog import ModelCapabilities
+
 Provider = Literal["ollama", "gemini", "openai", "sglang"]
 
 
@@ -34,5 +36,6 @@ class ModelRead(BaseModel):
     base_url: str | None
     is_embedding: bool
     extra_config: dict[str, Any] | None
+    capabilities: ModelCapabilities | None  # catalog tĩnh (ADR-0010), không phải cột DB
     created_at: datetime
     updated_at: datetime

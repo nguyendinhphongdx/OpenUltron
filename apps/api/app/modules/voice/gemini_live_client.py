@@ -1,11 +1,14 @@
 import base64
 import json
-import os
+import ssl
 from collections.abc import AsyncIterator
 
+import certifi
 import websockets
+from sqlalchemy.ext.asyncio import AsyncSession
 from websockets.asyncio.client import ClientConnection
 
+from app.core.providers import get_provider_api_key
 from app.modules.voice.events import (
     AudioDelta,
     Interrupted,
@@ -16,6 +19,11 @@ from app.modules.voice.events import (
     TurnComplete,
     VoiceEvent,
 )
+
+# Dùng CA bundle của certifi thay vì trust store mặc định của OS — máy dev macOS (python.org
+# build) không tự có sẵn cert.pem hệ thống, gây SSLCertVerificationError khi kết nối wss://.
+# certifi đã là dependency có sẵn (transitive qua httpx/langchain-openai).
+_SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 _ENDPOINT = (
     "wss://generativelanguage.googleapis.com/ws/"
@@ -41,14 +49,20 @@ class GeminiLiveClient:
         self._tools = tools or []
         self._ws: ClientConnection | None = None
 
-    async def connect(self) -> None:
-        api_key = os.environ.get("GEMINI_API_KEY")
+    async def connect(self, session: AsyncSession) -> None:
+        # ADR-0010: tra Credential module (DB, mã hoá) theo provider "gemini" — `session` là 1
+        # session DB ngắn hạn mở riêng bởi caller (VoiceService.run(), không phải session sống
+        # suốt cả voice session) chỉ để tra key lúc connect.
+        api_key = await get_provider_api_key("gemini", session)
         if not api_key:
-            raise RuntimeError("Thiếu GEMINI_API_KEY trong .env (ADR-0007)")
+            raise RuntimeError("Chưa có credential Gemini — thêm qua PUT /credentials/gemini")
         # API key qua header (không phải query string) — tránh lộ key vào access log/URI khi
         # handshake lỗi (finding review: query string dễ bị log lại ở proxy/exception repr).
         ws = await websockets.connect(
-            _ENDPOINT, additional_headers={"x-goog-api-key": api_key}, max_size=None
+            _ENDPOINT,
+            additional_headers={"x-goog-api-key": api_key},
+            max_size=None,
+            ssl=_SSL_CONTEXT,
         )
         try:
             await ws.send(
@@ -143,8 +157,12 @@ class GeminiLiveClient:
                     inline_data = part.get("inlineData")
                     if inline_data is not None and "data" in inline_data:
                         events.append(AudioDelta(pcm=base64.b64decode(inline_data["data"])))
+                    # part.thought=True là "thinking trace" nội bộ của model (Gemini 2.5 thinking
+                    # model), KHÔNG phải câu trả lời/lời nói thật — xác nhận thật qua live-test
+                    # (2026-08-23): model trả "**Crafting a Response**..." lẫn vào modelTurn nếu
+                    # không lọc field này. Bỏ qua, không tính là transcript.
                     text = part.get("text")
-                    if text:
+                    if text and not part.get("thought"):
                         events.append(TranscriptDelta(role="model", text=text))
             output_transcription = server_content.get("outputTranscription")
             if output_transcription and output_transcription.get("text"):

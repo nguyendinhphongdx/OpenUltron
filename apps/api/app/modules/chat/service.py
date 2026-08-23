@@ -1,6 +1,8 @@
 from fastapi import HTTPException, status
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.modules.agent.schemas import AgentRead
 from app.modules.agent.service import AgentService
 from app.modules.chat.graph import (
@@ -19,9 +21,16 @@ from app.modules.settings.service import SettingsService
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 
-# Fallback cuối cùng khi chưa có Model nào trong DB và AppSettings.default_model_id cũng trống
-# (bootstrap an toàn — không chặn chat lần đầu chỉ vì chưa tạo Model resource).
-_BOOTSTRAP_MODEL = ModelConfig(provider="ollama", model_id="qwen3.5:4b", base_url=None)
+
+def _bootstrap_model() -> ModelConfig:
+    """Fallback cuối cùng khi chưa có Model nào trong DB và AppSettings.default_model_id cũng
+    trống (bootstrap an toàn — không chặn chat lần đầu chỉ vì chưa tạo Model resource). Đọc
+    `settings.ollama_model`/`settings.ollama_base_url` — KHÔNG hardcode tên model (bug đã xảy ra
+    thật: hardcode "qwen3.5:4b" trong khi `.env`/Ollama máy thật lại có model khác đã pull, gây
+    502 "Model không phản hồi được" dù Ollama đang chạy tốt)."""
+    return ModelConfig(
+        provider="ollama", model_id=settings.ollama_model, base_url=settings.ollama_base_url
+    )
 
 
 def _to_config(row: Model) -> ModelConfig:
@@ -48,12 +57,14 @@ class ChatService:
         model_service: ModelService,
         settings_service: SettingsService,
         message_service: MessageService,
+        session: AsyncSession,
     ) -> None:
         self.conversation_service = conversation_service
         self.agent_service = agent_service
         self.model_service = model_service
         self.settings_service = settings_service
         self.message_service = message_service
+        self.session = session  # dùng để tra credential provider (ADR-0010) khi build chat model
 
     async def _resolve_sub_agent_spec(self, agent: AgentRead, *, depth: int = 0) -> SubAgentSpec:
         model_row = await self.model_service.get_or_404(agent.model_id)
@@ -79,7 +90,7 @@ class ChatService:
             model_row = await self.model_service.find(app_settings.default_model_id)
             if model_row is not None:
                 return _to_config(model_row)
-        return _BOOTSTRAP_MODEL
+        return _bootstrap_model()
 
     async def resolve_context(
         self, conversation_id: int
@@ -115,8 +126,11 @@ class ChatService:
             conversation_id, MessageCreate(role="user", content=user_text)
         )
 
-        executor = build_agent_executor(
-            system_prompt=system_prompt, model=model, sub_agents=sub_agent_specs
+        executor = await build_agent_executor(
+            system_prompt=system_prompt,
+            model=model,
+            sub_agents=sub_agent_specs,
+            session=self.session,
         )
         try:
             result = await executor.ainvoke(

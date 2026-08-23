@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3.5:4b"
 
+    # Provider API key (gemini/openai) KHÔNG còn đọc qua đây — đã chuyển sang lưu DB có mã hoá
+    # (ADR-0010, module `credential`). Field `gemini_api_key`/`openai_api_key` cũ bị xoá có chủ
+    # đích, không phải thiếu sót.
+
+    # AES-256-GCM symmetric key (ADR-0010, base64, decode ra đúng 32 byte) — dùng để mã hoá
+    # ciphertext của Credential tại rest. Đọc + validate ở `app/core/crypto.py`.
+    app_encryption_key: str
+
     # CORS — apps/web gọi thẳng apps/api từ browser (không qua gateway). Danh sách origin
     # cách nhau bởi dấu phẩy trong .env, vd "http://localhost:3010,http://192.168.1.5:3010".
     cors_origins: str = "http://localhost:3010,http://127.0.0.1:3010"

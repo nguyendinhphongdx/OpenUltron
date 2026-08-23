@@ -9,6 +9,7 @@ from app.modules.chat.router import router as chat_router
 from app.modules.conversation.message.router import router as message_router
 from app.modules.conversation.router import router as conversation_router
 from app.modules.conversation.tool_call.router import router as tool_call_router
+from app.modules.credential.router import router as credential_router
 from app.modules.health.router import router as health_router
 from app.modules.knowledge_base.agent_kb_router import router as agent_kb_router
 from app.modules.knowledge_base.router import router as kb_router
@@ -36,6 +37,7 @@ app.include_router(health_router)
 app.include_router(conversation_router)
 app.include_router(message_router)
 app.include_router(tool_call_router)
+app.include_router(credential_router)
 app.include_router(agent_router)
 app.include_router(chat_router)
 app.include_router(model_router)

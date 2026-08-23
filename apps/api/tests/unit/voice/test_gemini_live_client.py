@@ -33,6 +33,17 @@ def test_map_message_model_turn_text_part() -> None:
     assert events == [TranscriptDelta(role="model", text="xin chào")]
 
 
+def test_map_message_model_turn_thought_part_ignored() -> None:
+    # Gemini 2.5 thinking model trả part.thought=True cho reasoning trace nội bộ — xác nhận thật
+    # qua live-test 2026-08-23, KHÔNG phải câu trả lời, không được tính là transcript.
+    message = {
+        "serverContent": {
+            "modelTurn": {"parts": [{"text": "**Crafting a Response**...", "thought": True}]}
+        }
+    }
+    assert _client()._map_message(message) == []
+
+
 def test_map_message_transcript_deltas() -> None:
     message = {
         "serverContent": {

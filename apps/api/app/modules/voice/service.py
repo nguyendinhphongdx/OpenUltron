@@ -20,8 +20,11 @@ from app.modules.voice.events import (
 )
 from app.modules.voice.gemini_live_client import GeminiLiveClient
 
-# TODO xác nhận model id thật hỗ trợ Live API khi live-test (roadmap "chưa live-test").
-_GEMINI_LIVE_MODEL = "gemini-2.0-flash-live-001"
+# Xác nhận thật qua GET /v1beta/models (ListModels) với GEMINI_API_KEY thật — model này là 1
+# trong số ít model hỗ trợ bidiGenerateContent tại thời điểm live-test (2026-08-23). Google có
+# thể đổi/rotate model Live theo thời gian — nếu lỗi "model not found for bidiGenerateContent",
+# gọi lại ListModels để lấy tên hiện hành thay vì đoán.
+_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-latest"
 
 
 def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[dict]:
@@ -77,7 +80,10 @@ class VoiceService:
                 system_instruction=system_prompt,
                 tools=_tool_declarations(sub_agents),
             )
-            await client.connect()
+            # Session DB ngắn hạn chỉ để tra credential Gemini (ADR-0010) — không phải session
+            # sống suốt voice session (giống lý do `_flush_transcript` mở session riêng).
+            async with async_session_factory() as credential_session:
+                await client.connect(credential_session)
         except Exception as exc:
             logger.error(
                 "voice.provider_connect_failed", conversation_id=conversation_id, exc_info=exc
@@ -108,7 +114,10 @@ class VoiceService:
                     )
                     return
                 task_text = event.arguments.get("task", "")
-                result = await run_sub_agent(sub_agent, task_text)
+                # Session DB ngắn hạn riêng cho lần build chat model này (ADR-0010) — không giữ
+                # mở suốt lúc sub-agent LangGraph chạy (có thể vài giây).
+                async with async_session_factory() as session:
+                    result = await run_sub_agent(sub_agent, task_text, session=session)
                 await client.send_tool_result(event.call_id, {"result": result})
                 logger.info(
                     "voice.tool_call_completed",

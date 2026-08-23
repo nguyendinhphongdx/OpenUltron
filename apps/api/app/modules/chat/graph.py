@@ -6,6 +6,7 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 from langgraph.graph.state import CompiledStateGraph
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.providers import build_chat_model
 
@@ -36,17 +37,21 @@ class SubAgentSpec:
     sub_agents: list[SubAgentSpec] = field(default_factory=list)
 
 
-async def run_sub_agent(sub_agent: SubAgentSpec, task: str, *, depth: int = 0) -> str:
+async def run_sub_agent(
+    sub_agent: SubAgentSpec, task: str, *, session: AsyncSession, depth: int = 0
+) -> str:
     """Chạy 1 sub-agent với 1 task, trả text kết quả — dùng lại được ở bất kỳ chỗ nào cần
     delegate cho sub-agent (LangGraph tool cho text chat, hoặc toolCall từ voice module —
-    ADR-0009 — không viết lại logic delegate riêng cho voice)."""
-    chat_model = build_chat_model(
+    ADR-0009 — không viết lại logic delegate riêng cho voice). `session` dùng để tra credential
+    provider (ADR-0010) khi build chat model — không mở session riêng ở đây."""
+    chat_model = await build_chat_model(
         provider=sub_agent.model.provider,
         model_id=sub_agent.model.model_id,
         base_url=sub_agent.model.base_url,
+        session=session,
     )
     nested_tools = (
-        [_build_sub_agent_tool(sa, depth=depth + 1) for sa in sub_agent.sub_agents]
+        [_build_sub_agent_tool(sa, session=session, depth=depth + 1) for sa in sub_agent.sub_agents]
         if depth < MAX_DELEGATION_DEPTH
         else []
     )
@@ -55,24 +60,25 @@ async def run_sub_agent(sub_agent: SubAgentSpec, task: str, *, depth: int = 0) -
     return str(result["messages"][-1].content)
 
 
-def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, depth: int = 0):
+def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, session: AsyncSession, depth: int = 0):
     """Bọc 1 sub-agent thành LangGraph tool cho orchestrator gọi (ADR-0006, đa tầng)."""
 
     @tool(
         sub_agent.slug, description=sub_agent.description or f"Delegate task to '{sub_agent.slug}'"
     )
     async def _delegate(task: str) -> str:
-        return await run_sub_agent(sub_agent, task, depth=depth)
+        return await run_sub_agent(sub_agent, task, session=session, depth=depth)
 
     return _delegate
 
 
-def build_agent_executor(
-    *, system_prompt: str, model: ModelConfig, sub_agents: list[SubAgentSpec]
+async def build_agent_executor(
+    *, system_prompt: str, model: ModelConfig, sub_agents: list[SubAgentSpec], session: AsyncSession
 ) -> CompiledStateGraph:
-    """Graph cho 1 turn — orchestrator có thêm tool gọi sub-agent (ADR-0006)."""
-    chat_model = build_chat_model(
-        provider=model.provider, model_id=model.model_id, base_url=model.base_url
+    """Graph cho 1 turn — orchestrator có thêm tool gọi sub-agent (ADR-0006). `session` dùng để
+    tra credential provider (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới."""
+    chat_model = await build_chat_model(
+        provider=model.provider, model_id=model.model_id, base_url=model.base_url, session=session
     )
-    tools = [_build_sub_agent_tool(sa) for sa in sub_agents]
+    tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
     return create_agent(chat_model, tools=tools, system_prompt=system_prompt)
