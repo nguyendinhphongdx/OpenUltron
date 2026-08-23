@@ -106,6 +106,21 @@ dòng vào file này.
   `apps/api` vào context. Tự trigger khi task liên quan module/endpoint/entity/dependency mới;
   gọi tay qua `Skill` nếu cần chắc chắn.
 
+  **Khi nào tự code (main thread) vs giao subagent** — mỗi subagent khởi động không nhớ gì từ
+  agent trước, phải tự đọc lại ADR/convention/code liên quan → tốn thời gian thật nếu lạm dụng cho
+  việc đã rõ. Mặc định **tự code trực tiếp**, chỉ giao subagent khi rơi vào 1 trong 3 trường hợp:
+
+  1. Việc đụng **security/mã hoá/dữ liệu nhạy cảm** — cần review độc lập (`code-reviewer`), không
+     tự vừa viết vừa tự chấm.
+  2. Việc **quyết định kiến trúc** (ADR) — cần tách vai đề xuất/duyệt (`adr-writer`,
+     `solution-architect`), không tự vừa đề xuất vừa tự quyết.
+  3. Việc **quá lớn**, tự làm sẽ tràn context của main thread (nhiều module/file cùng lúc).
+
+  Khi phải giao subagent: **nhồi fact thật vào prompt** (kết quả research, schema thật, quyết định
+  đã chốt) thay vì bảo nó "đi đọc file X" — đỡ tốn 1 vòng tự explore. Có việc tiếp theo liên quan
+  trực tiếp tới việc agent đó vừa làm (nó đã đọc file, nhớ context) → resume qua `SendMessage` thay
+  vì spawn agent mới đọc lại từ đầu.
+
   **Team đủ vai cho 1 feature không nhỏ** (dùng qua `/dev`, hoặc gọi tay từng subagent):
 
   | Subagent | Vai | Ranh giới |
