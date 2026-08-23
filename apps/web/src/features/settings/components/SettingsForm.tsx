@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from 'react';
 
+import { SlidersHorizontal } from 'lucide-react';
+
 import { useAgents } from '@/features/agent';
 import { useModels } from '@/features/model';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 
 import { useSettings, useUpdateSettings } from '../hooks';
@@ -26,8 +29,10 @@ export function SettingsForm() {
     setDefaultAgentId(settings.default_agent_id?.toString() ?? '');
   }, [settings]);
 
-  if (isPending) return <p className="p-4 text-sm text-foreground/60">Đang tải cấu hình…</p>;
-  if (isError) return <p className="p-4 text-sm text-red-500">Không tải được cấu hình.</p>;
+  if (isPending) return <LoadingState label="Đang tải cấu hình…" />;
+  if (isError) {
+    return <EmptyState icon={SlidersHorizontal} tone="destructive" title="Không tải được cấu hình." />;
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +62,7 @@ export function SettingsForm() {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-foreground/60">
+        <p className="text-xs text-muted-foreground">
           Dùng khi conversation không gán agent cụ thể.
         </p>
       </div>
@@ -80,7 +85,7 @@ export function SettingsForm() {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-foreground/60">
+        <p className="text-xs text-muted-foreground">
           Fallback cuối cùng khi conversation không gán agent và default agent cũng chưa có model.
         </p>
       </div>
@@ -90,9 +95,9 @@ export function SettingsForm() {
       </Button>
 
       {updateSettings.isError && (
-        <p className="text-sm text-red-500">{getApiErrorMessage(updateSettings.error)}</p>
+        <p className="text-sm text-destructive">{getApiErrorMessage(updateSettings.error)}</p>
       )}
-      {updateSettings.isSuccess && <p className="text-sm text-green-600">Đã lưu.</p>}
+      {updateSettings.isSuccess && <p className="text-sm text-muted-foreground">Đã lưu.</p>}
     </form>
   );
 }

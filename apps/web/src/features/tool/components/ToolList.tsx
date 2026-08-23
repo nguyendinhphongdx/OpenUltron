@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { Wrench } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 
 import { useDeleteTool } from '../hooks/useDeleteTool';
@@ -18,14 +21,15 @@ export function ToolList() {
   const { data: tools, isPending, isError } = useTools();
   const deleteTool = useDeleteTool();
 
-  if (isPending) return <p className="p-4 text-sm text-foreground/60">Đang tải danh sách tool…</p>;
-  if (isError) return <p className="p-4 text-sm text-red-500">Không tải được danh sách tool.</p>;
+  if (isPending) return <LoadingState label="Đang tải danh sách tool…" />;
+  if (isError) return <EmptyState icon={Wrench} tone="destructive" title="Không tải được danh sách tool." />;
   if (tools.length === 0) {
     return (
-      <p className="p-4 text-sm text-foreground/60">
-        Chưa có tool nào. Lưu ý: tool hiện chỉ là metadata quản lý — chưa được gắn vào luồng chat
-        thực tế.
-      </p>
+      <EmptyState
+        icon={Wrench}
+        title="Chưa có tool nào"
+        description="Lưu ý: tool hiện chỉ là metadata quản lý — chưa được gắn vào luồng chat thực tế."
+      />
     );
   }
 
@@ -35,31 +39,35 @@ export function ToolList() {
   };
 
   return (
-    <ul className="divide-y divide-border">
-      {tools.map((tool) => (
-        <li key={tool.id} className="flex items-center justify-between gap-3 px-4 py-3">
-          <Link href={`/tools/${tool.id}`} className="flex-1 hover:opacity-80">
-            <p className="text-sm font-medium">
-              {tool.name}{' '}
-              <span className="rounded-full border border-border px-2 py-0.5 text-xs font-normal text-foreground/60">
-                {KIND_LABEL[tool.kind] ?? tool.kind}
-              </span>
-            </p>
-            <p className="text-xs text-foreground/60">{tool.slug}</p>
-          </Link>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => handleDelete(tool.id)}
-            disabled={deleteTool.isPending}
-          >
-            Xoá
-          </Button>
-        </li>
-      ))}
+    <div className="space-y-3">
+      <Card className="py-0">
+        <ul className="divide-y divide-border">
+          {tools.map((tool) => (
+            <li key={tool.id} className="flex items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-muted/50">
+              <Link href={`/tools/${tool.id}`} className="min-w-0 flex-1">
+                <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span className="truncate">{tool.name}</span>
+                  <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                    {KIND_LABEL[tool.kind] ?? tool.kind}
+                  </span>
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{tool.slug}</p>
+              </Link>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleDelete(tool.id)}
+                disabled={deleteTool.isPending}
+              >
+                Xoá
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </Card>
       {deleteTool.isError && (
-        <li className="px-4 py-2 text-sm text-red-500">{getApiErrorMessage(deleteTool.error)}</li>
+        <p className="text-sm text-destructive">{getApiErrorMessage(deleteTool.error)}</p>
       )}
-    </ul>
+    </div>
   );
 }

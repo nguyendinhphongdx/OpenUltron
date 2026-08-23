@@ -1,18 +1,22 @@
 import Link from 'next/link';
+import { Plus } from 'lucide-react';
 
 import { ModelList } from '@/features/model/components/ModelList';
 import { Button } from '@/components/ui/button';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function ModelsPage() {
   return (
-    <main className="mx-auto max-w-2xl">
-      <div className="flex items-center justify-between border-b border-border px-4 py-4">
-        <h1 className="text-lg font-semibold">Model</h1>
+    <PageShell
+      title="Model"
+      action={
         <Button size="sm" render={<Link href="/models/new" />}>
-          + Model mới
+          <Plus data-icon="inline-start" />
+          Model mới
         </Button>
-      </div>
+      }
+    >
       <ModelList />
-    </main>
+    </PageShell>
   );
 }

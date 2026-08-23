@@ -1,13 +1,19 @@
 'use client';
 
+import { MessagesSquare } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { useMessages } from '../hooks/useMessages';
 
 export function MessageThread({ conversationId }: { conversationId: number }) {
   const { data, isPending, isError } = useMessages(conversationId);
 
-  if (isPending) return <p className="p-4 text-sm text-foreground/60">Đang tải tin nhắn…</p>;
-  if (isError) return <p className="p-4 text-sm text-red-500">Không tải được tin nhắn.</p>;
+  if (isPending) return <LoadingState label="Đang tải tin nhắn…" />;
+  if (isError) return <EmptyState icon={MessagesSquare} tone="destructive" title="Không tải được tin nhắn." />;
+  if (data.data.length === 0) {
+    return <EmptyState icon={MessagesSquare} title="Chưa có tin nhắn nào" description="Gửi tin nhắn đầu tiên để bắt đầu." />;
+  }
 
   return (
     <div className="flex flex-col gap-3 p-4">
@@ -16,7 +22,7 @@ export function MessageThread({ conversationId }: { conversationId: number }) {
           key={message.id}
           className={cn(
             'max-w-[75%] rounded-lg border border-border px-3 py-2 text-sm',
-            message.role === 'user' ? 'self-end bg-accent text-white' : 'self-start bg-foreground/5',
+            message.role === 'user' ? 'self-end bg-accent text-white' : 'self-start bg-muted text-foreground',
           )}
         >
           {message.content}

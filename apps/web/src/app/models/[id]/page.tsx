@@ -2,8 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
+import { Cpu } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { PageShell } from '@/components/layout/PageShell';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { ModelForm } from '@/features/model/components/ModelForm';
 import { useDeleteModel } from '@/features/model/hooks/useDeleteModel';
 import { useModel } from '@/features/model/hooks/useModel';
@@ -40,20 +43,30 @@ export default function ModelPage({ params }: { params: Promise<{ id: string }> 
     });
   };
 
-  if (isPending) return <p className="p-4 text-sm text-foreground/60">Đang tải model…</p>;
+  if (isPending) {
+    return (
+      <PageShell title={`Model #${id}`}>
+        <LoadingState label="Đang tải model…" />
+      </PageShell>
+    );
+  }
   if (isError || !model) {
-    return <p className="p-4 text-sm text-red-500">Không tải được model.</p>;
+    return (
+      <PageShell title={`Model #${id}`}>
+        <EmptyState icon={Cpu} tone="destructive" title="Không tải được model." />
+      </PageShell>
+    );
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{model.name}</h1>
+    <PageShell
+      title={model.name}
+      action={
         <Button size="sm" variant="ghost" onClick={handleDelete} disabled={deleteModel.isPending}>
           Xoá
         </Button>
-      </div>
-
+      }
+    >
       <ModelForm
         model={model}
         onSubmit={handleSubmit}
@@ -64,8 +77,8 @@ export default function ModelPage({ params }: { params: Promise<{ id: string }> 
       />
 
       {deleteModel.isError && (
-        <p className="mt-2 text-sm text-red-500">{getApiErrorMessage(deleteModel.error)}</p>
+        <p className="mt-2 text-sm text-destructive">{getApiErrorMessage(deleteModel.error)}</p>
       )}
-    </main>
+    </PageShell>
   );
 }

@@ -1,18 +1,26 @@
 'use client';
 
+import { Bot } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-import { AgentForm, DelegationManager, useAgent, useDeleteAgent } from '@/features/agent';
 import { Button } from '@/components/ui/button';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 
-export function AgentDetailClient({ id }: { id: number }) {
+import { useAgent } from '../hooks/useAgent';
+import { useDeleteAgent } from '../hooks/useDeleteAgent';
+import { AgentForm } from './AgentForm';
+import { DelegationManager } from './DelegationManager';
+
+export function AgentDetailView({ id }: { id: number }) {
   const router = useRouter();
   const { data: agent, isPending, isError } = useAgent(id);
   const deleteAgent = useDeleteAgent();
 
-  if (isPending) return <p className="p-4 text-sm text-foreground/60">Đang tải agent…</p>;
-  if (isError || !agent) return <p className="p-4 text-sm text-red-500">Không tải được agent.</p>;
+  if (isPending) return <LoadingState label="Đang tải agent…" />;
+  if (isError || !agent) {
+    return <EmptyState icon={Bot} tone="destructive" title="Không tải được agent." />;
+  }
 
   const handleDelete = () => {
     if (!window.confirm(`Xoá agent "${agent.name}"? Hành động này không thể hoàn tác.`)) return;
@@ -24,12 +32,12 @@ export function AgentDetailClient({ id }: { id: number }) {
   return (
     <div className="flex flex-col gap-8">
       <section>
-        <h2 className="mb-4 text-sm font-semibold text-foreground/60">Thông tin agent</h2>
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground">Thông tin agent</h2>
         <AgentForm agent={agent} />
       </section>
 
       <section>
-        <h2 className="mb-4 text-sm font-semibold text-foreground/60">Sub-agent</h2>
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground">Sub-agent</h2>
         <DelegationManager agent={agent} />
       </section>
 
@@ -38,12 +46,12 @@ export function AgentDetailClient({ id }: { id: number }) {
           variant="outline"
           onClick={handleDelete}
           disabled={deleteAgent.isPending}
-          className="border-red-500 text-red-500 hover:bg-red-500/10"
+          className="border-destructive text-destructive hover:bg-destructive/10"
         >
           {deleteAgent.isPending ? 'Đang xoá…' : 'Xoá agent'}
         </Button>
         {deleteAgent.isError && (
-          <p className="mt-2 text-sm text-red-500">{getApiErrorMessage(deleteAgent.error)}</p>
+          <p className="mt-2 text-sm text-destructive">{getApiErrorMessage(deleteAgent.error)}</p>
         )}
       </section>
     </div>

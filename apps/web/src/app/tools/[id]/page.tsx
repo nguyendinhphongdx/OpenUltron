@@ -2,8 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
+import { Wrench } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { PageShell } from '@/components/layout/PageShell';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { ToolForm } from '@/features/tool/components/ToolForm';
 import { useDeleteTool } from '@/features/tool/hooks/useDeleteTool';
 import { useTool } from '@/features/tool/hooks/useTool';
@@ -25,26 +28,21 @@ export default function ToolDetailPage({ params }: { params: Promise<{ id: strin
   };
 
   return (
-    <main className="mx-auto max-w-2xl p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Sửa tool</h1>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleDelete}
-          disabled={deleteTool.isPending}
-        >
+    <PageShell
+      title="Sửa tool"
+      action={
+        <Button size="sm" variant="outline" onClick={handleDelete} disabled={deleteTool.isPending}>
           {deleteTool.isPending ? 'Đang xoá…' : 'Xoá tool'}
         </Button>
-      </div>
-
-      {isPending && <p className="text-sm text-foreground/60">Đang tải…</p>}
-      {isError && <p className="text-sm text-red-500">Không tải được tool.</p>}
+      }
+    >
+      {isPending && <LoadingState label="Đang tải…" />}
+      {isError && <EmptyState icon={Wrench} tone="destructive" title="Không tải được tool." />}
       {tool && <ToolForm tool={tool} />}
 
       {deleteTool.isError && (
-        <p className="mt-2 text-sm text-red-500">{getApiErrorMessage(deleteTool.error)}</p>
+        <p className="mt-2 text-sm text-destructive">{getApiErrorMessage(deleteTool.error)}</p>
       )}
-    </main>
+    </PageShell>
   );
 }

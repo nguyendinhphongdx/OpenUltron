@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ModelForm } from '@/features/model/components/ModelForm';
 import { useCreateModel } from '@/features/model/hooks/useCreateModel';
 import type { ModelCreateInput } from '@/features/model/types/model.types';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function NewModelPage() {
   const router = useRouter();
@@ -19,8 +20,7 @@ export default function NewModelPage() {
   };
 
   return (
-    <main className="mx-auto max-w-2xl p-4">
-      <h1 className="mb-4 text-lg font-semibold">Model mới</h1>
+    <PageShell title="Model mới">
       <ModelForm
         onSubmit={handleSubmit}
         isPending={createModel.isPending}
@@ -28,6 +28,6 @@ export default function NewModelPage() {
         error={createModel.error}
         submitLabel="Tạo"
       />
-    </main>
+    </PageShell>
   );
 }

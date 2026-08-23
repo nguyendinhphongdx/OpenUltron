@@ -1,18 +1,23 @@
 import Link from 'next/link';
+import { Plus } from 'lucide-react';
 
 import { ToolList } from '@/features/tool/components/ToolList';
 import { Button } from '@/components/ui/button';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function ToolsPage() {
   return (
-    <main className="mx-auto max-w-2xl">
-      <div className="flex items-center justify-between border-b border-border px-4 py-4">
-        <h1 className="text-lg font-semibold">Tools</h1>
+    <PageShell
+      title="Tools"
+      description="Metadata tool quản lý — chưa gắn vào luồng chat thực tế."
+      action={
         <Button size="sm" render={<Link href="/tools/new" />}>
-          + Tool mới
+          <Plus data-icon="inline-start" />
+          Tool mới
         </Button>
-      </div>
+      }
+    >
       <ToolList />
-    </main>
+    </PageShell>
   );
 }

@@ -1,4 +1,5 @@
-import { AgentDetailClient } from './AgentDetailClient';
+import { AgentDetailView } from '@/features/agent';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default async function AgentDetailPage({
   params,
@@ -7,9 +8,8 @@ export default async function AgentDetailPage({
 }) {
   const { id } = await params;
   return (
-    <main className="mx-auto max-w-2xl p-4">
-      <h1 className="mb-4 text-lg font-semibold">Agent #{id}</h1>
-      <AgentDetailClient id={Number(id)} />
-    </main>
+    <PageShell title={`Agent #${id}`}>
+      <AgentDetailView id={Number(id)} />
+    </PageShell>
   );
 }

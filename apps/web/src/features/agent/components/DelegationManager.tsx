@@ -2,8 +2,11 @@
 
 import { useState } from 'react';
 
+import { Users } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 
 import { useAddDelegation } from '../hooks/useAddDelegation';
@@ -23,7 +26,7 @@ export function DelegationManager({ agent }: DelegationManagerProps) {
 
   if (!agent.is_orchestrator) {
     return (
-      <p className="text-sm text-foreground/60">
+      <p className="text-sm text-muted-foreground">
         Agent này chưa được đánh dấu là orchestrator — bật &quot;Là orchestrator&quot; để quản lý sub-agent.
       </p>
     );
@@ -43,20 +46,20 @@ export function DelegationManager({ agent }: DelegationManagerProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      {isPending && <p className="text-sm text-foreground/60">Đang tải sub-agent…</p>}
-      {isError && <p className="text-sm text-red-500">Không tải được danh sách sub-agent.</p>}
+      {isPending && <LoadingState label="Đang tải sub-agent…" />}
+      {isError && <EmptyState icon={Users} tone="destructive" title="Không tải được danh sách sub-agent." />}
 
       {subAgents && subAgents.length > 0 && (
         <ul className="divide-y divide-border rounded-md border border-border">
           {subAgents.map((sub) => (
-            <li key={sub.id} className="px-3 py-2 text-sm">
-              {sub.name} <span className="text-foreground/60">({sub.slug})</span>
+            <li key={sub.id} className="px-3 py-2 text-sm text-foreground">
+              {sub.name} <span className="text-muted-foreground">({sub.slug})</span>
             </li>
           ))}
         </ul>
       )}
       {subAgents && subAgents.length === 0 && (
-        <p className="text-sm text-foreground/60">Chưa có sub-agent nào.</p>
+        <EmptyState icon={Users} title="Chưa có sub-agent nào" />
       )}
 
       <div className="flex items-center gap-2">
@@ -82,7 +85,7 @@ export function DelegationManager({ agent }: DelegationManagerProps) {
       </div>
 
       {addDelegation.isError && (
-        <p className="text-sm text-red-500">{getApiErrorMessage(addDelegation.error)}</p>
+        <p className="text-sm text-destructive">{getApiErrorMessage(addDelegation.error)}</p>
       )}
     </div>
   );

@@ -1,20 +1,22 @@
 import Link from 'next/link';
+import { Plus } from 'lucide-react';
 
 import { KnowledgeBaseList } from '@/features/knowledge-base/components/KnowledgeBaseList';
+import { Button } from '@/components/ui/button';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function KnowledgeBasesPage() {
   return (
-    <main className="mx-auto max-w-2xl">
-      <div className="flex items-center justify-between border-b border-border px-4 py-4">
-        <h1 className="text-lg font-semibold">Knowledge base</h1>
-        <Link
-          href="/knowledge-bases/new"
-          className="inline-flex h-8 items-center justify-center rounded-md bg-accent px-3 text-xs font-medium text-white hover:opacity-90"
-        >
-          + Knowledge Base mới
-        </Link>
-      </div>
+    <PageShell
+      title="Knowledge base"
+      action={
+        <Button size="sm" render={<Link href="/knowledge-bases/new" />}>
+          <Plus data-icon="inline-start" />
+          Knowledge Base mới
+        </Button>
+      }
+    >
       <KnowledgeBaseList />
-    </main>
+    </PageShell>
   );
 }

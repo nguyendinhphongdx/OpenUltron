@@ -6,6 +6,7 @@ import {
   Cpu,
   MessagesSquare,
   Settings as SettingsIcon,
+  Sparkles,
   Workflow,
   Wrench,
 } from 'lucide-react';
@@ -28,11 +29,14 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-border">
-      <div className="px-4 py-4">
-        <span className="text-sm font-semibold tracking-wide">Ultron</span>
+    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-border bg-sidebar">
+      <div className="flex items-center gap-2 px-5 py-5">
+        <span className="flex size-7 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+          <Sparkles className="size-4" />
+        </span>
+        <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">Ultron</span>
       </div>
-      <nav className="flex-1 space-y-0.5 px-2">
+      <nav className="flex-1 space-y-0.5 px-3">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -40,13 +44,13 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 active
-                  ? 'bg-accent text-white'
-                  : 'text-foreground/70 hover:bg-foreground/5 hover:text-foreground',
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground',
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="size-4" />
               {label}
             </Link>
           );

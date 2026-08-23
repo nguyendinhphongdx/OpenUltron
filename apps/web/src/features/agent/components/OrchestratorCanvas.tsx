@@ -15,7 +15,10 @@ import '@xyflow/react/dist/style.css';
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { Workflow } from 'lucide-react';
+
 import { cn } from '@/lib/utils';
+import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { useModels } from '@/features/model/hooks';
 import { agentService } from '../services/agent.service';
 import { useAgents } from '../hooks/useAgents';
@@ -145,9 +148,9 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tree, models, selectedAgentId]);
 
-  if (isPending) return <p className="p-4 text-sm text-foreground/60">Đang tải graph…</p>;
+  if (isPending) return <LoadingState label="Đang tải graph…" />;
   if (isError || !tree) {
-    return <p className="p-4 text-sm text-red-500">Không tải được orchestrator này.</p>;
+    return <EmptyState icon={Workflow} tone="destructive" title="Không tải được orchestrator này." />;
   }
 
   const selectedPos = positions.find((p) => p.agent.id === selectedAgentId);
