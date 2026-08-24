@@ -109,6 +109,27 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       thật: text hiện tăng dần, auto-scroll theo, persist đúng sau khi `done` (không lặp/thiếu).
       **Chưa live-test nhánh tool_call_start/end với orchestrator thật** (chỉ có unit test mock —
       chưa có agent nào có sub-agent delegation thật trong DB lúc test).
+- [x] Wire `Tool` vào chat execution — kind=http chạy thật (ADR-0013,
+      [`docs/features/agent-tool-execution.md`](../features/agent-tool-execution.md)). Research
+      (n8n `$fromAI`, OpenAI function calling, Composio) → spec → ADR → plan → code, đúng thứ tự.
+      `tool/builder.py`: `ToolBuilder` Protocol + registry theo `kind` (giống `ProviderAdapter`,
+      ADR-0012) — `HttpToolBuilder` build `StructuredTool` thật (args_schema runtime từ
+      `ai_params`, thực thi HTTP request, timeout 30s, truncate 8000 ký tự, placeholder chỉ ở
+      header/query/body — không phải URL); `BuiltinToolBuilder`/`McpToolBuilder` chỉ đứng chỗ
+      kiến trúc (trả `None`, agent vẫn chat được, không crash). `apps/web`: `ToolForm` bỏ hẳn ô
+      JSON tự do (user bác đề xuất này) — thay form có cấu trúc (`HttpRequestFields` +
+      `AiParamFields`); `AgentToolManager` (mới) gán/bỏ gán tool cho agent qua UI (trước đó chỉ có
+      API, không UI). **Live-verify thật (không mock)**: tạo tool gọi Open-Meteo API qua UI, gán
+      agent, chat hỏi thời tiết Hà Nội — model tự điền lat/lon, HTTP request thật chạy, trả đúng
+      dữ liệu thật (mã WMO, gió, nhiệt độ). Tiện thể code hoá `UltronError`/`ValidationFailedError`
+      lần đầu (`core/errors.py`, theo 04-error-handling.md) — nhưng **chỉ dùng cho tool mới**, giữ
+      nguyên wire shape cũ (top-level `message`) để không phá `apps/web`; migrate toàn bộ
+      service khác + đổi wire shape sang `{error:{code,message}}` + `parseApiError` phía
+      `apps/web` **vẫn là nợ riêng chưa làm** (xem "Đang làm/tiếp theo").
+      **Ngoài phạm vi bản này** (quyết định chủ đích, để làm sau theo thứ tự đã chốt với user
+      2026-08-24): approval-gate mechanism cho tool chạy lệnh trên máy (cần thiết kế riêng, an
+      toàn hơn hết), builtin tool thật (GitHub search/read; tạo file/thực thi lệnh máy — phụ
+      thuộc approval-gate), MCP client generic (user tự khai server tuỳ ý).
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -127,15 +148,15 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       `tests/conftest.py` cho integration test, migrate `app/core/errors.py` sang `UltronError`
       (xem [ADR-0008](../adr/0008-testing-logging-foundations.md) +
       [04-error-handling.md](../conventions/04-error-handling.md)); logging + unit test đầu tiên
-      đã xong (xem mục "Đã xong"). Cài Vitest cho `apps/web` (chưa cài).
+      đã xong (xem mục "Đã xong"). **`UltronError`/`ValidationFailedError` đã code hoá (2026-08-24,
+      cùng feature Tool execution)** nhưng CHỈ áp dụng cho `tool/service.py` mới, giữ nguyên wire
+      shape cũ (top-level `message`) — migrate toàn bộ service khác sang raise `UltronError` +
+      đổi wire shape sang `{error:{code,message,details}}` (đúng như convention doc mô tả) +
+      thêm `parseApiError` phía `apps/web` (đọc `04-error-handling.md` mục "apps/web đọc lỗi") —
+      **vẫn chưa làm**, là 1 thay đổi cross-cutting ảnh hưởng mọi service + mọi component đọc lỗi,
+      nên tách riêng, không làm ngầm trong 1 feature nhỏ. Cài Vitest cho `apps/web` (chưa cài).
 - [ ] **OpenAI/SGLang provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `OPENAI_API_KEY` hay SGLang server chạy để test thật. **Gemini đã live-test** (2026-08-24, credential thêm qua UI): chat text (`gemini-3.7-flash`) và Voice (xem "Đã xong" ADR-0009) đều chạy đúng qua provider adapter.
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
-- [ ] Wire `Tool` vào chat execution — spec accepted
-      [`docs/features/agent-tool-execution.md`](../features/agent-tool-execution.md) +
-      research [`docs/research/agent-tool-execution.md`](../research/agent-tool-execution.md) +
-      mockup [`docs/mockups/agent-tool-execution.html`](../mockups/agent-tool-execution.html)
-      (2026-08-24). Cần 1 ADR ("Tool execution architecture: builder theo kind + registry") trước
-      khi code — chưa viết.
 - [ ] Wire `KnowledgeBase` (đã CRUD + search) vào chat execution — agent có `AgentKnowledgeBase` nhưng chưa có tool RAG tự động tra KB trong lúc chat
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
 - [ ] Tool thật tự viết (tham khảo pattern OpenJarvis, không import): GitHub search/read, MCP client (Jira/Confluence), tool chạy lệnh trên máy (có approval gate — ADR-0005)
@@ -161,6 +182,17 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] User cần nhập lại API key Gemini/OpenAI qua UI mới (dialog Model & Credential) sau khi deploy
       — không auto-migrate từ `.env` cũ, quyết định có chủ đích
       ([ADR-0010](../adr/0010-provider-credential-in-db.md)).
+- [ ] **Approval-gate mechanism** (thứ tự đã chốt với user 2026-08-24, làm trước 2 mục builtin/MCP
+      dưới đây vì builtin tool "chạy lệnh máy" phụ thuộc cái này) — ADR-0005 mới chỉ mô tả ý tưởng
+      (node "approval" tạm dừng graph chờ duyệt), **chưa có API/checkpoint thật nào được build**.
+      Cần spec + ADR riêng trước khi code (an toàn cao, không làm vội).
+- [ ] **Builtin tool thật**: GitHub search/read (rủi ro thấp hơn, không cần approval-gate) + tạo
+      file/thực thi lệnh trên máy (rủi ro cao, **phụ thuộc approval-gate ở trên xong trước**) —
+      dùng `BuiltinToolBuilder` đã có chỗ đứng ở `tool/builder.py` (ADR-0013), viết implementation
+      thật cho từng builtin tool.
+- [ ] **MCP client generic** — user tự khai bất kỳ MCP server nào (command/URL), Ultron tự list
+      tool từ server đó. Cần research protocol MCP riêng trước khi spec (transport stdio/HTTP,
+      cách discover tool) — `McpToolBuilder` hiện chỉ là chỗ đứng, trả `None`.
 
 ## Chưa quyết (cần ADR trước khi code)
 
