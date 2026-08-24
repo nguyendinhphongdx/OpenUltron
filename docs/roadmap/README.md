@@ -242,7 +242,16 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       thật (Chrome/Safari, HTTPS hoặc localhost) trước khi coi module `voice` full-duplex là done —
       đặc biệt: worklet có convert đúng PCM không, playback có khớp 24kHz không lệch tốc độ/pitch,
       barge-in có phản hồi đúng lúc không. Theo
-      [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md).
+      [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md). **Bug thật phát hiện +
+      fix (2026-08-24)**: `VoiceService.run` unpack `chat_service.resolve_context()` chỉ 3 giá trị
+      (`system_prompt, _model, sub_agents`) trong khi hàm này trả 4-tuple (thêm `tool_specs` từ
+      lúc ADR-0013) — mọi voice session đều bị reject ngay từ đầu
+      (`ValueError: too many values to unpack`), hiện ra phía user là "Mất kết nối voice session."
+      không rõ lý do (exception bị nuốt, không log `exc_info`). Sửa unpack đủ 4 giá trị + thêm
+      `exc_info` vào log reject để lỗi tương tự sau này không còn vô hình. Verify qua
+      `starlette.testclient.TestClient` (không cần mic thật) — xác nhận `voice.session_started`
+      + nhận đúng `{"type":"state","value":"listening"}`; thêm regression test
+      (`tests/unit/voice/test_voice_service.py`) xác nhận fail đúng lỗi này trước fix.
 - [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
 - [ ] Migration `a1c2e3f4b5d6` chưa verify chạy thật trên Postgres — cần `uv run alembic upgrade head` khi có DB + môi trường `uv sync` hoạt động

@@ -1,0 +1,56 @@
+import pytest
+from fastapi import status as ws_status
+
+import app.modules.voice.service as voice_service_module
+from app.modules.chat.graph import ModelConfig
+from app.modules.voice.service import VoiceService
+
+
+class FakeChatService:
+    """`resolve_context` trả 4-tuple thật (system_prompt, model, sub_agent_specs, tool_specs) —
+    regression test cho bug thật: `VoiceService.run` từng unpack chỉ 3 giá trị (thiếu
+    `tool_specs`, thêm vào `resolve_context` sau khi voice module đã viết xong), khiến MỌI voice
+    session bị reject ngay từ đầu (`ValueError: too many values to unpack`), hiện ra phía browser
+    là "Mất kết nối voice session." không rõ lý do."""
+
+    async def resolve_context(self, conversation_id: int):
+        return "system prompt", ModelConfig(provider="gemini", model_id="test-model"), [], []
+
+
+class FakeWebSocket:
+    def __init__(self) -> None:
+        self.closed_with_code: int | None = None
+        self.accepted = False
+
+    async def accept(self) -> None:
+        self.accepted = True
+
+    async def close(self, code: int) -> None:
+        self.closed_with_code = code
+
+
+@pytest.mark.asyncio
+async def test_run_unpacks_resolve_context_four_tuple_without_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Trước fix: unpack sai số lượng → `except Exception` nuốt `ValueError`, đóng socket với
+    code 1008 TRƯỚC accept() — không bao giờ tới bước connect Gemini. Sau fix: accept() phải được
+    gọi (đi qua được bước resolve_context) rồi mới tới bước connect Gemini (mock để raise ngay,
+    giữ test hermetic — không gọi Gemini/DB thật) — đủ để xác nhận unpack không còn raise."""
+
+    class RaisingGeminiLiveClient:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def connect(self, session: object) -> None:
+            raise RuntimeError("mocked — không gọi Gemini thật trong unit test")
+
+    monkeypatch.setattr(voice_service_module, "GeminiLiveClient", RaisingGeminiLiveClient)
+
+    service = VoiceService(chat_service=FakeChatService())  # type: ignore[arg-type]
+    ws = FakeWebSocket()
+
+    await service.run(ws, conversation_id=1)  # type: ignore[arg-type]
+
+    assert ws.accepted is True
+    assert ws.closed_with_code == ws_status.WS_1011_INTERNAL_ERROR

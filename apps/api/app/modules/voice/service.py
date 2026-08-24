@@ -81,11 +81,14 @@ class VoiceService:
         # code, không để HTTPException lọt qua exception handler HTTP (ghi JSON response lên
         # transport websocket → uvicorn raise, client nhận socket chết không rõ lý do).
         try:
-            system_prompt, _model, sub_agents = await self.chat_service.resolve_context(
-                conversation_id
-            )
-        except Exception:
-            logger.warning("voice.session_rejected", conversation_id=conversation_id)
+            (
+                system_prompt,
+                _model,
+                sub_agents,
+                _tool_specs,
+            ) = await self.chat_service.resolve_context(conversation_id)
+        except Exception as exc:
+            logger.warning("voice.session_rejected", conversation_id=conversation_id, exc_info=exc)
             await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION)
             return
 
