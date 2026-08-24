@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Bot, Cpu, KeyRound, ServerCog, Sparkles } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
-import { useModels } from '@/features/model';
+import { ModelCatalogPanel, useModels } from '@/features/model';
 import type { Model, Provider } from '@/features/model';
 import { OllamaCatalogPanel } from '@/features/ollama';
 import { cn } from '@/lib/utils';
@@ -33,9 +34,11 @@ const PROVIDERS: { id: Provider; label: string; icon: typeof Bot; needsCredentia
 
 /** Dialog 3 cột: provider filter → model + capabilities → credential của provider đang chọn.
  * ADR-0010 — 1 credential/provider, không có field "name", self-host (ollama/sglang) không cần
- * credential. Component tự quản lý state (open/active provider) — `app/models/page.tsx` chỉ
- * render cái này, không chứa logic (docs/conventions/02-frontend-nextjs.md, "app/ chỉ routing"). */
-export function CredentialManageDialog() {
+ * credential. Component tự quản lý state (open/active provider) — nơi gọi (`app/models/page.tsx`,
+ * `AgentForm`...) chỉ render cái này, không chứa logic (docs/conventions/02-frontend-nextjs.md,
+ * "app/ chỉ routing"). `trigger` cho phép đổi nội dung nút mở dialog theo ngữ cảnh gọi (mặc định
+ * dùng ở trang Models; AgentForm dùng câu khác cho đúng ngữ cảnh "đang chọn model"). */
+export function CredentialManageDialog({ trigger }: { trigger?: ReactNode }) {
   const [checkedProviders, setCheckedProviders] = useState<Set<Provider>>(
     new Set(PROVIDERS.map((p) => p.id)),
   );
@@ -60,8 +63,12 @@ export function CredentialManageDialog() {
   return (
     <Dialog>
       <DialogTrigger render={<Button size="sm" variant="outline" />}>
-        <KeyRound data-icon="inline-start" />
-        Quản lý credential
+        {trigger ?? (
+          <>
+            <KeyRound data-icon="inline-start" />
+            Quản lý credential
+          </>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-4xl" showCloseButton>
         <DialogHeader>
@@ -133,6 +140,14 @@ export function CredentialManageDialog() {
                   Catalog Ollama — pull model về máy
                 </p>
                 <OllamaCatalogPanel />
+              </>
+            )}
+            {(activeProvider === 'gemini' || activeProvider === 'openai') && (
+              <>
+                <p className="mt-2 border-t border-border pt-3 text-xs font-semibold text-muted-foreground">
+                  Catalog {activeProviderMeta.label} — model đã biết
+                </p>
+                <ModelCatalogPanel provider={activeProvider} />
               </>
             )}
           </div>

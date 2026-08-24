@@ -65,7 +65,12 @@ export function DelegationManager({ agent }: DelegationManagerProps) {
       <div className="flex items-center gap-2">
         <Select value={subAgentId || null} onValueChange={(v) => setSubAgentId(v ?? '')}>
           <SelectTrigger className="w-56">
-            <SelectValue placeholder="— Chọn agent —" />
+            <SelectValue placeholder="— Chọn agent —">
+              {(value: string | null) => {
+                const candidate = candidateAgents?.find((c) => c.id.toString() === value);
+                return candidate ? `${candidate.name} (${candidate.slug})` : '— Chọn agent —';
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {candidateAgents?.map((candidate) => (

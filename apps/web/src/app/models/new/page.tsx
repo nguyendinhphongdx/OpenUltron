@@ -1,33 +1,15 @@
-'use client';
-
-import { useRouter } from 'next/navigation';
-
-import { ModelForm } from '@/features/model/components/ModelForm';
-import { useCreateModel } from '@/features/model/hooks/useCreateModel';
-import type { ModelCreateInput } from '@/features/model/types/model.types';
+import { NewModelView } from '@/features/model';
 import { PageShell } from '@/components/layout/PageShell';
 
-export default function NewModelPage() {
-  const router = useRouter();
-  const createModel = useCreateModel();
-
-  const handleSubmit = (values: ModelCreateInput) => {
-    createModel.mutate(values, {
-      onSuccess: (model) => {
-        router.push(`/models/${model.id}`);
-      },
-    });
-  };
-
+export default async function NewModelPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ provider?: string; model_id?: string; name?: string }>;
+}) {
+  const params = await searchParams;
   return (
     <PageShell title="Model mới">
-      <ModelForm
-        onSubmit={handleSubmit}
-        isPending={createModel.isPending}
-        isError={createModel.isError}
-        error={createModel.error}
-        submitLabel="Tạo"
-      />
+      <NewModelView initial={params} />
     </PageShell>
   );
 }

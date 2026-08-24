@@ -27,6 +27,7 @@ export const endpoints = {
     list: '/models',
     create: '/models',
     byId: (id: number) => `/models/${id}`,
+    catalog: (provider: string) => `/models/catalog?provider=${provider}`,
   },
   tools: {
     list: '/tools',

@@ -100,7 +100,12 @@ export function KnowledgeBaseForm({ knowledgeBase, onSuccess }: KnowledgeBaseFor
           disabled={isEditing}
         >
           <SelectTrigger id="embedding_model_id" className="w-full">
-            <SelectValue placeholder="— Chọn embedding model —" />
+            <SelectValue placeholder="— Chọn embedding model —">
+              {(value: string | null) => {
+                const model = embeddingModels.find((m) => m.id.toString() === value);
+                return model ? `${model.name} (${model.provider}/${model.model_id})` : '— Chọn embedding model —';
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {embeddingModels.map((model) => (

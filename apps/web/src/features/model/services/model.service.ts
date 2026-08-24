@@ -1,10 +1,21 @@
 /** Service layer — gọi `apiClient` thuần, không chứa React. */
 import { apiClient, endpoints } from '@/lib/api';
-import type { Model, ModelCreateInput, ModelUpdateInput } from '../types/model.types';
+import type {
+  Model,
+  ModelCatalogEntry,
+  ModelCreateInput,
+  ModelUpdateInput,
+  Provider,
+} from '../types/model.types';
 
 export const modelService = {
   list: async (): Promise<Model[]> => {
     const res = await apiClient.get<Model[]>(endpoints.models.list);
+    return res.data;
+  },
+
+  catalog: async (provider: Provider): Promise<ModelCatalogEntry[]> => {
+    const res = await apiClient.get<ModelCatalogEntry[]>(endpoints.models.catalog(provider));
     return res.data;
   },
 

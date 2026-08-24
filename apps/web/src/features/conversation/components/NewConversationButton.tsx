@@ -41,7 +41,12 @@ export function NewConversationButton() {
     <div className="flex items-center gap-2">
       <Select value={agentId || null} onValueChange={(v) => setAgentId(v ?? '')}>
         <SelectTrigger className="w-48">
-          <SelectValue placeholder="Agent mặc định" />
+          <SelectValue placeholder="Agent mặc định">
+            {(value: string | null) => {
+              const agent = agents?.find((a) => a.id.toString() === value);
+              return agent ? agent.name : 'Agent mặc định';
+            }}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           {agents?.map((agent) => (

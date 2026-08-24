@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getApiErrorMessage } from '@/lib/api';
+import { useOllamaInstalled } from '@/features/ollama';
 
+import { useModelCatalog } from '../hooks/useModelCatalog';
 import type { Model, ModelCreateInput, Provider } from '../types/model.types';
 
 export interface ModelFormValues {
@@ -22,6 +24,9 @@ export interface ModelFormValues {
 
 interface ModelFormProps {
   model?: Model;
+  /** Giá trị nháp khi tạo mới (vd từ catalog — `ModelCatalogPanel`) — không áp dụng khi `model`
+   * có giá trị (chế độ edit luôn ưu tiên dữ liệu thật của `model`). */
+  initial?: Partial<Pick<ModelFormValues, 'provider' | 'model_id' | 'name'>>;
   onSubmit: (values: ModelCreateInput) => void;
   isPending?: boolean;
   isError?: boolean;
@@ -29,15 +34,34 @@ interface ModelFormProps {
   submitLabel?: string;
 }
 
-export function ModelForm({ model, onSubmit, isPending, isError, error, submitLabel }: ModelFormProps) {
+export function ModelForm({
+  model,
+  initial,
+  onSubmit,
+  isPending,
+  isError,
+  error,
+  submitLabel,
+}: ModelFormProps) {
   const isEditing = Boolean(model);
 
   const [slug, setSlug] = useState('');
-  const [name, setName] = useState('');
-  const [provider, setProvider] = useState<Provider>('ollama');
-  const [modelId, setModelId] = useState('');
+  const [name, setName] = useState(initial?.name ?? '');
+  const [provider, setProvider] = useState<Provider>(initial?.provider ?? 'ollama');
+  const [modelId, setModelId] = useState(initial?.model_id ?? '');
   const [baseUrl, setBaseUrl] = useState('');
   const [isEmbedding, setIsEmbedding] = useState(false);
+
+  // Gợi ý Model ID theo provider đang chọn — datalist (HTML thuần, vẫn gõ tay tự do được, không
+  // cần combobox component riêng): gemini/openai lấy từ catalog tĩnh (ADR-0010), ollama lấy từ
+  // model đã pull thật trên máy (ADR-0011) — 2 nguồn khác nhau, không có catalog cứng cho sglang
+  // (self-host, model tuỳ người dùng tự serve).
+  const { data: catalog } = useModelCatalog(provider);
+  const { data: installed } = useOllamaInstalled();
+  const modelIdSuggestions =
+    provider === 'ollama'
+      ? (installed ?? []).map((m) => ({ model_id: m.name, label: m.name }))
+      : (catalog ?? []).map((c) => ({ model_id: c.model_id, label: c.label }));
 
   useEffect(() => {
     if (!model) return;
@@ -101,13 +125,24 @@ export function ModelForm({ model, onSubmit, isPending, isError, error, submitLa
         <Label htmlFor="model_id">Model ID</Label>
         <Input
           id="model_id"
+          list="model-id-suggestions"
           value={modelId}
           onChange={(e) => setModelId(e.target.value)}
-          placeholder="vd. qwen3.5:4b, gpt-5.5"
+          placeholder={provider === 'sglang' ? 'model tự host, xem SGLang server' : 'gõ hoặc chọn gợi ý bên dưới'}
           required
         />
+        <datalist id="model-id-suggestions">
+          {modelIdSuggestions.map((s) => (
+            <option key={s.model_id} value={s.model_id}>
+              {s.label}
+            </option>
+          ))}
+        </datalist>
         <p className="text-xs text-foreground/60">
-          Định danh model của provider — không phải id trong DB.
+          Định danh model của provider — không phải id trong DB.{' '}
+          {provider === 'ollama'
+            ? 'Gợi ý lấy từ model đã pull thật trên máy.'
+            : provider !== 'sglang' && 'Gợi ý lấy từ catalog — vẫn gõ tay được nếu model chưa có trong catalog.'}
         </p>
       </div>
 

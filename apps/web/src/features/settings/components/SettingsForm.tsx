@@ -51,7 +51,13 @@ export function SettingsForm() {
           onValueChange={(v) => setDefaultAgentId(!v || v === 'none' ? '' : v)}
         >
           <SelectTrigger id="default_agent_id" className="w-full">
-            <SelectValue />
+            {/* base-ui SelectValue chỉ hiện raw value trừ khi map value → label hiển thị. */}
+            <SelectValue>
+              {(value: string | null) => {
+                const agent = agents?.find((a) => a.id.toString() === value);
+                return agent ? `${agent.name} (${agent.slug})` : '— Không đặt —';
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">— Không đặt —</SelectItem>
@@ -74,7 +80,12 @@ export function SettingsForm() {
           onValueChange={(v) => setDefaultModelId(!v || v === 'none' ? '' : v)}
         >
           <SelectTrigger id="default_model_id" className="w-full">
-            <SelectValue />
+            <SelectValue>
+              {(value: string | null) => {
+                const model = models?.find((m) => m.id.toString() === value);
+                return model ? `${model.name} (${model.provider}/${model.model_id})` : '— Không đặt —';
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="none">— Không đặt —</SelectItem>

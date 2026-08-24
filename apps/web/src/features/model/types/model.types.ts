@@ -13,6 +13,13 @@ export interface ModelCapabilities {
   context_window: number | null;
 }
 
+export interface ModelCatalogEntry {
+  provider: Provider;
+  model_id: string;
+  label: string;
+  capabilities: ModelCapabilities;
+}
+
 export interface Model {
   id: number;
   slug: string;

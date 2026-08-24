@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { getApiErrorMessage } from '@/lib/api';
 import { useModels } from '@/features/model';
+import { CredentialManageDialog } from '@/features/credential';
+import { BookOpen } from 'lucide-react';
 
 import { useCreateAgent } from '../hooks/useCreateAgent';
 import { useUpdateAgent } from '../hooks/useUpdateAgent';
@@ -117,10 +119,27 @@ export function AgentForm({ agent, onSuccess }: AgentFormProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="model_id">Model</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="model_id">Model</Label>
+          <CredentialManageDialog
+            trigger={
+              <>
+                <BookOpen data-icon="inline-start" />
+                Browse catalog
+              </>
+            }
+          />
+        </div>
         <Select value={modelId || null} onValueChange={(v) => setModelId(v ?? '')}>
           <SelectTrigger id="model_id" className="w-full">
-            <SelectValue placeholder="— Chọn model —" />
+            {/* base-ui SelectValue chỉ hiện raw value (vd "3") trừ khi truyền children dạng hàm
+             * map value → label hiển thị — khác Radix (tự lấy label từ SelectItem đang chọn). */}
+            <SelectValue placeholder="— Chọn model —">
+              {(value: string | null) => {
+                const selected = models?.find((m) => m.id.toString() === value);
+                return selected ? `${selected.name} (${selected.provider}/${selected.model_id})` : '— Chọn model —';
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {models?.map((model) => (
@@ -130,6 +149,10 @@ export function AgentForm({ agent, onSuccess }: AgentFormProps) {
             ))}
           </SelectContent>
         </Select>
+        <p className="text-xs text-foreground/60">
+          Chưa có model phù hợp? Mở &quot;Browse catalog&quot; để xem model đã biết theo provider,
+          pull model Ollama, hoặc quản lý credential — tạo Model xong rồi quay lại đây chọn.
+        </p>
       </div>
 
       <div className="flex items-center gap-2">
