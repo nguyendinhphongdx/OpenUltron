@@ -10,11 +10,15 @@
 1 lần đọc, không phải để show off design pattern.
 
 - **Trừu tượng hoá chỉ khi có ≥ 2 cài đặt THẬT đang tồn tại**, không phải vì "có thể cần sau". Ví
-  dụ đúng: `app/core/providers.py` — 4 provider thật (ollama/gemini/openai/sglang) nhưng viết bằng
-  **if/else + import động trong từng nhánh**, KHÔNG có abstract `Provider` base class/interface,
-  KHÔNG có `ProviderFactory` class riêng, KHÔNG dùng registry pattern. Đây là chuẩn cần giữ — thêm
-  provider thứ 5 thì thêm 1 nhánh `if`, không "refactor lên pattern" trước khi thật sự đau (ví dụ
-  file vượt quá dài để đọc).
+  dụ: `core/providers.py` ban đầu chỉ có 1 việc (build chat model) theo provider, viết bằng if/else
+  là đúng — **không** trừu tượng hoá vì "sau có thể cần". Khi số việc lặp theo provider tăng lên
+  (build chat model, build embeddings, test credential — ADR-0010/0011) và if/elif y hệt bắt đầu
+  lặp lại ở **≥ 2 file khác nhau** (không phải 1 file dài hơn — đó là dấu hiệu khác), đó là "đau
+  thật" đúng ngưỡng — chuyển sang 1 `Protocol` `ProviderAdapter` + registry tĩnh
+  (`app/core/provider_adapter.py`, [ADR-0012](../adr/0012-provider-adapter-abstraction.md)). Vẫn
+  KHÔNG dùng plugin discovery/DI container — chỉ 1 dict thường, thêm provider mới = 1 class + 1
+  dòng registry. Ngưỡng để nhớ: **if/else khi 1 chỗ gọi, adapter khi ≥ 2 chỗ gọi cùng logic đó** —
+  không phải "có 4 provider thì phải trừu tượng hoá ngay từ đầu".
 - **Không tạo class cho pure function không có state.** Hàm module-level (`def foo(x): ...`) là đủ
   — không bọc trong 1 class chỉ để "tổ chức" khi class đó không giữ state gì giữa các lần gọi.
 - **Không thêm design pattern (Strategy/Observer/Builder/Factory) khi 1 `if/else` hoặc 1 hàm rõ
