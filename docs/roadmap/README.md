@@ -17,7 +17,7 @@ có **streaming** khi chat/chạy graph.
 | Multi-tier orchestrator (sub-agent gọi tiếp sub-agent khác) | ✅ Đã có (backend) | mở rộng ADR-0006, làm thẳng không qua ADR/spec riêng (quyết định của user) — xem `AgentService._creates_cycle` |
 | Orchestrator graph editor (canvas kiểu ReactFlow) | 🔜 Dự kiến — có mockup | chưa có `docs/features/` (mockup: `docs/mockups/`) |
 | SGLang provider (model tự host cạnh ollama/gemini/openai) | ✅ Đã có (backend) | mở rộng ADR-0007, `core/providers.py` (dùng `ChatOpenAI`/`OpenAIEmbeddings` trỏ `base_url`) |
-| Streaming (SSE) cho chat + graph run | 🔜 Spec accepted, chưa code | [`docs/features/chat-streaming.md`](../features/chat-streaming.md) |
+| Streaming (SSE) cho chat text | ✅ Đã có | [`docs/features/chat-streaming.md`](../features/chat-streaming.md) |
 | Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Backend + `apps/web` client đã code — chưa live-test với mic thật (sandbox preview chặn `getUserMedia`) | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
 | Knowledge base v2 (folder nested kiểu Google Drive, per-file chunking status, embedding dimension linh hoạt thay vì fix 768) | ✅ Đã có (backend) | làm thẳng không qua ADR/spec riêng (quyết định của user) — `KnowledgeFolder`/`KnowledgeFile`, migration `a1c2e3f4b5d6` |
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
@@ -95,6 +95,20 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       gì; giờ bắt riêng `ProviderConfigError` → 400 kèm message rõ ràng. (2) Gemini 2.5+ trả
       `AIMessage.content` dạng list content-block (thinking/signature) — code cũ `str(content)`
       in cả repr Python ra tin nhắn lưu DB; đã thêm `_extract_text()` chỉ lấy block `type=="text"`.
+- [x] Chat-streaming (SSE, [`docs/features/chat-streaming.md`](../features/chat-streaming.md)) —
+      `POST /conversations/{id}/chat` đổi từ JSON 1 lần sang `StreamingResponse` (`text/event-stream`),
+      dùng `graph.astream_events(version="v2")` (LangGraph hỗ trợ sẵn) để lấy token delta +
+      tool-call start/end khi orchestrator gọi sub-agent. Event: `delta`/`tool_call_start`/
+      `tool_call_end`/`error`/`done` — JSON đồng nhất cho mọi loại. Lỗi giữa lúc stream (thiếu
+      credential...) là 1 event `error`, không phải HTTP status khác (status 200 đã gửi trước khi
+      biết lỗi). `apps/web`: `useChatStream` đọc `response.body` bằng tay (không dùng
+      `EventSource` — chỉ hỗ trợ GET), thay hẳn `useSendMessage` (mutation JSON cũ, không giữ
+      song song). Test: `tests/unit/chat/test_chat_service.py` (2 case, mock executor). Bug thật
+      phát hiện qua live-test: `_extract_text()` fallback `str(content)` khi chunk rỗng làm rác
+      `"[]"` lẫn vào giữa stream — đã fix (trả rỗng thay vì stringify). Live-verify qua browser
+      thật: text hiện tăng dần, auto-scroll theo, persist đúng sau khi `done` (không lặp/thiếu).
+      **Chưa live-test nhánh tool_call_start/end với orchestrator thật** (chỉ có unit test mock —
+      chưa có agent nào có sub-agent delegation thật trong DB lúc test).
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -119,7 +133,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] Wire `Tool` (đã CRUD) vào chat execution thật — hiện agent có thể được gán tool qua `AgentTool` nhưng `chat/graph.py` chưa đọc danh sách đó để build LangGraph tool tương ứng (chỉ mới tool ẩn "gọi sub-agent" hoạt động)
 - [ ] Wire `KnowledgeBase` (đã CRUD + search) vào chat execution — agent có `AgentKnowledgeBase` nhưng chưa có tool RAG tự động tra KB trong lúc chat
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
-- [ ] Streaming: `apps/api` → client (SSE) cho cả chat thường và quá trình orchestrator gọi sub-agent
 - [ ] Tool thật tự viết (tham khảo pattern OpenJarvis, không import): GitHub search/read, MCP client (Jira/Confluence), tool chạy lệnh trên máy (có approval gate — ADR-0005)
 - [ ] Live Voice Agent — spec chuyển "accepted" (2026-08-24, xem
       [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md)). `apps/api` module
