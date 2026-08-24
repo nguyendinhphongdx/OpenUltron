@@ -201,6 +201,22 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       duyệt với đúng argument `{a:15,b:27}` (tên arg lấy đúng từ schema thật) → approve → kết quả
       **42** đúng qua stdio subprocess thật; config trỏ tool không tồn tại trên server → agent vẫn
       chat bình thường (thiếu đúng 1 tool, không crash turn).
+- [x] **Wire KnowledgeBase vào chat execution — RAG tool tự động** (2026-08-24,
+      [`docs/features/knowledge-base-chat-wiring.md`](../features/knowledge-base-chat-wiring.md))
+      — agent (top-level hoặc sub-agent, đa tầng) có N `KnowledgeBase` đã gán qua
+      `AgentKnowledgeBase` → tự động có N tool `search-knowledge-base-{slug}` trong graph, KHÔNG
+      cần tạo `Tool` row hay config gì thêm — điều kiện duy nhất là đã gán KB (UI/API cũ).
+      `chat/graph.py::_build_kb_search_tool` gọi `KnowledgeBaseService.search` có sẵn (không viết
+      lại logic), không đi qua `Tool`/`ToolBuilder` registry (ADR-0013 — KB gán qua quan hệ riêng,
+      cùng cách tool "delegate sub-agent" cũng không đi qua registry đó). **Refactor đi kèm**:
+      `ChatService.resolve_context()` đổi từ tuple trần sang dataclass `ChatContext` — tuple trần
+      chính là nguyên nhân bug thật vừa fix ở voice module (unpack sai số lượng, lỗi âm thầm);
+      thêm field thứ 5 (`knowledge_bases`) là đúng lúc sửa luôn cho an toàn hơn (dataclass buộc gọi
+      qua tên field). **Live-verify thật (không mock)**: tạo KB thật + 1 chunk ("mật khẩu wifi..."),
+      gán cho agent, chat hỏi đúng câu liên quan → agent tự gọi
+      `search-knowledge-base-test-kb`, trả lời đúng chunk; agent không có KB nào vẫn chat bình
+      thường (không lỗi, không tool rỗng); voice module (đã đổi call site sang `ChatContext`) vẫn
+      chạy đúng sau refactor.
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -208,7 +224,7 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
   - Module `model` — resource Model (provider ollama/gemini/openai/**sglang** + model_id + base_url), factory `core/providers.py` build đúng LangChain class theo provider (sglang dùng `ChatOpenAI`/`OpenAIEmbeddings` trỏ `base_url`, tương thích OpenAI API)
   - Module `settings` — `AppSettings` singleton (`default_model_id`, `default_agent_id`), sửa qua `PATCH /settings`, dùng làm fallback khi conversation không gán agent
   - Module `tool` — CRUD Tool + `AgentTool` (gán tool theo từng agent, `POST/GET/DELETE /agents/{id}/tools`)
-  - Module `knowledge_base` — CRUD KnowledgeBase + `KnowledgeChunk` (pgvector, **dimension linh hoạt** — không fix 768 nữa) + `AgentKnowledgeBase`; **`KnowledgeFolder`** (nested kiểu Google Drive) + **`KnowledgeFile`** (`status`: pending/chunking/done/error) mới; `POST /knowledge-bases/{id}/chunks` (auto-embed, không gắn file — tương thích ngược) và `POST .../files/{id}/chunks` (gắn file, cập nhật status); `POST /knowledge-bases/{id}/search` (cosine distance). Migration `a1c2e3f4b5d6` **chưa chạy thật** (chưa có Postgres/uv sync verify được trong môi trường hiện tại — cần `uv run alembic upgrade head` khi có DB)
+  - Module `knowledge_base` — CRUD KnowledgeBase + `KnowledgeChunk` (pgvector, **dimension linh hoạt** — không fix 768 nữa) + `AgentKnowledgeBase`; **`KnowledgeFolder`** (nested kiểu Google Drive) + **`KnowledgeFile`** (`status`: pending/chunking/done/error) mới; `POST /knowledge-bases/{id}/chunks` (auto-embed, không gắn file — tương thích ngược) và `POST .../files/{id}/chunks` (gắn file, cập nhật status); `POST /knowledge-bases/{id}/search` (cosine distance). Migration `a1c2e3f4b5d6` **đã verify chạy thật** (2026-08-24, `uv run alembic current` xác nhận head hiện tại `f1a2b3c4d5e6` nằm sau nó trong chain)
   - **Verify thật (không mock)**: tạo Model (ollama qwen3.5:4b + nomic-embed-text) → tạo Agent tham chiếu model_id → set `AppSettings.default_model_id` → chat qua conversation không gán agent (fallback settings) trả đúng response → tạo KB + 2 chunk thật (embedding qua Ollama) → search phân biệt đúng theo semantic (chunk liên quan score 0.22, chunk không liên quan score 0.60) → gán Tool + KB vào 1 agent cụ thể qua API
   - **Đã verify trước đó**: orchestrator (`boss-agent`) + sub-agent (`echo-agent`) qua `AgentDelegation`, orchestrator gọi đúng sub-agent qua LangGraph tool (không ổn định 100% — model nhỏ đôi khi không gọi tool dù system prompt yêu cầu, ghi nhận là giới hạn thật)
 - [x] `apps/web` — Next.js 15 + React 19 + Tailwind v4, theo convention [`docs/conventions/02-frontend-nextjs.md`](../conventions/02-frontend-nextjs.md). Feature `conversation`/`agent`/`model`/`tool`/`knowledge-base`/`settings` (UI CRUD phẳng: list/form), layering `types→services→hooks→components`, gọi thẳng `apps/api`. `pnpm build`/`typecheck`/`dev` đã verify chạy được (chưa nối `apps/api` thật lúc dev — cần `uv run fastapi dev` song song)
@@ -228,7 +244,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       nên tách riêng, không làm ngầm trong 1 feature nhỏ. Cài Vitest cho `apps/web` (chưa cài).
 - [ ] **OpenAI/SGLang provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `OPENAI_API_KEY` hay SGLang server chạy để test thật. **Gemini đã live-test** (2026-08-24, credential thêm qua UI): chat text (`gemini-3.7-flash`) và Voice (xem "Đã xong" ADR-0009) đều chạy đúng qua provider adapter.
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
-- [ ] Wire `KnowledgeBase` (đã CRUD + search) vào chat execution — agent có `AgentKnowledgeBase` nhưng chưa có tool RAG tự động tra KB trong lúc chat
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
 - [ ] Live Voice Agent — spec chuyển "accepted" (2026-08-24, xem
       [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md)). `apps/api` module
@@ -271,7 +286,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       Gemini Live mới.
 - [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
-- [ ] Migration `a1c2e3f4b5d6` chưa verify chạy thật trên Postgres — cần `uv run alembic upgrade head` khi có DB + môi trường `uv sync` hoạt động
 - [ ] `apps/mobile` — Expo (React Native)
 - [ ] `apps/desktop` — Tauri
 - [ ] Channel điện thoại: chọn 1 trong Telegram/WhatsApp làm kênh chính
