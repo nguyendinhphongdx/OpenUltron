@@ -93,23 +93,19 @@ class VoiceService:
         # code, không để HTTPException lọt qua exception handler HTTP (ghi JSON response lên
         # transport websocket → uvicorn raise, client nhận socket chết không rõ lý do).
         try:
-            (
-                system_prompt,
-                _model,
-                sub_agents,
-                _tool_specs,
-            ) = await self.chat_service.resolve_context(conversation_id)
+            ctx = await self.chat_service.resolve_context(conversation_id)
         except Exception as exc:
             logger.warning("voice.session_rejected", conversation_id=conversation_id, exc_info=exc)
             await websocket.close(code=ws_status.WS_1008_POLICY_VIOLATION)
             return
 
         await websocket.accept()
+        sub_agents = ctx.sub_agents
 
         try:
             client = GeminiLiveClient(
                 model=_GEMINI_LIVE_MODEL,
-                system_instruction=system_prompt + _VOICE_LANGUAGE_INSTRUCTION,
+                system_instruction=ctx.system_prompt + _VOICE_LANGUAGE_INSTRUCTION,
                 tools=_tool_declarations(sub_agents),
             )
             # Session DB ngắn hạn chỉ để tra credential Gemini (ADR-0010) — không phải session

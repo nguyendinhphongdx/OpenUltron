@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -11,6 +12,7 @@ from app.modules.agent.schemas import AgentRead
 from app.modules.agent.service import AgentService
 from app.modules.chat.graph import (
     MAX_DELEGATION_DEPTH,
+    KnowledgeBaseSpec,
     ModelConfig,
     SubAgentSpec,
     build_agent_executor,
@@ -19,6 +21,8 @@ from app.modules.conversation.message.schemas import MessageCreate
 from app.modules.conversation.message.service import MessageService
 from app.modules.conversation.models import Message
 from app.modules.conversation.service import ConversationService
+from app.modules.knowledge_base.schemas import KnowledgeBaseRead
+from app.modules.knowledge_base.service import KnowledgeBaseService
 from app.modules.model.models import Model
 from app.modules.model.service import ModelService
 from app.modules.settings.service import SettingsService
@@ -53,6 +57,10 @@ def _to_tool_spec(row: ToolRead) -> ToolSpec:
         kind=row.kind,
         config=row.config,
     )
+
+
+def _to_kb_spec(row: KnowledgeBaseRead) -> KnowledgeBaseSpec:
+    return KnowledgeBaseSpec(id=row.id, slug=row.slug, name=row.name, description=row.description)
 
 
 def _extract_text(content: str | list) -> str:
@@ -100,6 +108,20 @@ def _to_langchain(row: Message) -> BaseMessage | None:
     return None  # role == "tool" — chưa nạp vào history model, graph tool state riêng
 
 
+@dataclass
+class ChatContext:
+    """Kết quả `ChatService.resolve_context()` — dataclass (field có tên), KHÔNG phải tuple trần.
+    Lý do đổi (2026-08-24): tuple trần từng gây bug thật ở voice module (unpack sai số lượng khi
+    thêm `tool_specs` sau, lỗi âm thầm không ai báo lúc build/lint) — dataclass buộc gọi qua tên
+    field, thêm field mới không làm hỏng ngầm call site cũ."""
+
+    system_prompt: str
+    model: ModelConfig
+    sub_agents: list[SubAgentSpec]
+    tools: list[ToolSpec]
+    knowledge_bases: list[KnowledgeBaseSpec]
+
+
 class ChatService:
     """Chạy 1 turn: lưu user message, resolve agent+model (ADR-0006/0007), gọi graph, lưu."""
 
@@ -111,6 +133,7 @@ class ChatService:
         settings_service: SettingsService,
         message_service: MessageService,
         tool_service: ToolService,
+        kb_service: KnowledgeBaseService,
         session: AsyncSession,
     ) -> None:
         self.conversation_service = conversation_service
@@ -119,6 +142,7 @@ class ChatService:
         self.settings_service = settings_service
         self.message_service = message_service
         self.tool_service = tool_service
+        self.kb_service = kb_service
         self.session = session  # dùng để tra credential provider (ADR-0010) khi build chat model
 
     async def _resolve_sub_agent_spec(self, agent: AgentRead, *, depth: int = 0) -> SubAgentSpec:
@@ -132,6 +156,7 @@ class ChatService:
                 for sa in await self.agent_service.list_sub_agents(agent.id)
             ]
         tool_reads = await self.tool_service.list_for_agent(agent.id)
+        kb_reads = await self.kb_service.list_for_agent(agent.id)
         return SubAgentSpec(
             slug=agent.slug,
             description=agent.description,
@@ -139,6 +164,7 @@ class ChatService:
             model=_to_config(model_row),
             sub_agents=sub_agents,
             tools=[_to_tool_spec(t) for t in tool_reads],
+            knowledge_bases=[_to_kb_spec(kb) for kb in kb_reads],
         )
 
     async def _resolve_default_model(self) -> ModelConfig:
@@ -149,17 +175,17 @@ class ChatService:
                 return _to_config(model_row)
         return _bootstrap_model()
 
-    async def resolve_context(
-        self, conversation_id: int
-    ) -> tuple[str, ModelConfig, list[SubAgentSpec], list[ToolSpec]]:
-        """(system_prompt, model, sub_agent_specs, tool_specs) cho 1 conversation — dùng lại được
-        ở bất kỳ transport nào cần chạy agent cho conversation đó (chat text ở `send()`, hoặc voice
-        module — ADR-0009 — không tự resolve lại agent/model riêng cho voice). `tool_specs` là tool
-        gán trực tiếp cho agent top-level (ADR-0013) — khác `sub_agent_specs[*].tools`."""
+    async def resolve_context(self, conversation_id: int) -> ChatContext:
+        """Context đầy đủ cho 1 conversation — dùng lại được ở bất kỳ transport nào cần chạy agent
+        cho conversation đó (chat text ở `send()`, hoặc voice module — ADR-0009 — không tự resolve
+        lại agent/model riêng cho voice). `tools`/`knowledge_bases` là tool/KB gán trực tiếp cho
+        agent top-level (ADR-0013/docs/features/knowledge-base-chat-wiring.md) — khác
+        `sub_agents[*].tools`/`sub_agents[*].knowledge_bases`."""
         conversation = await self.conversation_service.get_or_404(conversation_id)
 
         sub_agent_specs: list[SubAgentSpec] = []
         tool_specs: list[ToolSpec] = []
+        kb_specs: list[KnowledgeBaseSpec] = []
         if conversation.agent_id is not None:
             # ON DELETE SET NULL không xoá conversation nên agent chắc chắn còn tồn tại;
             # vẫn dùng get_or_404 (qua AgentService) thay vì assert cho phòng thủ chắc chắn hơn.
@@ -168,6 +194,8 @@ class ChatService:
             system_prompt, model = agent.system_prompt, _to_config(model_row)
             tool_reads = await self.tool_service.list_for_agent(agent.id)
             tool_specs = [_to_tool_spec(t) for t in tool_reads]
+            kb_reads = await self.kb_service.list_for_agent(agent.id)
+            kb_specs = [_to_kb_spec(kb) for kb in kb_reads]
             if agent.is_orchestrator:
                 sub_agent_specs = [
                     await self._resolve_sub_agent_spec(sa)
@@ -175,7 +203,13 @@ class ChatService:
                 ]
         else:
             system_prompt, model = DEFAULT_SYSTEM_PROMPT, await self._resolve_default_model()
-        return system_prompt, model, sub_agent_specs, tool_specs
+        return ChatContext(
+            system_prompt=system_prompt,
+            model=model,
+            sub_agents=sub_agent_specs,
+            tools=tool_specs,
+            knowledge_bases=kb_specs,
+        )
 
     async def _run_turn(
         self, conversation_id: int, executor: Any, config: dict[str, Any], input_data: Any
@@ -222,9 +256,7 @@ class ChatService:
         response dạng stream, status 200 đã gửi cho client trước khi ta có thể biết lỗi (FastAPI
         gửi `http.response.start` trước khi lấy chunk đầu từ body iterator) — mọi lỗi phải là 1
         event `error` trong stream, không phải HTTP status khác."""
-        system_prompt, model, sub_agent_specs, tool_specs = await self.resolve_context(
-            conversation_id
-        )
+        ctx = await self.resolve_context(conversation_id)
 
         history_rows = await self.message_service.list_all(conversation_id)
         history = [m for row in history_rows if (m := _to_langchain(row)) is not None]
@@ -236,10 +268,11 @@ class ChatService:
         config = {"configurable": {"thread_id": str(conversation_id)}}
         try:
             executor = await build_agent_executor(
-                system_prompt=system_prompt,
-                model=model,
-                sub_agents=sub_agent_specs,
-                tools=tool_specs,
+                system_prompt=ctx.system_prompt,
+                model=ctx.model,
+                sub_agents=ctx.sub_agents,
+                tools=ctx.tools,
+                knowledge_bases=ctx.knowledge_bases,
                 session=self.session,
             )
             async for event in self._run_turn(
@@ -264,16 +297,15 @@ class ChatService:
         `"approve"`/`"reject"`. Build lại executor từ context hiện tại (giống `send()`) — graph là
         stateless, state thật nằm ở checkpointer (`thread_id` = `conversation_id`), executor mới
         build lại vẫn resume đúng miễn tools/model không đổi giữa lúc pause và lúc duyệt."""
-        system_prompt, model, sub_agent_specs, tool_specs = await self.resolve_context(
-            conversation_id
-        )
+        ctx = await self.resolve_context(conversation_id)
         config = {"configurable": {"thread_id": str(conversation_id)}}
         try:
             executor = await build_agent_executor(
-                system_prompt=system_prompt,
-                model=model,
-                sub_agents=sub_agent_specs,
-                tools=tool_specs,
+                system_prompt=ctx.system_prompt,
+                model=ctx.model,
+                sub_agents=ctx.sub_agents,
+                tools=ctx.tools,
+                knowledge_bases=ctx.knowledge_bases,
                 session=self.session,
             )
             resume_input = Command(resume={"decisions": [{"type": decision}]})

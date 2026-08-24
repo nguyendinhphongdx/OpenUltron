@@ -28,6 +28,18 @@ class ModelConfig:
 
 
 @dataclass
+class KnowledgeBaseSpec:
+    """DTO thuần — tách graph khỏi ORM `KnowledgeBase`. KB gán cho agent qua `AgentKnowledgeBase`
+    (quan hệ riêng, khác `Tool`/`AgentTool` — ADR-0013), map trực tiếp sang 1 tool RAG tự động
+    trong `_build_kb_search_tool`, không đi qua `ToolBuilder` registry."""
+
+    id: int
+    slug: str
+    name: str
+    description: str | None
+
+
+@dataclass
 class SubAgentSpec:
     """DTO thuần — tách graph khỏi ORM `Agent` (ADR-0006/0007). Đa tầng: 1 sub-agent có thể tự nó
     là orchestrator của các sub-agent khác (`sub_agents`), đệ quy tới khi hết cây delegation.
@@ -39,6 +51,7 @@ class SubAgentSpec:
     model: ModelConfig
     sub_agents: list[SubAgentSpec] = field(default_factory=list)
     tools: list[ToolSpec] = field(default_factory=list)
+    knowledge_bases: list[KnowledgeBaseSpec] = field(default_factory=list)
 
 
 async def run_sub_agent(
@@ -60,15 +73,56 @@ async def run_sub_agent(
         else []
     )
     own_tools = await build_tools(sub_agent.tools, session=session)
+    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in sub_agent.knowledge_bases]
     # KHÔNG gắn checkpointer/middleware approval gate (ADR-0014) ở đây có chủ đích — sub-agent
     # chạy đồng bộ bên trong 1 lần gọi tool của agent cha (`_build_sub_agent_tool`), pause lồng
     # trong lúc agent cha đang chạy là bài toán phức tạp hơn hẳn (nested interrupt), ngoài phạm vi
     # spec `tool-approval-gate.md` — chỉ áp gate cho tool của agent top-level.
     executor = create_agent(
-        chat_model, tools=[*own_tools, *nested_tools], system_prompt=sub_agent.system_prompt
+        chat_model,
+        tools=[*own_tools, *nested_tools, *kb_tools],
+        system_prompt=sub_agent.system_prompt,
     )
     result = await executor.ainvoke({"messages": [HumanMessage(content=task)]})
     return str(result["messages"][-1].content)
+
+
+_KB_SEARCH_TOP_K = 3
+
+
+def _build_kb_search_tool(kb: KnowledgeBaseSpec, *, session: AsyncSession):
+    """Tool RAG tự động cho 1 `KnowledgeBase` đã gán agent
+    (docs/features/knowledge-base-chat-wiring.md) — không đi qua `Tool`/`ToolBuilder` registry
+    (ADR-0013), KB gán qua `AgentKnowledgeBase`, khác cơ chế `Tool` do user tự tạo. Build
+    `KnowledgeBaseService` inline từ `session` (cùng pattern
+    `app/core/providers.py::get_provider_api_key` — lazy import tránh vòng import module)."""
+
+    @tool(
+        f"search-knowledge-base-{kb.slug}",
+        description=(
+            f"Tìm thông tin liên quan trong knowledge base '{kb.name}'"
+            + (f" — {kb.description}" if kb.description else "")
+        ),
+    )
+    async def _search(query: str) -> str:
+        from app.modules.agent.repository import AgentRepository
+        from app.modules.agent.service import AgentService
+        from app.modules.knowledge_base.repository import KnowledgeBaseRepository
+        from app.modules.knowledge_base.service import KnowledgeBaseService
+        from app.modules.model.repository import ModelRepository
+        from app.modules.model.service import ModelService
+
+        model_service = ModelService(ModelRepository(session))
+        agent_service = AgentService(AgentRepository(session), model_service)
+        kb_service = KnowledgeBaseService(
+            KnowledgeBaseRepository(session), model_service, agent_service
+        )
+        results = await kb_service.search(kb.id, query, top_k=_KB_SEARCH_TOP_K)
+        if not results:
+            return "Không tìm thấy thông tin liên quan trong knowledge base."
+        return "\n\n---\n\n".join(r.chunk.content for r in results)
+
+    return _search
 
 
 def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, session: AsyncSession, depth: int = 0):
@@ -106,18 +160,21 @@ async def build_agent_executor(
     model: ModelConfig,
     sub_agents: list[SubAgentSpec],
     tools: list[ToolSpec],
+    knowledge_bases: list[KnowledgeBaseSpec],
     session: AsyncSession,
 ) -> CompiledStateGraph:
     """Graph cho 1 turn — orchestrator có thêm tool gọi sub-agent (ADR-0006) + tool thật gán trực
-    tiếp cho agent top-level (`tools`, ADR-0013). `session` dùng để tra credential provider
-    (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới. `checkpointer` (ADR-0014)
-    luôn gắn — rẻ, không ảnh hưởng turn không có tool cần duyệt; chỉ tool trong
-    `TOOLS_REQUIRING_APPROVAL` mới thực sự pause."""
+    tiếp cho agent top-level (`tools`, ADR-0013) + tool RAG tự động cho KB đã gán
+    (`knowledge_bases`, docs/features/knowledge-base-chat-wiring.md). `session` dùng để tra
+    credential provider (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới.
+    `checkpointer` (ADR-0014) luôn gắn — rẻ, không ảnh hưởng turn không có tool cần duyệt; chỉ tool
+    trong `TOOLS_REQUIRING_APPROVAL` mới thực sự pause."""
     chat_model = await build_chat_model(
         provider=model.provider, model_id=model.model_id, base_url=model.base_url, session=session
     )
     sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
-    all_tools = [*(await build_tools(tools, session=session)), *sub_agent_tools]
+    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in knowledge_bases]
+    all_tools = [*(await build_tools(tools, session=session)), *sub_agent_tools, *kb_tools]
     return create_agent(
         chat_model,
         tools=all_tools,

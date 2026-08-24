@@ -6,6 +6,7 @@ from fastapi import status as ws_status
 
 import app.modules.voice.service as voice_service_module
 from app.modules.chat.graph import ModelConfig
+from app.modules.chat.service import ChatContext
 from app.modules.voice.events import Interrupted, TranscriptDelta, TurnComplete
 from app.modules.voice.service import VoiceService
 
@@ -37,8 +38,14 @@ class FakeChatService:
     def __init__(self, history_rows: list | None = None) -> None:
         self.message_service = FakeMessageService(history_rows)
 
-    async def resolve_context(self, conversation_id: int):
-        return "system prompt", ModelConfig(provider="gemini", model_id="test-model"), [], []
+    async def resolve_context(self, conversation_id: int) -> ChatContext:
+        return ChatContext(
+            system_prompt="system prompt",
+            model=ModelConfig(provider="gemini", model_id="test-model"),
+            sub_agents=[],
+            tools=[],
+            knowledge_bases=[],
+        )
 
 
 class FakeWebSocket:
@@ -68,13 +75,14 @@ class FakeWebSocket:
 
 
 @pytest.mark.asyncio
-async def test_run_unpacks_resolve_context_four_tuple_without_raising(
+async def test_run_reaches_gemini_connect_after_resolving_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Trước fix: unpack sai số lượng → `except Exception` nuốt `ValueError`, đóng socket với
-    code 1008 TRƯỚC accept() — không bao giờ tới bước connect Gemini. Sau fix: accept() phải được
-    gọi (đi qua được bước resolve_context) rồi mới tới bước connect Gemini (mock để raise ngay,
-    giữ test hermetic — không gọi Gemini/DB thật) — đủ để xác nhận unpack không còn raise."""
+    """`resolve_context()` từng trả tuple trần — bug thật (unpack sai số lượng) khiến `run()`
+    luôn reject trước `accept()`. Đã đổi sang `ChatContext` (dataclass, ADR ghi ở
+    `docs/features/knowledge-base-chat-wiring.md`) nên lớp bug đó không còn khả năng xảy ra; giữ
+    test này như smoke test happy-path: `accept()` phải được gọi rồi mới tới bước connect Gemini
+    (mock để raise ngay, giữ test hermetic — không gọi Gemini/DB thật)."""
 
     class RaisingGeminiLiveClient:
         def __init__(self, **kwargs: object) -> None:

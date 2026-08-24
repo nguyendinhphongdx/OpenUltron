@@ -11,6 +11,8 @@ from app.modules.conversation.deps import get_conversation_service
 from app.modules.conversation.message.deps import get_message_service
 from app.modules.conversation.message.service import MessageService
 from app.modules.conversation.service import ConversationService
+from app.modules.knowledge_base.deps import get_kb_service
+from app.modules.knowledge_base.service import KnowledgeBaseService
 from app.modules.model.deps import get_model_service
 from app.modules.model.service import ModelService
 from app.modules.settings.deps import get_settings_service
@@ -26,6 +28,7 @@ def get_chat_service(
     settings_service: Annotated[SettingsService, Depends(get_settings_service)],
     message_service: Annotated[MessageService, Depends(get_message_service)],
     tool_service: Annotated[ToolService, Depends(get_tool_service)],
+    kb_service: Annotated[KnowledgeBaseService, Depends(get_kb_service)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ChatService:
     return ChatService(
@@ -35,6 +38,7 @@ def get_chat_service(
         settings_service,
         message_service,
         tool_service,
+        kb_service,
         session,
     )
 

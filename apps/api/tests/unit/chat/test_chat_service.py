@@ -5,7 +5,7 @@ import pytest
 import app.modules.chat.service as chat_service_module
 from app.core.provider_adapter import ProviderConfigError
 from app.modules.chat.graph import ModelConfig
-from app.modules.chat.service import ChatService
+from app.modules.chat.service import ChatContext, ChatService
 from app.modules.conversation.message.schemas import MessageCreate
 
 
@@ -43,6 +43,14 @@ class FakeToolService:
         return []
 
 
+class FakeKbService:
+    """Cùng lý do `FakeToolService` — `ChatService.__init__` cần 1 giá trị hợp lệ, thực tế không
+    được gọi vì `resolve_context` bị monkeypatch."""
+
+    async def list_for_agent(self, agent_id: int) -> list:
+        return []
+
+
 class FakeState:
     def __init__(self, *, next_nodes: tuple = (), interrupt_value: dict | None = None) -> None:
         self.next = next_nodes
@@ -74,11 +82,18 @@ def _make_service(message_service: FakeMessageService) -> ChatService:
         settings_service=None,  # type: ignore[arg-type]
         message_service=message_service,
         tool_service=FakeToolService(),  # type: ignore[arg-type]
+        kb_service=FakeKbService(),  # type: ignore[arg-type]
         session=None,  # type: ignore[arg-type]
     )
 
-    async def fake_resolve_context(conversation_id: int):
-        return "system prompt", ModelConfig(provider="ollama", model_id="test-model"), [], []
+    async def fake_resolve_context(conversation_id: int) -> ChatContext:
+        return ChatContext(
+            system_prompt="system prompt",
+            model=ModelConfig(provider="ollama", model_id="test-model"),
+            sub_agents=[],
+            tools=[],
+            knowledge_bases=[],
+        )
 
     service.resolve_context = fake_resolve_context  # type: ignore[method-assign]
     return service
