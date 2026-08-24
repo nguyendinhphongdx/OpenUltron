@@ -35,10 +35,12 @@ class GeminiLiveClient:
     """Tự viết WebSocket client cho Gemini Live — KHÔNG dùng SDK `google-genai` (ADR-0009).
 
     Protocol theo docs/research/live-voice-agent.md (đọc từ https://ai.google.dev/api/live).
-    Vài chi tiết tài liệu không nêu tường minh (shape chính xác `realtimeInput.audio` blob,
-    `goAway.timeLeft` là proto3 Duration string) giữ nguyên dạng raw/comment rõ — **chưa
-    live-test với GEMINI_API_KEY thật** (giống các provider khác trong `core/providers.py`, xem
-    roadmap). Chạy thật + sửa lại theo lỗi thật trước khi coi module `voice` là done.
+    **Đã live-test với GEMINI_API_KEY thật (2026-08-24)** qua text fallback (`send_text` — chưa
+    test nhánh audio input `send_audio_chunk`, chưa có client capture audio thật ở `apps/web`):
+    connect → setup → setupComplete, transcript + audio delta model trả về đúng, turnComplete
+    bắn đúng lúc, transcript flush vào `messages` sạch (không còn rác thinking/signature — xem
+    `_map_message`). `goAway.timeLeft` (proto3 Duration string, vd `"3600s"`) và shape
+    `realtimeInput.audio` chưa exercise trong lần test này (chỉ text fallback).
     """
 
     def __init__(

@@ -13,7 +13,8 @@ async def voice_session(
 ) -> None:
     """Relay 1 voice session — browser audio (PCM binary frame) ↔ Gemini Live (ADR-0009).
 
-    Bản đầu: chưa live-test với `GEMINI_API_KEY` thật (xem `gemini_live_client.py`), chưa có
+    Đã live-test qua text fallback với `GEMINI_API_KEY` thật (xem `gemini_live_client.py`) — nhánh
+    audio binary frame chưa test (chưa có client capture audio thật ở `apps/web`). Chưa có
     approval-gate riêng cho tool chạy lệnh máy (ADR-0005) — `run_sub_agent` chỉ delegate sub-agent,
     không đụng tool có side-effect nguy hiểm.
     """

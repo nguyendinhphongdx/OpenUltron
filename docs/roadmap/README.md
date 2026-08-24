@@ -18,10 +18,11 @@ có **streaming** khi chat/chạy graph.
 | Orchestrator graph editor (canvas kiểu ReactFlow) | 🔜 Dự kiến — có mockup | chưa có `docs/features/` (mockup: `docs/mockups/`) |
 | SGLang provider (model tự host cạnh ollama/gemini/openai) | ✅ Đã có (backend) | mở rộng ADR-0007, `core/providers.py` (dùng `ChatOpenAI`/`OpenAIEmbeddings` trỏ `base_url`) |
 | Streaming (SSE) cho chat + graph run | 🔜 Dự kiến | chưa có `docs/features/` |
-| Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Dự kiến — spec draft, kiến trúc đã chốt (tự code protocol, không dùng SDK) | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
+| Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Backend đã live-test (text fallback) — `apps/web` client audio capture chưa code | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
 | Knowledge base v2 (folder nested kiểu Google Drive, per-file chunking status, embedding dimension linh hoạt thay vì fix 768) | ✅ Đã có (backend) | làm thẳng không qua ADR/spec riêng (quyết định của user) — `KnowledgeFolder`/`KnowledgeFile`, migration `a1c2e3f4b5d6` |
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
+| Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
 
 Feature mới nào không nhỏ → viết `docs/features/<slug>.md` (skill `feature-spec` / `/spec`) trước,
 cập nhật link ở bảng trên, rồi mới code — xem `.claude/hooks/session-start.mjs`.
@@ -46,10 +47,12 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       transcript khi lỗi/transaction giữ mở, exception nuốt lặng lẽ, frame text làm crash session,
       conversation_id sai làm vỡ giao thức ASGI, thiếu `generationConfig.responseModalities`/
       transcription trong `setup` khiến transcript không thể sinh ra, API key lộ qua query
-      string). **Chưa live-test với `GEMINI_API_KEY` thật** (không có key trong môi trường hiện
-      tại) — cần chạy thật trước khi coi module này là done, đặc biệt xác nhận đúng field
-      `setup`/`realtimeInput.audio` (tài liệu không nêu tường minh 100%, xem
-      `docs/research/live-voice-agent.md`). `apps/web` (client capture audio) **chưa code**.
+      string). **Đã live-test với `GEMINI_API_KEY` thật (2026-08-24)** qua text fallback
+      (`send_text`, không phải audio thật): connect → setup → setupComplete, transcript + audio
+      delta model trả đúng, `turnComplete` bắn đúng lúc, transcript flush vào `messages` sạch.
+      Nhánh audio input thật (`realtimeInput.audio` blob, `goAway.timeLeft`) **chưa exercise** —
+      cần client capture audio thật ở `apps/web` (Web Audio API/AudioWorklet, **chưa code**) mới
+      test được hết, xem `docs/research/live-voice-agent.md`.
 - [x] ADR-0010 — quyết định đảo ngược 1 phần ADR-0007: lưu API key provider (Gemini/OpenAI) trong
       DB (entity `Credential`, mã hoá AES-256-GCM với 1 key duy nhất từ `APP_ENCRYPTION_KEY`), thay
       vì chỉ `.env`. Động lực: đổi key phải sửa `.env` + restart tay, bug thật
@@ -72,6 +75,26 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       `installed` tự refresh sau khi pull xong. Qua `code-reviewer` (0 blocker, 4 warning đã fix:
       `EventSource` cleanup khi unmount, `list_installed` báo lỗi network rõ ràng thay vì 500 mù,
       validate query param `model`, thêm test `tests/unit/ollama/`).
+- [x] ADR-0012 + `provider_adapter.py` — 1 `Protocol` (`build_chat_model`/`build_embeddings`/
+      `test_connection`) + registry dict thay if/elif lặp ở `core/providers.py` và
+      `credential/service.py` (đúng threshold "adapter khi ≥2 call site lặp", không abstract
+      speculative). Mở rộng `model_catalog.py`: thêm Gemini 3.x series (`gemini-3.7-flash` đến
+      `gemini-3.1-flash-lite`, `gemini-3.1-pro-preview`, `gemini-3-flash-preview`) +
+      `gemini-embedding-001` (capability xác nhận qua model card chính thức Google, 2026-08-23).
+      Model catalog hosted (gemini/openai) được **seed sẵn vào DB** qua Alembic migration
+      (`f1a2b3c4d5e6`) — AgentForm/Settings chọn thẳng, không cần user tự tạo `Model` cho từng
+      model hosted (chỉ tự tạo cho self-host: ollama/sglang, vì cần khai `base_url`).
+      `apps/web`: `ModelCatalogPanel` browse catalog + capability badge (kể cả badge
+      "embedding"), `ModelForm` gợi ý Model ID qua `<datalist>` (lọc theo `is_embedding` đang
+      chọn). Tiện thể fix bug hệ thống `@base-ui/react` Select's `SelectValue` hiện raw ID thay
+      vì label (5 file). Qua `code-reviewer` (0 blocker, 2 warning đã fix: mismatch `is_embedding`
+      FE/BE, thiếu test cho registry/endpoint — đã thêm `tests/unit/core/test_provider_adapter.py`
+      + `test_model_catalog.py` + `tests/unit/model/test_router.py`, 13 case). Live-test chat thật
+      sau khi thêm credential Gemini qua UI phát hiện thêm 2 bug: (1) lỗi cấu hình (thiếu
+      credential) bị nhét chung vào nhánh 502 "Model không phản hồi được" — user không biết sửa
+      gì; giờ bắt riêng `ProviderConfigError` → 400 kèm message rõ ràng. (2) Gemini 2.5+ trả
+      `AIMessage.content` dạng list content-block (thinking/signature) — code cũ `str(content)`
+      in cả repr Python ra tin nhắn lưu DB; đã thêm `_extract_text()` chỉ lấy block `type=="text"`.
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -91,23 +114,22 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       (xem [ADR-0008](../adr/0008-testing-logging-foundations.md) +
       [04-error-handling.md](../conventions/04-error-handling.md)); logging + unit test đầu tiên
       đã xong (xem mục "Đã xong"). Cài Vitest cho `apps/web` (chưa cài).
-- [ ] **Gemini/OpenAI/SGLang provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `GEMINI_API_KEY`/`OPENAI_API_KEY` hay SGLang server chạy để test thật. Cần test khi có.
+- [ ] **OpenAI/SGLang provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `OPENAI_API_KEY` hay SGLang server chạy để test thật. **Gemini đã live-test** (2026-08-24, credential thêm qua UI): chat text (`gemini-3.7-flash`) và Voice (xem "Đã xong" ADR-0009) đều chạy đúng qua provider adapter.
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
 - [ ] Wire `Tool` (đã CRUD) vào chat execution thật — hiện agent có thể được gán tool qua `AgentTool` nhưng `chat/graph.py` chưa đọc danh sách đó để build LangGraph tool tương ứng (chỉ mới tool ẩn "gọi sub-agent" hoạt động)
 - [ ] Wire `KnowledgeBase` (đã CRUD + search) vào chat execution — agent có `AgentKnowledgeBase` nhưng chưa có tool RAG tự động tra KB trong lúc chat
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
 - [ ] Streaming: `apps/api` → client (SSE) cho cả chat thường và quá trình orchestrator gọi sub-agent
 - [ ] Tool thật tự viết (tham khảo pattern OpenJarvis, không import): GitHub search/read, MCP client (Jira/Confluence), tool chạy lệnh trên máy (có approval gate — ADR-0005)
-- [ ] Live Voice Agent — `apps/api` module `voice` đã code (xem "Đã xong"), còn: live-test với
-      `GEMINI_API_KEY` thật, client audio capture (`apps/web` — Web Audio API/AudioWorklet gửi PCM
-      qua WebSocket, **chưa code**), UI state `listening/thinking/speaking/using_tool` (spec có,
-      protocol hiện tại mới có `transcript`/`interrupted`/`turn_complete`, chưa có `state` event —
-      cần thêm hoặc quyết derive ở client). Theo
-      [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md) và
+- [ ] Live Voice Agent — `apps/api` module `voice` đã code + đã live-test với `GEMINI_API_KEY`
+      thật qua text fallback (xem "Đã xong", 2026-08-24). Còn: client audio capture (`apps/web` —
+      Web Audio API/AudioWorklet gửi PCM qua WebSocket, **chưa code**) — cần để test nhánh audio
+      input thật (`realtimeInput.audio`, `goAway.timeLeft`); UI state
+      `listening/thinking/speaking/using_tool` (spec có, protocol hiện tại mới có
+      `transcript`/`interrupted`/`turn_complete`, chưa có `state` event — cần thêm hoặc quyết
+      derive ở client). Theo [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md) và
       [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md) — còn 1 câu hỏi mở
-      chưa quyết (có lưu file audio hay chỉ transcript); text fallback đã có đường dẫn code
-      (`send_text` được gọi khi browser gửi text frame) nhưng chưa live-test.
-      trước hoặc trong lúc code.
+      chưa quyết (có lưu file audio hay chỉ transcript).
 - [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
 - [ ] Migration `a1c2e3f4b5d6` chưa verify chạy thật trên Postgres — cần `uv run alembic upgrade head` khi có DB + môi trường `uv sync` hoạt động
