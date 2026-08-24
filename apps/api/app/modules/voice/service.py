@@ -29,6 +29,11 @@ _GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-latest"
 
 VoiceState = Literal["listening", "thinking", "speaking", "using_tool"]
 
+# Chỉ áp cho voice (không sửa `agent.system_prompt` dùng chung với chat text — text chat vẫn
+# linh hoạt đa ngôn ngữ theo ngôn ngữ user gõ). User yêu cầu (2026-08-24): chỉ nghe hiểu tiếng
+# Việt, ép model luôn trả lời tiếng Việt trong voice session bất kể user nói ngôn ngữ nào.
+_VOICE_LANGUAGE_INSTRUCTION = "\n\nLuôn trả lời bằng tiếng Việt, bất kể user nói/gõ ngôn ngữ nào."
+
 
 def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[dict]:
     """Khai cho Gemini Live biết agent orchestrator có thể delegate sub-agent nào. Chỉ khai tool ở
@@ -80,7 +85,7 @@ class VoiceService:
         try:
             client = GeminiLiveClient(
                 model=_GEMINI_LIVE_MODEL,
-                system_instruction=system_prompt,
+                system_instruction=system_prompt + _VOICE_LANGUAGE_INSTRUCTION,
                 tools=_tool_declarations(sub_agents),
             )
             # Session DB ngắn hạn chỉ để tra credential Gemini (ADR-0010) — không phải session
