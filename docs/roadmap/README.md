@@ -130,6 +130,21 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       2026-08-24): approval-gate mechanism cho tool chạy lệnh trên máy (cần thiết kế riêng, an
       toàn hơn hết), builtin tool thật (GitHub search/read; tạo file/thực thi lệnh máy — phụ
       thuộc approval-gate), MCP client generic (user tự khai server tuỳ ý).
+- [x] **Approval-gate mechanism** (ADR-0014,
+      [`docs/features/tool-approval-gate.md`](../features/tool-approval-gate.md)) — quyết định
+      chủ đích ở mục Wire Tool phía trên coi đây là "ngoài phạm vi", làm ngay sau đó cùng ngày.
+      Dùng `HumanInTheLoopMiddleware` (`langchain.agents.middleware`, tương thích trực tiếp
+      `create_agent`) + `AsyncPostgresSaver` (`langgraph-checkpoint-postgres`, đã là dependency có
+      sẵn từ trước, giờ đã wire — `.setup()` lúc app khởi động, tự tạo bảng riêng ngoài Alembic).
+      `chat/service.py::ChatService._run_turn` — sau `astream_events` phải tự `aget_state()` để
+      biết graph pause chưa (không có event tường minh — xác nhận qua research + live-test thật).
+      Pause → SSE event `approval_required`; `POST /conversations/{id}/chat/approve` resume qua
+      `Command(resume=...)`. `apps/web`: card duyệt (tool name + argument JSON) + nút Duyệt/Từ
+      chối trong `MessageThread`. Verify bằng `approval-test-echo` (builtin tool test, echo
+      argument, không làm gì thật) — **live-test thật cả approve và reject** qua API + browser:
+      approve → tool chạy, model dùng kết quả; reject → tool không chạy, model biết bị từ chối.
+      Bug thật phát hiện + fix: message user hiện trùng lặp (optimistic + đã persist) nếu
+      react-query refetch trong lúc đang chờ duyệt (turn có thể kéo dài).
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -182,13 +197,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] User cần nhập lại API key Gemini/OpenAI qua UI mới (dialog Model & Credential) sau khi deploy
       — không auto-migrate từ `.env` cũ, quyết định có chủ đích
       ([ADR-0010](../adr/0010-provider-credential-in-db.md)).
-- [ ] **Approval-gate mechanism** — spec + ADR accepted (2026-08-24):
-      [`docs/features/tool-approval-gate.md`](../features/tool-approval-gate.md),
-      [ADR-0014](../adr/0014-tool-approval-gate.md). Dùng `HumanInTheLoopMiddleware`
-      (`langchain.agents.middleware`, tương thích `create_agent`) + `AsyncPostgresSaver`
-      (`langgraph-checkpoint-postgres`, đã là dependency có sẵn, chưa wire) làm checkpointer —
-      không tự viết pause/resume tay. Verify bằng 1 tool test tối giản trước khi có builtin tool
-      thật cần gate. Chưa code.
 - [ ] **Builtin tool thật**: GitHub search/read (rủi ro thấp hơn, không cần approval-gate) + tạo
       file/thực thi lệnh trên máy (rủi ro cao, **phụ thuộc approval-gate ở trên xong trước**) —
       dùng `BuiltinToolBuilder` đã có chỗ đứng ở `tool/builder.py` (ADR-0013), viết implementation
