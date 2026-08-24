@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+import { VoicePanel } from '@/features/voice';
+
 import { ConversationHeader } from './ConversationHeader';
 import { MessageComposer } from './MessageComposer';
 import { MessageThread } from './MessageThread';
@@ -15,6 +17,7 @@ export function ConversationView({ conversationId }: { conversationId: number })
       <div className="flex-1 overflow-y-auto">
         <MessageThread conversationId={conversationId} pendingText={pendingText} />
       </div>
+      <VoicePanel conversationId={conversationId} />
       <MessageComposer conversationId={conversationId} onPendingChange={setPendingText} />
     </div>
   );
