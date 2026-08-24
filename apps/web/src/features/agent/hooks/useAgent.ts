@@ -12,6 +12,6 @@ export function useAgent(id: number) {
   return useQuery({
     queryKey: agentQueryKey(id),
     queryFn: () => agentService.get(id),
-    enabled: Number.isFinite(id),
+    enabled: id > 0,
   });
 }

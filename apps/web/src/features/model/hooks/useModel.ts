@@ -9,6 +9,6 @@ export function useModel(id: number) {
   return useQuery({
     queryKey: [...MODELS_QUERY_KEY, id],
     queryFn: () => modelService.get(id),
-    enabled: Number.isFinite(id),
+    enabled: id > 0,
   });
 }
