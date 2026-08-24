@@ -18,7 +18,7 @@ có **streaming** khi chat/chạy graph.
 | Orchestrator graph editor (canvas kiểu ReactFlow) | 🔜 Dự kiến — có mockup | chưa có `docs/features/` (mockup: `docs/mockups/`) |
 | SGLang provider (model tự host cạnh ollama/gemini/openai) | ✅ Đã có (backend) | mở rộng ADR-0007, `core/providers.py` (dùng `ChatOpenAI`/`OpenAIEmbeddings` trỏ `base_url`) |
 | Streaming (SSE) cho chat + graph run | 🔜 Dự kiến | chưa có `docs/features/` |
-| Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Backend đã live-test (text fallback) — `apps/web` client audio capture chưa code | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
+| Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Backend + `apps/web` client đã code — chưa live-test với mic thật (sandbox preview chặn `getUserMedia`) | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
 | Knowledge base v2 (folder nested kiểu Google Drive, per-file chunking status, embedding dimension linh hoạt thay vì fix 768) | ✅ Đã có (backend) | làm thẳng không qua ADR/spec riêng (quyết định của user) — `KnowledgeFolder`/`KnowledgeFile`, migration `a1c2e3f4b5d6` |
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
@@ -121,15 +121,19 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
 - [ ] Streaming: `apps/api` → client (SSE) cho cả chat thường và quá trình orchestrator gọi sub-agent
 - [ ] Tool thật tự viết (tham khảo pattern OpenJarvis, không import): GitHub search/read, MCP client (Jira/Confluence), tool chạy lệnh trên máy (có approval gate — ADR-0005)
-- [ ] Live Voice Agent — `apps/api` module `voice` đã code + đã live-test với `GEMINI_API_KEY`
-      thật qua text fallback (xem "Đã xong", 2026-08-24). Còn: client audio capture (`apps/web` —
-      Web Audio API/AudioWorklet gửi PCM qua WebSocket, **chưa code**) — cần để test nhánh audio
-      input thật (`realtimeInput.audio`, `goAway.timeLeft`); UI state
-      `listening/thinking/speaking/using_tool` (spec có, protocol hiện tại mới có
-      `transcript`/`interrupted`/`turn_complete`, chưa có `state` event — cần thêm hoặc quyết
-      derive ở client). Theo [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md) và
-      [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md) — còn 1 câu hỏi mở
-      chưa quyết (có lưu file audio hay chỉ transcript).
+- [ ] Live Voice Agent — spec chuyển "accepted" (2026-08-24, xem
+      [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md)). `apps/api` module
+      `voice` đã có event `state` (listening/thinking/speaking/using_tool, suy từ event Gemini có
+      sẵn — xem "Đã xong"). `apps/web`: `features/voice/` mới — `useVoiceSession` (mic capture qua
+      AudioWorklet 16kHz PCM → WebSocket, playback audio model 24kHz PCM qua Web Audio API,
+      barge-in dừng playback khi nhận `interrupted`) + `VoicePanel` (nút start/stop, state,
+      transcript live) nhúng vào `ConversationView`. **Chưa live-test với mic thật** — sandbox
+      preview trong Claude Code chặn `getUserMedia`, chỉ verify được: connect/graceful error khi
+      permission denied, không verify được audio capture/playback thật. Cần test tay trên browser
+      thật (Chrome/Safari, HTTPS hoặc localhost) trước khi coi module `voice` full-duplex là done —
+      đặc biệt: worklet có convert đúng PCM không, playback có khớp 24kHz không lệch tốc độ/pitch,
+      barge-in có phản hồi đúng lúc không. Theo
+      [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md).
 - [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
 - [ ] Migration `a1c2e3f4b5d6` chưa verify chạy thật trên Postgres — cần `uv run alembic upgrade head` khi có DB + môi trường `uv sync` hoạt động
