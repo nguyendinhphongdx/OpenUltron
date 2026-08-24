@@ -199,9 +199,19 @@ class VoiceService:
                     await set_state("listening")
                     await websocket.send_json({"type": "interrupted"})
                 elif isinstance(event, TurnComplete):
-                    await self._flush_transcript(conversation_id, transcript_buffer)
+                    # Gemini bắn `turnComplete` khá "nhạy" — kể cả khi user chỉ ngắt lời AI giữa
+                    # câu (barge-in: `interrupted` + `turnComplete` cùng lúc) hoặc khi VAD đoán
+                    # user dừng nói nhưng model không trả lời gì. Nếu chốt (flush) mù theo mọi
+                    # `turnComplete`, nói tiếp sau đó bị tính là 1 `Message` MỚI, tách rời — user
+                    # thấy nhiều bubble rời rạc dù thực ra model (cùng 1 session Gemini Live) vẫn
+                    # nhớ nguyên vẹn, chỉ là tầng lưu DB/hiển thị bị cắt vụn (bug thật, phát hiện
+                    # qua feedback user 2026-08-24). Chỉ chốt + báo client khi model ĐÃ thật sự trả
+                    # lời — user nói tiếp mà chưa có phản hồi thì gộp tiếp vào cùng buffer, không
+                    # tạo turn mới.
+                    if transcript_buffer["model"]:
+                        await self._flush_transcript(conversation_id, transcript_buffer)
+                        await websocket.send_json({"type": "turn_complete"})
                     await set_state("listening")
-                    await websocket.send_json({"type": "turn_complete"})
                 elif isinstance(event, ToolCallRequested):
                     # Chạy tool ở background — không chặn audio/transcript đang chảy trong lúc
                     # sub-agent (LangGraph) xử lý, có thể tốn vài giây (spec: "vừa nói vừa chạy
@@ -241,6 +251,9 @@ class VoiceService:
             for task in [*tasks, *pending_tool_calls.values()]:
                 task.cancel()
             await asyncio.gather(*tasks, *pending_tool_calls.values(), return_exceptions=True)
+            # Buffer có thể còn transcript chưa chốt (turn cuối chưa có phản hồi model lúc session
+            # kết thúc, xem nhánh TurnComplete phía trên) — flush lần cuối để không mất trắng.
+            await self._flush_transcript(conversation_id, transcript_buffer)
             logger.info("voice.session_ended", conversation_id=conversation_id)
 
     async def _flush_transcript(self, conversation_id: int, buffer: dict[str, list[str]]) -> None:

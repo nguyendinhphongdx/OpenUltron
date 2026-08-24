@@ -1,8 +1,11 @@
+import asyncio
+
 import pytest
 from fastapi import status as ws_status
 
 import app.modules.voice.service as voice_service_module
 from app.modules.chat.graph import ModelConfig
+from app.modules.voice.events import Interrupted, TranscriptDelta, TurnComplete
 from app.modules.voice.service import VoiceService
 
 
@@ -21,12 +24,26 @@ class FakeWebSocket:
     def __init__(self) -> None:
         self.closed_with_code: int | None = None
         self.accepted = False
+        self.sent_json: list[dict] = []
 
     async def accept(self) -> None:
         self.accepted = True
 
     async def close(self, code: int) -> None:
         self.closed_with_code = code
+
+    async def send_json(self, payload: dict) -> None:
+        self.sent_json.append(payload)
+
+    async def send_bytes(self, data: bytes) -> None:
+        pass
+
+    async def receive(self) -> dict:
+        # Không có audio/text nào gửi lên trong test này — chặn vô hạn tới khi bị cancel() lúc
+        # `forward_gemini_to_browser` xong (đúng behaviour thật: chiều browser→Gemini chỉ dừng khi
+        # browser disconnect).
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
 
 
 @pytest.mark.asyncio
@@ -54,3 +71,54 @@ async def test_run_unpacks_resolve_context_four_tuple_without_raising(
 
     assert ws.accepted is True
     assert ws.closed_with_code == ws_status.WS_1011_INTERNAL_ERROR
+
+
+@pytest.mark.asyncio
+async def test_barge_in_does_not_split_user_turn_without_a_model_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bug thật (feedback user 2026-08-24): ngắt lời AI giữa câu (barge-in) rồi nói tiếp bị lưu
+    thành 2 `Message` user tách rời, dù trong cùng 1 session Gemini Live model không hề mất
+    context — do code cũ chốt (flush) transcript ngay khi có `TurnComplete`, kể cả khi
+    `TurnComplete` đi cùng `interrupted` (chưa có phản hồi thật). Sau fix: chỉ chốt khi model đã
+    thật sự trả lời — 2 đoạn user nói trước/sau khi ngắt lời AI phải gộp thành 1 `Message`."""
+
+    class FakeGeminiLiveClient:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def connect(self, session: object) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+        async def events(self):
+            # User nói "Cloud." → AI bắt đầu trả lời → user ngắt lời giữa câu (interrupted +
+            # turnComplete cùng lúc, đúng behaviour Gemini Live thật) → user nói tiếp "tiếp tục"
+            # → lần này AI trả lời thật → turnComplete thật.
+            yield TranscriptDelta(role="user", text="Cloud.")
+            yield Interrupted()
+            yield TurnComplete()
+            yield TranscriptDelta(role="user", text=" tiếp tục")
+            yield TranscriptDelta(role="model", text="Đã hiểu.")
+            yield TurnComplete()
+
+    monkeypatch.setattr(voice_service_module, "GeminiLiveClient", FakeGeminiLiveClient)
+
+    flush_calls: list[dict] = []
+
+    async def fake_flush(self: VoiceService, conversation_id: int, buffer: dict) -> None:
+        if buffer["user"] or buffer["model"]:
+            flush_calls.append({"user": list(buffer["user"]), "model": list(buffer["model"])})
+        buffer["user"].clear()
+        buffer["model"].clear()
+
+    monkeypatch.setattr(VoiceService, "_flush_transcript", fake_flush)
+
+    service = VoiceService(chat_service=FakeChatService())  # type: ignore[arg-type]
+    ws = FakeWebSocket()
+
+    await service.run(ws, conversation_id=1)  # type: ignore[arg-type]
+
+    assert flush_calls == [{"user": ["Cloud.", " tiếp tục"], "model": ["Đã hiểu."]}]

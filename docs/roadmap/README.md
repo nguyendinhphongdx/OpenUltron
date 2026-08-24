@@ -252,6 +252,17 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       `starlette.testclient.TestClient` (không cần mic thật) — xác nhận `voice.session_started`
       + nhận đúng `{"type":"state","value":"listening"}`; thêm regression test
       (`tests/unit/voice/test_voice_service.py`) xác nhận fail đúng lỗi này trước fix.
+      **Bug thứ 2 phát hiện + fix cùng ngày (feedback user)**: ngắt lời AI giữa câu (barge-in —
+      Gemini bắn `interrupted` + `turnComplete` cùng lúc) rồi nói tiếp bị lưu thành 2 `Message`
+      user tách rời, trông như model "quên" — thực ra model (cùng 1 session Gemini Live) không hề
+      mất context, chỉ là code cũ chốt (flush) transcript mù theo mọi `turnComplete` kể cả khi
+      chưa có phản hồi thật của model. Sửa: chỉ chốt + báo `turn_complete` cho client khi
+      `transcript_buffer["model"]` thật sự có nội dung; nói tiếp mà chưa có phản hồi thì gộp vào
+      cùng buffer. Thêm flush cuối lúc session kết thúc (tránh mất trắng đoạn chưa chốt). Test
+      xác nhận: barge-in giữa câu rồi nói tiếp → gộp đúng thành 1 `Message` user (không phải 2).
+      **Còn 1 gap chưa fix** (nêu ra lúc debug, chưa làm): bắt đầu voice session MỚI (sau khi bấm
+      dừng) không nạp lại lịch sử hội thoại cũ (voice cũ + text chat cũ) vào `system_instruction`
+      của session Gemini Live mới — mất context thật giữa các lần bấm "Bắt đầu voice" riêng biệt.
 - [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
 - [ ] Migration `a1c2e3f4b5d6` chưa verify chạy thật trên Postgres — cần `uv run alembic upgrade head` khi có DB + môi trường `uv sync` hoạt động
