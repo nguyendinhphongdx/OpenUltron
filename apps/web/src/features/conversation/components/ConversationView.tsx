@@ -7,15 +7,15 @@ import { MessageComposer } from './MessageComposer';
 import { MessageThread } from './MessageThread';
 
 export function ConversationView({ conversationId }: { conversationId: number }) {
-  const [isAwaitingReply, setIsAwaitingReply] = useState(false);
+  const [pendingText, setPendingText] = useState<string | null>(null);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <ConversationHeader conversationId={conversationId} />
       <div className="flex-1 overflow-y-auto">
-        <MessageThread conversationId={conversationId} isAwaitingReply={isAwaitingReply} />
+        <MessageThread conversationId={conversationId} pendingText={pendingText} />
       </div>
-      <MessageComposer conversationId={conversationId} onPendingChange={setIsAwaitingReply} />
+      <MessageComposer conversationId={conversationId} onPendingChange={setPendingText} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
 
 import { getApiErrorMessage } from '@/lib/api';
@@ -9,21 +9,34 @@ import { useSendMessage } from '../hooks/useSendMessage';
 
 interface MessageComposerProps {
   conversationId: number;
-  /** Cho parent biết đang chờ response — dùng để hiện bubble "đang trả lời" ở `MessageThread`. */
-  onPendingChange?: (pending: boolean) => void;
+  /** Cho parent biết nội dung vừa gửi (hoặc `null` khi xong) — `MessageThread` render optimistic
+   * bubble ngay khi gửi, vì list message thật chỉ refetch sau khi cả round-trip (kể cả reply)
+   * xong (`useSendMessage`), không phải ngay lúc gửi. */
+  onPendingChange?: (pendingText: string | null) => void;
 }
+
+// Khớp `max-h-36` (144px) ở className textarea — giới hạn cao tối đa trước khi cuộn nội bộ.
+const COMPOSER_MAX_HEIGHT_PX = 144;
 
 export function MessageComposer({ conversationId, onPendingChange }: MessageComposerProps) {
   const [content, setContent] = useState('');
   const sendMessage = useSendMessage(conversationId);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX)}px`;
+  }, [content]);
 
   const submit = () => {
     const trimmed = content.trim();
     if (!trimmed || sendMessage.isPending) return;
-    onPendingChange?.(true);
+    onPendingChange?.(trimmed);
+    setContent('');
     sendMessage.mutate(trimmed, {
-      onSuccess: () => setContent(''),
-      onSettled: () => onPendingChange?.(false),
+      onSettled: () => onPendingChange?.(null),
     });
   };
 
@@ -47,13 +60,14 @@ export function MessageComposer({ conversationId, onPendingChange }: MessageComp
         )}
         <div className="flex items-end gap-2 rounded-2xl border border-border bg-muted px-4 py-2 focus-within:border-accent">
           <textarea
+            ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Nhắn gì đó…"
             rows={1}
             disabled={sendMessage.isPending}
-            className="max-h-36 min-h-6 flex-1 resize-none bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground"
+            className="max-h-36 min-h-6 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground"
           />
           <button
             type="submit"
