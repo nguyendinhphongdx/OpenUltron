@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  applyNodeChanges,
   Background,
   Controls,
   Handle,
@@ -9,6 +10,7 @@ import {
   ReactFlow,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -100,6 +102,15 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
   const { data: allAgents } = useAgents();
   const { data: models } = useModels();
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
+  // Vị trí node user tự kéo — auto-layout (`layout()`) chỉ dùng làm vị trí KHỞI TẠO; không lưu
+  // đè lên đây thì mọi re-render (vd đổi `selectedAgentId` lúc click chọn node) sẽ tính lại
+  // `nodes` từ đầu và snap ngược về vị trí auto-layout, y như kéo không có tác dụng gì (bug thật
+  // — ReactFlow là "controlled" component khi tự truyền `nodes` prop, cần tự lưu + merge lại vị
+  // trí qua `onNodesChange`, không tự nhớ giùm). Chỉ session hiện tại — chưa lưu xuống backend
+  // (Agent chưa có field toạ độ), mất khi rời trang; đủ cho nhu cầu "kéo sắp xếp lại lúc đang xem".
+  const [manualPositions, setManualPositions] = useState<Record<string, { x: number; y: number }>>(
+    {},
+  );
   const queryClient = useQueryClient();
 
   const addDelegation = useMutation({
@@ -129,7 +140,7 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
     const nodes: Node[] = out.map((p) => ({
       id: p.key,
       type: 'agentNode',
-      position: { x: p.x, y: p.y },
+      position: manualPositions[p.key] ?? { x: p.x, y: p.y },
       data: { agent: p.agent, modelLabel: modelLabel(p.agent.model_id) },
       selected: p.agent.id === selectedAgentId,
     }));
@@ -146,7 +157,16 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
 
     return { nodes, edges, positions: out };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, models, selectedAgentId]);
+  }, [tree, models, selectedAgentId, manualPositions]);
+
+  const handleNodesChange = (changes: NodeChange[]) => {
+    const updated = applyNodeChanges(changes, nodes);
+    setManualPositions((prev) => {
+      const next = { ...prev };
+      for (const n of updated) next[n.id] = n.position;
+      return next;
+    });
+  };
 
   if (isPending) return <LoadingState label="Đang tải graph…" />;
   if (isError || !tree) {
@@ -168,6 +188,7 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          onNodesChange={handleNodesChange}
           onNodeClick={(_, node) => {
             const pos = positions.find((p) => p.key === node.id);
             setSelectedAgentId(pos?.agent.id ?? null);
