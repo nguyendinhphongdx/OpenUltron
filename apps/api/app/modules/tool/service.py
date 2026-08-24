@@ -1,11 +1,27 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
+from typing import Any
 
+from fastapi import HTTPException, status
+from pydantic import ValidationError
+
+from app.core.errors import ValidationFailedError
 from app.modules.agent.service import AgentService
 from app.modules.tool.models import Tool
 from app.modules.tool.repository import ToolRepository
-from app.modules.tool.schemas import ToolCreate, ToolRead, ToolUpdate
+from app.modules.tool.schemas import HttpToolConfig, ToolCreate, ToolRead, ToolUpdate
+
+
+def _validate_config_for_kind(kind: str, config: dict[str, Any] | None) -> None:
+    """`kind=http` có contract cố định (`HttpToolConfig`, ADR-0013) — validate ở tầng service vì
+    `Tool.config` vẫn là cột JSONB tự do, Pydantic không tự chặn được ở request schema chung cho
+    mọi kind."""
+    if kind != "http":
+        return
+    try:
+        HttpToolConfig.model_validate(config or {})
+    except ValidationError as exc:
+        raise ValidationFailedError(f"config không hợp lệ cho tool kind=http: {exc}") from exc
 
 
 def tool_to_read(row: Tool) -> ToolRead:
@@ -31,6 +47,7 @@ class ToolService:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=f"Tool slug '{input.slug}' đã tồn tại"
             )
+        _validate_config_for_kind(input.kind, input.config)
         row = await self.repo.create(**input.model_dump())
         return tool_to_read(row)
 
@@ -52,6 +69,9 @@ class ToolService:
         row = await self.get_or_404(tool_id)
         for field, value in input.model_dump(exclude_unset=True).items():
             setattr(row, field, value)
+        # Validate dựa trên state cuối cùng của row (không phải `input` riêng) — request có thể
+        # chỉ đổi `config` mà không đổi `kind`, hoặc ngược lại.
+        _validate_config_for_kind(row.kind, row.config)
         return tool_to_read(row)
 
     async def remove(self, tool_id: int) -> None:

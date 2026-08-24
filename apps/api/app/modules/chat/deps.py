@@ -15,6 +15,8 @@ from app.modules.model.deps import get_model_service
 from app.modules.model.service import ModelService
 from app.modules.settings.deps import get_settings_service
 from app.modules.settings.service import SettingsService
+from app.modules.tool.deps import get_tool_service
+from app.modules.tool.service import ToolService
 
 
 def get_chat_service(
@@ -23,6 +25,7 @@ def get_chat_service(
     model_service: Annotated[ModelService, Depends(get_model_service)],
     settings_service: Annotated[SettingsService, Depends(get_settings_service)],
     message_service: Annotated[MessageService, Depends(get_message_service)],
+    tool_service: Annotated[ToolService, Depends(get_tool_service)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ChatService:
     return ChatService(
@@ -31,6 +34,7 @@ def get_chat_service(
         model_service,
         settings_service,
         message_service,
+        tool_service,
         session,
     )
 

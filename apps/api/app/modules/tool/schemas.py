@@ -6,6 +6,33 @@ from pydantic import BaseModel
 ToolKind = Literal["builtin", "mcp", "http"]
 
 
+class HttpKeyValue(BaseModel):
+    name: str
+    value: str
+
+
+class HttpToolAiParam(BaseModel):
+    name: str
+    description: str
+    type: Literal["string", "number", "boolean", "json"]
+
+
+class HttpToolRequest(BaseModel):
+    method: Literal["GET", "POST", "PUT", "DELETE"]
+    url: str
+    headers: list[HttpKeyValue] = []
+    query: list[HttpKeyValue] = []
+    body: dict[str, Any] | None = None  # JSON object, leaf string có thể chứa "{{param}}"
+
+
+class HttpToolConfig(BaseModel):
+    """Contract cho `Tool.config` khi `kind=http` (ADR-0013) — field name khớp UI form
+    (`docs/mockups/agent-tool-execution.html`), KHÔNG tự đổi tên."""
+
+    request: HttpToolRequest
+    ai_params: list[HttpToolAiParam] = []
+
+
 class ToolCreate(BaseModel):
     slug: str
     name: str

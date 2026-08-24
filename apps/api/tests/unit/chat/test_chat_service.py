@@ -35,6 +35,14 @@ class FakeMessageService:
         return row
 
 
+class FakeToolService:
+    """Chỉ cần `list_for_agent` — `resolve_context` bị monkeypatch qua `fake_resolve_context`
+    trong `_make_service`, nhưng `ChatService.__init__` vẫn cần 1 giá trị hợp lệ cho tham số này."""
+
+    async def list_for_agent(self, agent_id: int) -> list:
+        return []
+
+
 class FakeExecutor:
     def __init__(self, events: list[dict]) -> None:
         self._events = events
@@ -51,11 +59,12 @@ def _make_service(message_service: FakeMessageService) -> ChatService:
         model_service=None,  # type: ignore[arg-type]
         settings_service=None,  # type: ignore[arg-type]
         message_service=message_service,
+        tool_service=FakeToolService(),  # type: ignore[arg-type]
         session=None,  # type: ignore[arg-type]
     )
 
     async def fake_resolve_context(conversation_id: int):
-        return "system prompt", ModelConfig(provider="ollama", model_id="test-model"), []
+        return "system prompt", ModelConfig(provider="ollama", model_id="test-model"), [], []
 
     service.resolve_context = fake_resolve_context  # type: ignore[method-assign]
     return service

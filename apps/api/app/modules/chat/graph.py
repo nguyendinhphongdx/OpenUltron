@@ -9,6 +9,7 @@ from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.providers import build_chat_model
+from app.modules.tool.builder import ToolSpec, build_tools
 
 # Chặn đa tầng chạy vô hạn nếu lỡ có cycle lọt qua check ở AgentService (phòng thủ kép — check
 # chính vẫn là AgentService._creates_cycle lúc tạo AgentDelegation, đây chỉ là lưới an toàn).
@@ -35,6 +36,7 @@ class SubAgentSpec:
     system_prompt: str
     model: ModelConfig
     sub_agents: list[SubAgentSpec] = field(default_factory=list)
+    tools: list[ToolSpec] = field(default_factory=list)
 
 
 async def run_sub_agent(
@@ -55,7 +57,10 @@ async def run_sub_agent(
         if depth < MAX_DELEGATION_DEPTH
         else []
     )
-    executor = create_agent(chat_model, tools=nested_tools, system_prompt=sub_agent.system_prompt)
+    own_tools = build_tools(sub_agent.tools)
+    executor = create_agent(
+        chat_model, tools=[*own_tools, *nested_tools], system_prompt=sub_agent.system_prompt
+    )
     result = await executor.ainvoke({"messages": [HumanMessage(content=task)]})
     return str(result["messages"][-1].content)
 
@@ -73,12 +78,19 @@ def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, session: AsyncSession, dep
 
 
 async def build_agent_executor(
-    *, system_prompt: str, model: ModelConfig, sub_agents: list[SubAgentSpec], session: AsyncSession
+    *,
+    system_prompt: str,
+    model: ModelConfig,
+    sub_agents: list[SubAgentSpec],
+    tools: list[ToolSpec],
+    session: AsyncSession,
 ) -> CompiledStateGraph:
-    """Graph cho 1 turn — orchestrator có thêm tool gọi sub-agent (ADR-0006). `session` dùng để
-    tra credential provider (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới."""
+    """Graph cho 1 turn — orchestrator có thêm tool gọi sub-agent (ADR-0006) + tool thật gán trực
+    tiếp cho agent top-level (`tools`, ADR-0013). `session` dùng để tra credential provider
+    (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới."""
     chat_model = await build_chat_model(
         provider=model.provider, model_id=model.model_id, base_url=model.base_url, session=session
     )
-    tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
-    return create_agent(chat_model, tools=tools, system_prompt=system_prompt)
+    sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
+    all_tools = [*build_tools(tools), *sub_agent_tools]
+    return create_agent(chat_model, tools=all_tools, system_prompt=system_prompt)
