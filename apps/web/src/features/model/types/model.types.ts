@@ -18,6 +18,7 @@ export interface ModelCatalogEntry {
   model_id: string;
   label: string;
   capabilities: ModelCapabilities;
+  is_embedding: boolean;
 }
 
 export interface Model {

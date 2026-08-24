@@ -61,7 +61,9 @@ export function ModelForm({
   const modelIdSuggestions =
     provider === 'ollama'
       ? (installed ?? []).map((m) => ({ model_id: m.name, label: m.name }))
-      : (catalog ?? []).map((c) => ({ model_id: c.model_id, label: c.label }));
+      : (catalog ?? [])
+          .filter((c) => c.is_embedding === isEmbedding)
+          .map((c) => ({ model_id: c.model_id, label: c.label }));
 
   useEffect(() => {
     if (!model) return;

@@ -28,6 +28,7 @@ export function ModelCatalogPanel({ provider }: { provider: Provider }) {
           <p className="text-sm font-medium text-foreground">{entry.label}</p>
           <p className="text-xs text-muted-foreground">{entry.model_id}</p>
           <div className="mt-2 flex flex-wrap gap-1">
+            {entry.is_embedding && <Badge>embedding</Badge>}
             {entry.capabilities.tools && <Badge variant="secondary">tools</Badge>}
             {entry.capabilities.vision && <Badge variant="secondary">vision</Badge>}
             {entry.capabilities.json_mode && <Badge variant="secondary">json_mode</Badge>}
