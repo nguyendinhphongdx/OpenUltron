@@ -38,6 +38,21 @@ def _to_config(row: Model) -> ModelConfig:
     return ModelConfig(provider=row.provider, model_id=row.model_id, base_url=row.base_url)
 
 
+def _extract_text(content: str | list) -> str:
+    """`AIMessage.content` không phải luôn là `str` — model có "thinking"/tool-signature (Gemini
+    2.5+, ADR-0009) trả content dạng list content-block (`[{"type": "text", "text": "..."}, ...]`,
+    có thể kèm block `thinking`/`extras.signature` không phải text hiển thị). Chỉ nối các block
+    `type == "text"`; bug thật đã xảy ra: str(content) in ra cả repr Python của list/dict."""
+    if isinstance(content, str):
+        return content
+    parts = [
+        block["text"]
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    ]
+    return "".join(parts) if parts else str(content)
+
+
 def _to_langchain(row: Message) -> BaseMessage | None:
     if row.role == "system":
         return SystemMessage(content=row.content)
@@ -152,9 +167,7 @@ class ChatService:
                 detail=f"Model không phản hồi được: {exc}",
             ) from exc
         ai_message = result["messages"][-1]
-        assistant_content = (
-            ai_message.content if isinstance(ai_message.content, str) else str(ai_message.content)
-        )
+        assistant_content = _extract_text(ai_message.content)
 
         return await self.message_service.append(
             conversation_id, MessageCreate(role="assistant", content=assistant_content)
