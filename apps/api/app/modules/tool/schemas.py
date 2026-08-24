@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ToolKind = Literal["builtin", "mcp", "http"]
 
@@ -31,6 +31,27 @@ class HttpToolConfig(BaseModel):
 
     request: HttpToolRequest
     ai_params: list[HttpToolAiParam] = []
+
+
+class McpStdioServerConfig(BaseModel):
+    transport: Literal["stdio"] = "stdio"
+    command: str
+    args: list[str] = []
+
+
+class McpHttpServerConfig(BaseModel):
+    transport: Literal["http"] = "http"
+    url: str
+
+
+class McpToolConfig(BaseModel):
+    """Contract cho `Tool.config` khi `kind=mcp` (ADR-0017) — 1 `Tool` row = 1 tool cụ thể trên 1
+    MCP server cụ thể (`remote_tool_name`). Args schema KHÔNG khai ở đây — `McpToolBuilder` tự
+    discover qua `list_tools()` trên MCP server lúc build, không bắt user gõ tay lại như
+    `kind=http`."""
+
+    server: McpStdioServerConfig | McpHttpServerConfig = Field(discriminator="transport")
+    remote_tool_name: str
 
 
 class ToolCreate(BaseModel):

@@ -84,10 +84,13 @@ def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, session: AsyncSession, dep
 
 
 def _human_in_the_loop_middleware(tools: list[ToolSpec]) -> list[AgentMiddleware]:
-    """Approval gate (ADR-0014) — chỉ tool nằm trong `TOOLS_REQUIRING_APPROVAL` mới bị chặn chờ
-    duyệt; không có tool nào cần gate → không thêm middleware (không ảnh hưởng turn bình
-    thường)."""
-    gated = [t.slug for t in tools if t.slug in TOOLS_REQUIRING_APPROVAL]
+    """Approval gate (ADR-0014) — builtin tool nguy hiểm gate theo slug cố định
+    (`TOOLS_REQUIRING_APPROVAL`, biết trước vì Ultron tự viết). `kind=mcp` (ADR-0017) gate theo
+    `kind`, không theo slug — slug do user tự đặt tuỳ ý khi khai `Tool`, không thể liệt kê trước;
+    MCP server là process/dịch vụ ngoài, Ultron không biết trước nó làm gì nên mọi tool loại này
+    đều bắt buộc qua duyệt. Không có tool nào cần gate → không thêm middleware (không ảnh hưởng
+    turn bình thường)."""
+    gated = [t.slug for t in tools if t.slug in TOOLS_REQUIRING_APPROVAL or t.kind == "mcp"]
     if not gated:
         return []
     return [

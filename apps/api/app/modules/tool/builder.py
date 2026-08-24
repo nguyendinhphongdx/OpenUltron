@@ -18,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger
 from app.core.workspace import resolve_safe_path
 from app.modules.connector import github as github_connector
-from app.modules.tool.schemas import HttpToolConfig
+from app.modules.tool.schemas import (
+    HttpToolConfig,
+    McpHttpServerConfig,
+    McpStdioServerConfig,
+    McpToolConfig,
+)
 
 _HTTP_TIMEOUT_SECONDS = 30.0
 _MAX_RESPONSE_CHARS = 8000
@@ -294,11 +299,100 @@ async def _execute_sandboxed_command(command: str, cwd: str | None) -> str:
     return result[:_MAX_RESPONSE_CHARS]
 
 
+_JSON_SCHEMA_TYPE_MAP: dict[str, Any] = {
+    "string": str,
+    "integer": int,
+    "number": float,
+    "boolean": bool,
+    "array": list,
+    "object": dict,
+}
+
+
+def _mcp_transport(server: McpStdioServerConfig | McpHttpServerConfig) -> Any:
+    if server.transport == "stdio":
+        from mcp import StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        return stdio_client(StdioServerParameters(command=server.command, args=server.args))
+    return server.url
+
+
+def _args_schema_from_json_schema(name: str, input_schema: dict[str, Any]) -> type[BaseModel]:
+    """Convert JSON Schema thật của remote tool (`list_tools()`, ADR-0017) sang pydantic model —
+    KHÔNG bắt user tự khai lại như `kind=http`'s `ai_params`, MCP server đã tự chuẩn hoá schema."""
+    properties: dict[str, Any] = input_schema.get("properties", {})
+    required: set[str] = set(input_schema.get("required", []))
+    fields: dict[str, Any] = {}
+    for prop_name, prop_schema in properties.items():
+        python_type = _JSON_SCHEMA_TYPE_MAP.get(prop_schema.get("type"), Any)
+        description = prop_schema.get("description", "")
+        if prop_name in required:
+            fields[prop_name] = (python_type, Field(description=description))
+        else:
+            fields[prop_name] = (python_type | None, Field(default=None, description=description))
+    return create_model(f"{name}_mcp_args", **fields)
+
+
 class McpToolBuilder:
-    """`kind=mcp` — chưa implement (Non-goals của spec, roadmap riêng)."""
+    """`kind=mcp` (ADR-0017) — connect tới MCP server thật qua SDK chính thức (`mcp` package),
+    discover args schema qua `list_tools()`, gọi `call_tool()` khi agent invoke. Không giữ session
+    xuyên nhiều lần gọi — connect mới mỗi lần, cùng tinh thần `HttpToolBuilder`."""
 
     async def build(self, spec: ToolSpec, *, session: AsyncSession) -> BaseTool | None:
-        return None
+        from mcp import Client
+
+        try:
+            config = McpToolConfig.model_validate(spec.config or {})
+        except ValidationError as exc:
+            logger.warning("tool.mcp_build_invalid_config", tool_slug=spec.slug, error=str(exc))
+            return None
+
+        try:
+            async with Client(_mcp_transport(config.server)) as client:
+                remote_tools = await client.list_tools()
+        except Exception as exc:  # noqa: BLE001 — server ngoài, mọi lỗi kết nối đều hợp lệ ở đây
+            logger.warning("tool.mcp_server_unreachable", tool_slug=spec.slug, error=str(exc))
+            return None
+
+        remote_tool = next(
+            (t for t in remote_tools.tools if t.name == config.remote_tool_name), None
+        )
+        if remote_tool is None:
+            logger.warning(
+                "tool.mcp_remote_tool_not_found",
+                tool_slug=spec.slug,
+                remote_tool_name=config.remote_tool_name,
+            )
+            return None
+
+        args_schema = _args_schema_from_json_schema(spec.slug, remote_tool.input_schema)
+
+        async def _call(**kwargs: Any) -> str:
+            return await _call_mcp_tool(config, kwargs)
+
+        return StructuredTool.from_function(
+            coroutine=_call,
+            name=spec.slug,
+            description=spec.description or remote_tool.description or spec.name,
+            args_schema=args_schema,
+            handle_tool_error=True,
+        )
+
+
+async def _call_mcp_tool(config: McpToolConfig, params: dict[str, Any]) -> str:
+    from mcp import Client
+
+    try:
+        async with Client(_mcp_transport(config.server)) as client:
+            result = await client.call_tool(config.remote_tool_name, params)
+    except Exception as exc:  # noqa: BLE001 — server ngoài, trả lỗi rõ thay vì crash turn
+        return f"Không gọi được MCP tool '{config.remote_tool_name}': {exc}"
+
+    if result.is_error:
+        return f"MCP tool '{config.remote_tool_name}' lỗi: {result.content}"
+    output = str(result.structured_content) if result.structured_content else str(result.content)
+    return output[:_MAX_RESPONSE_CHARS]
 
 
 TOOL_BUILDERS: dict[str, ToolBuilder] = {
