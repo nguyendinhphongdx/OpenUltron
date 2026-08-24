@@ -1,4 +1,5 @@
 import asyncio
+from typing import Literal
 
 from fastapi import WebSocket
 from fastapi import status as ws_status
@@ -25,6 +26,8 @@ from app.modules.voice.gemini_live_client import GeminiLiveClient
 # thể đổi/rotate model Live theo thời gian — nếu lỗi "model not found for bidiGenerateContent",
 # gọi lại ListModels để lấy tên hiện hành thay vì đoán.
 _GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-latest"
+
+VoiceState = Literal["listening", "thinking", "speaking", "using_tool"]
 
 
 def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[dict]:
@@ -94,6 +97,24 @@ class VoiceService:
         logger.info("voice.session_started", conversation_id=conversation_id)
         transcript_buffer: dict[str, list[str]] = {"user": [], "model": []}
         pending_tool_calls: dict[str, asyncio.Task] = {}
+        # None (không phải "listening") để lần gọi set_state("listening") đầu tiên chắc chắn gửi
+        # được cho client — nếu khởi tạo sẵn "listening" thì lần gọi đầu bị no-op do so trùng giá
+        # trị (bug thật, phát hiện qua live-test: client không nhận được state đầu tiên).
+        state: VoiceState | None = None
+
+        async def set_state(new_state: VoiceState) -> None:
+            # Gemini Live không có event "state" tường minh — suy state từ event đã có (xem
+            # docs/features/live-voice-agent.md, "Câu hỏi mở"): audio/text input → thinking (chỉ
+            # với text, input audio là stream liên tục do server tự VAD nên không có mốc "user vừa
+            # nói xong" ở phía client); audio/transcript model → speaking; tool call → using_tool;
+            # interrupted/turn_complete → listening. Chỉ gửi khi thật sự đổi, tránh spam client.
+            nonlocal state
+            if new_state == state:
+                return
+            state = new_state
+            await websocket.send_json({"type": "state", "value": new_state})
+
+        await set_state("listening")
 
         async def forward_browser_to_gemini() -> None:
             while True:
@@ -104,6 +125,7 @@ class VoiceService:
                     await client.send_audio_chunk(message["bytes"])
                 elif message.get("text") is not None:
                     await client.send_text(message["text"])
+                    await set_state("thinking")
 
         async def handle_tool_call(event: ToolCallRequested) -> None:
             try:
@@ -136,12 +158,18 @@ class VoiceService:
                 await client.send_tool_result(event.call_id, {"error": str(exc)})
             finally:
                 pending_tool_calls.pop(event.call_id, None)
+                if not pending_tool_calls:
+                    # Hết tool call đang chờ — model sẽ tiếp tục xử lý kết quả trước khi nói tiếp.
+                    await set_state("thinking")
 
         async def forward_gemini_to_browser() -> None:
             async for event in client.events():
                 if isinstance(event, AudioDelta):
+                    await set_state("speaking")
                     await websocket.send_bytes(event.pcm)
                 elif isinstance(event, TranscriptDelta):
+                    if event.role == "model":
+                        await set_state("speaking")
                     transcript_buffer[event.role].append(event.text)
                     await websocket.send_json(
                         {"type": "transcript", "role": event.role, "text": event.text}
@@ -151,14 +179,17 @@ class VoiceService:
                     # không phải câu hoàn chỉnh, bỏ đi thay vì lưu như đã nói xong. Lời user vẫn
                     # giữ nguyên (không bị ảnh hưởng bởi việc agent bị ngắt).
                     transcript_buffer["model"].clear()
+                    await set_state("listening")
                     await websocket.send_json({"type": "interrupted"})
                 elif isinstance(event, TurnComplete):
                     await self._flush_transcript(conversation_id, transcript_buffer)
+                    await set_state("listening")
                     await websocket.send_json({"type": "turn_complete"})
                 elif isinstance(event, ToolCallRequested):
                     # Chạy tool ở background — không chặn audio/transcript đang chảy trong lúc
                     # sub-agent (LangGraph) xử lý, có thể tốn vài giây (spec: "vừa nói vừa chạy
                     # tool ở background").
+                    await set_state("using_tool")
                     pending_tool_calls[event.call_id] = asyncio.create_task(handle_tool_call(event))
                 elif isinstance(event, ToolCallCancelled):
                     task = pending_tool_calls.pop(event.call_id, None)
