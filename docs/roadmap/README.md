@@ -15,7 +15,7 @@ có **streaming** khi chat/chạy graph.
 | Agent/Model/Tool/KnowledgeBase (CRUD + gắn nhau qua FK/join-table) | ✅ Đã có | ADR-0006, ADR-0007 |
 | Chat trực tiếp với 1 agent (đơn hoặc orchestrator gọi sub-agent, đa tầng) | ✅ Đã có | ADR-0005, ADR-0006 |
 | Multi-tier orchestrator (sub-agent gọi tiếp sub-agent khác) | ✅ Đã có (backend) | mở rộng ADR-0006, làm thẳng không qua ADR/spec riêng (quyết định của user) — xem `AgentService._creates_cycle` |
-| Orchestrator graph editor (canvas kiểu ReactFlow) | 🔜 Dự kiến — có mockup | chưa có `docs/features/` (mockup: `docs/mockups/`) |
+| Orchestrator graph editor (canvas kiểu ReactFlow) | ✅ Đã có (`apps/web`) — roadmap trước đó ghi sai "chỉ có mockup", đã sửa 2026-08-25 | `OrchestratorCanvas.tsx` (`@xyflow/react`) — xem/thêm/gỡ delegation qua canvas; chưa có `docs/features/` riêng (mockup cũ: `docs/mockups/`) |
 | SGLang provider (model tự host cạnh ollama/gemini/openai) | ✅ Đã có (backend) | mở rộng ADR-0007, `core/providers.py` (dùng `ChatOpenAI`/`OpenAIEmbeddings` trỏ `base_url`) |
 | Streaming (SSE) cho chat text | ✅ Đã có | [`docs/features/chat-streaming.md`](../features/chat-streaming.md) |
 | Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Backend + `apps/web` client đã code — chưa live-test với mic thật (sandbox preview chặn `getUserMedia`) | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
@@ -201,6 +201,20 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       duyệt với đúng argument `{a:15,b:27}` (tên arg lấy đúng từ schema thật) → approve → kết quả
       **42** đúng qua stdio subprocess thật; config trỏ tool không tồn tại trên server → agent vẫn
       chat bình thường (thiếu đúng 1 tool, không crash turn).
+- [x] **Fix kéo node trong orchestrator canvas không lưu vị trí** (2026-08-25,
+      `OrchestratorCanvas.tsx`) — phát hiện qua feedback user: canvas orchestrator KHÔNG chỉ là
+      mockup như roadmap ghi trước đó (đã sửa dòng đó ở trên) — code thật đã có, chỉ có bug: truyền
+      `nodes` cho `<ReactFlow>` như giá trị `useMemo` derived (tính lại từ auto-layout mỗi render)
+      mà không có `onNodesChange` — ReactFlow coi đây là controlled component, mọi lần kéo bị snap
+      ngược lại auto-layout ngay khi có re-render tiếp theo (vd click chọn node khác). Sửa: thêm
+      state `manualPositions` + `onNodesChange` (`applyNodeChanges`, API chuẩn của
+      `@xyflow/react`) để giữ vị trí user tự kéo — chỉ trong session hiện tại (chưa có field toạ
+      độ ở `Agent` để lưu persistent, ngoài phạm vi fix này, cần quyết định riêng nếu muốn lưu
+      lâu dài). **Chưa live-verify được bằng browser thật** — lúc tự test, canvas node trong
+      Browser pane bị stuck ở `visibility:hidden` (nghi do `ResizeObserver` không fire trong môi
+      trường sandbox lúc đó, có vẻ là artifact riêng của công cụ test, không chắc phản ánh đúng
+      hành vi trên browser thật) — chỉ verify được qua typecheck/lint/đọc code, **cần user tự xác
+      nhận trên browser thật**.
 - [x] **Wire KnowledgeBase vào chat execution — RAG tool tự động** (2026-08-24,
       [`docs/features/knowledge-base-chat-wiring.md`](../features/knowledge-base-chat-wiring.md))
       — agent (top-level hoặc sub-agent, đa tầng) có N `KnowledgeBase` đã gán qua
@@ -284,7 +298,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       voice "Kết quả phép cộng vừa nãy là bao nhiêu?" trên 1 conversation đã có sẵn text-chat lịch
       sử ("...là 42") → model trả lời đúng "**42**" — xác nhận lịch sử cũ đã nạp đúng vào session
       Gemini Live mới.
-- [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
 - [ ] `apps/mobile` — Expo (React Native)
 - [ ] `apps/desktop` — Tauri
