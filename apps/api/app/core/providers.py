@@ -1,12 +1,14 @@
+"""Chỉ còn 2 việc: tra credential (DB, ADR-0010) và dispatch qua `ProviderAdapter` (ADR-0012).
+KHÔNG còn if/elif theo provider ở đây — chi tiết từng provider nằm trong
+`app/core/provider_adapter.py`, thêm provider mới sửa file đó, không sửa file này."""
+
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.provider_adapter import ProviderConfigError, get_provider
 
-
-class ProviderConfigError(RuntimeError):
-    """Thiếu config bắt buộc cho provider (vd API key/base_url)."""
+__all__ = ["ProviderConfigError", "build_chat_model", "build_embeddings", "get_provider_api_key"]
 
 
 async def get_provider_api_key(provider: str, session: AsyncSession) -> str | None:
@@ -22,79 +24,14 @@ async def get_provider_api_key(provider: str, session: AsyncSession) -> str | No
 async def build_chat_model(
     *, provider: str, model_id: str, base_url: str | None, session: AsyncSession
 ) -> BaseChatModel:
-    if provider == "ollama":
-        from langchain_ollama import ChatOllama
-
-        return ChatOllama(base_url=base_url or settings.ollama_base_url, model=model_id)
-
-    if provider == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        api_key = await get_provider_api_key("gemini", session)
-        if not api_key:
-            raise ProviderConfigError(
-                "Chưa có credential Gemini — thêm qua PUT /credentials/gemini"
-            )
-        return ChatGoogleGenerativeAI(model=model_id, google_api_key=api_key)
-
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI
-
-        api_key = await get_provider_api_key("openai", session)
-        if not api_key:
-            raise ProviderConfigError(
-                "Chưa có credential OpenAI — thêm qua PUT /credentials/openai"
-            )
-        return ChatOpenAI(model=model_id, api_key=api_key)
-
-    if provider == "sglang":
-        from langchain_openai import ChatOpenAI
-
-        # SGLang serve API tương thích OpenAI (self-host) — không cần API key thật.
-        if not base_url:
-            raise ProviderConfigError(
-                "Provider sglang cần base_url (địa chỉ SGLang server tự host)"
-            )
-        return ChatOpenAI(model=model_id, api_key="EMPTY", base_url=base_url)
-
-    raise ValueError(f"Unknown provider: {provider}")
+    adapter = get_provider(provider)
+    api_key = await get_provider_api_key(provider, session) if adapter.requires_credential else None
+    return adapter.build_chat_model(model_id=model_id, base_url=base_url, api_key=api_key)
 
 
 async def build_embeddings(
     *, provider: str, model_id: str, base_url: str | None, session: AsyncSession
 ) -> Embeddings:
-    if provider == "ollama":
-        from langchain_ollama import OllamaEmbeddings
-
-        return OllamaEmbeddings(base_url=base_url or settings.ollama_base_url, model=model_id)
-
-    if provider == "gemini":
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
-        api_key = await get_provider_api_key("gemini", session)
-        if not api_key:
-            raise ProviderConfigError(
-                "Chưa có credential Gemini — thêm qua PUT /credentials/gemini"
-            )
-        return GoogleGenerativeAIEmbeddings(model=model_id, google_api_key=api_key)
-
-    if provider == "openai":
-        from langchain_openai import OpenAIEmbeddings
-
-        api_key = await get_provider_api_key("openai", session)
-        if not api_key:
-            raise ProviderConfigError(
-                "Chưa có credential OpenAI — thêm qua PUT /credentials/openai"
-            )
-        return OpenAIEmbeddings(model=model_id, api_key=api_key)
-
-    if provider == "sglang":
-        from langchain_openai import OpenAIEmbeddings
-
-        if not base_url:
-            raise ProviderConfigError(
-                "Provider sglang cần base_url (địa chỉ SGLang server tự host)"
-            )
-        return OpenAIEmbeddings(model=model_id, api_key="EMPTY", base_url=base_url)
-
-    raise ValueError(f"Unknown embedding provider: {provider}")
+    adapter = get_provider(provider)
+    api_key = await get_provider_api_key(provider, session) if adapter.requires_credential else None
+    return adapter.build_embeddings(model_id=model_id, base_url=base_url, api_key=api_key)

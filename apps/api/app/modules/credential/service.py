@@ -2,17 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import httpx
 from fastapi import HTTPException, status
 
 from app.core import crypto
 from app.core.logging import logger
+from app.core.provider_adapter import CREDENTIAL_PROVIDERS, get_provider
 from app.modules.credential.models import Credential
 from app.modules.credential.repository import CredentialRepository
 from app.modules.credential.schemas import CredentialProvider, CredentialRead, CredentialUpsert
-
-_SUPPORTED_PROVIDERS: set[str] = {"gemini", "openai"}
-_TEST_CONNECTION_TIMEOUT_SECONDS = 5.0
 
 
 def _mask_key(plaintext: str) -> str:
@@ -37,37 +34,19 @@ class CredentialService:
         self.repo = repo
 
     def _ensure_supported(self, provider: str) -> None:
-        if provider not in _SUPPORTED_PROVIDERS:
+        if provider not in CREDENTIAL_PROVIDERS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     f"Provider '{provider}' không được hỗ trợ credential — chỉ nhận "
-                    f"{sorted(_SUPPORTED_PROVIDERS)} (ollama/sglang self-host, không cần key)"
+                    f"{sorted(CREDENTIAL_PROVIDERS)} (ollama/sglang self-host, không cần key)"
                 ),
             )
 
     async def _verify(self, provider: str, api_key: str) -> bool:
-        """Gọi thật API rẻ nhất của provider để xác nhận key hợp lệ — không raise nếu network
-        lỗi/timeout, chỉ trả False (ADR-0010: không lưu mù, nhưng cũng không chặn lưu vì lỗi
-        network tạm thời)."""
-        try:
-            async with httpx.AsyncClient(timeout=_TEST_CONNECTION_TIMEOUT_SECONDS) as client:
-                if provider == "gemini":
-                    response = await client.get(
-                        "https://generativelanguage.googleapis.com/v1beta/models",
-                        params={"key": api_key},
-                    )
-                else:  # openai
-                    response = await client.get(
-                        "https://api.openai.com/v1/models",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                    )
-            return response.status_code == 200
-        except httpx.HTTPError as exc:
-            logger.warning(
-                "credential.test_connection_network_error", provider=provider, error=str(exc)
-            )
-            return False
+        """Gọi thật API rẻ nhất của provider để xác nhận key hợp lệ (ADR-0012: logic thật nằm
+        trong `ProviderAdapter.test_connection`, không lặp lại if/elif provider ở đây)."""
+        return await get_provider(provider).test_connection(api_key)
 
     async def list(self) -> list[CredentialRead]:
         return [_to_read(r) for r in await self.repo.list()]

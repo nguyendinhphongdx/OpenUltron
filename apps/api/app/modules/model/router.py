@@ -1,7 +1,8 @@
 from fastapi import APIRouter, status
 
+from app.core.model_catalog import ModelCatalogEntry, list_by_provider
 from app.modules.model.deps import ModelServiceDep
-from app.modules.model.schemas import ModelCreate, ModelRead, ModelUpdate
+from app.modules.model.schemas import ModelCreate, ModelRead, ModelUpdate, Provider
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -14,6 +15,13 @@ async def create_model(body: ModelCreate, service: ModelServiceDep) -> ModelRead
 @router.get("", response_model=list[ModelRead])
 async def list_models(service: ModelServiceDep) -> list[ModelRead]:
     return await service.list()
+
+
+@router.get("/catalog", response_model=list[ModelCatalogEntry])
+async def get_model_catalog(provider: Provider) -> list[ModelCatalogEntry]:
+    """Catalog tĩnh model đã biết theo provider (ADR-0010) — route đặt TRƯỚC `/{model_id}` để
+    "catalog" không bị FastAPI match nhầm vào path param `model_id: int`."""
+    return list_by_provider(provider)
 
 
 @router.get("/{model_id}", response_model=ModelRead)
