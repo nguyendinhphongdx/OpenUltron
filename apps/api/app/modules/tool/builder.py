@@ -92,11 +92,32 @@ class HttpToolBuilder:
         )
 
 
+# Slug tool cần approval gate (ADR-0014) — hiện chỉ có 1 tool test để verify cơ chế pause/resume
+# thật qua UI trước khi có builtin tool nguy hiểm thật (roadmap riêng: GitHub search/read, tạo
+# file/thực thi lệnh máy). Thêm slug vào đây khi có tool thật cần duyệt trước khi chạy.
+APPROVAL_TEST_TOOL_SLUG = "approval-test-echo"
+TOOLS_REQUIRING_APPROVAL: frozenset[str] = frozenset({APPROVAL_TEST_TOOL_SLUG})
+
+
 class BuiltinToolBuilder:
-    """Chỗ đứng kiến trúc — chưa có builtin tool thật nào ở bản này (roadmap riêng)."""
+    """Chỗ đứng kiến trúc — chưa có builtin tool thật nào ở bản này (roadmap riêng), NGOẠI TRỪ 1
+    tool test cho approval gate (ADR-0014, `APPROVAL_TEST_TOOL_SLUG`) — echo lại argument, không
+    làm gì thật, chỉ để verify pause/resume qua UI."""
 
     def build(self, spec: ToolSpec) -> BaseTool | None:
-        return None
+        if spec.slug != APPROVAL_TEST_TOOL_SLUG:
+            return None
+
+        async def _echo(action: str) -> str:
+            return f"[approval-test] đã 'thực thi' (giả, không làm gì thật): {action}"
+
+        return StructuredTool.from_function(
+            coroutine=_echo,
+            name=spec.slug,
+            description=spec.description
+            or "Test tool cho approval gate (ADR-0014) — không làm gì thật, chỉ echo lại argument.",
+            handle_tool_error=True,
+        )
 
 
 class McpToolBuilder:

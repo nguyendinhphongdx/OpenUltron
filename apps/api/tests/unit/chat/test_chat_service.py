@@ -43,13 +43,27 @@ class FakeToolService:
         return []
 
 
-class FakeExecutor:
-    def __init__(self, events: list[dict]) -> None:
-        self._events = events
+class FakeState:
+    def __init__(self, *, next_nodes: tuple = (), interrupt_value: dict | None = None) -> None:
+        self.next = next_nodes
+        self.tasks = (
+            [SimpleNamespace(interrupts=[SimpleNamespace(value=interrupt_value)])]
+            if interrupt_value is not None
+            else []
+        )
 
-    async def astream_events(self, inputs: dict, version: str):
+
+class FakeExecutor:
+    def __init__(self, events: list[dict], *, state: FakeState | None = None) -> None:
+        self._events = events
+        self._state = state or FakeState()
+
+    async def astream_events(self, inputs: object, config: dict, version: str):
         for event in self._events:
             yield event
+
+    async def aget_state(self, config: dict) -> FakeState:
+        return self._state
 
 
 def _make_service(message_service: FakeMessageService) -> ChatService:
@@ -120,3 +134,63 @@ async def test_send_yields_error_event_on_provider_config_error(
     ]
     # User message vẫn persist (flush trước khi build executor) — không có assistant message.
     assert [m.role for m in message_service.appended] == ["user"]
+
+
+@pytest.mark.asyncio
+async def test_send_yields_approval_required_when_graph_pauses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Approval gate (ADR-0014) — `state.next` không rỗng nghĩa là graph pause chờ duyệt (xác
+    nhận qua live-test thật: `astream_events` không emit event tường minh cho việc này)."""
+    paused_state = FakeState(
+        next_nodes=("HumanInTheLoopMiddleware.after_model",),
+        interrupt_value={
+            "action_requests": [{"name": "approval-test-echo", "args": {"action": "rm -rf"}}]
+        },
+    )
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor([], state=paused_state)
+
+    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    service = _make_service(message_service)
+
+    received = [event async for event in service.send(1, "chạy tool nguy hiểm")]
+
+    assert received == [
+        {
+            "type": "approval_required",
+            "tool_name": "approval-test-echo",
+            "arguments": {"action": "rm -rf"},
+        }
+    ]
+    # Chưa có assistant message — turn chưa hoàn chỉnh, chỉ user message persist.
+    assert [m.role for m in message_service.appended] == ["user"]
+
+
+@pytest.mark.asyncio
+async def test_approve_resumes_and_persists_assistant_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = [
+        {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content="Đã xong")}}
+    ]
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor(events)
+
+    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    service = _make_service(message_service)
+
+    received = [event async for event in service.approve(1, "approve")]
+
+    assert received == [
+        {"type": "delta", "text": "Đã xong"},
+        {"type": "done", "message_id": 1, "seq": 1},
+    ]
+    # approve() không tự persist user message mới (không phải turn mới) — chỉ assistant.
+    assert [m.role for m in message_service.appended] == ["assistant"]

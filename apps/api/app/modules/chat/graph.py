@@ -3,13 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware, HumanInTheLoopMiddleware
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.checkpointer import get_checkpointer
 from app.core.providers import build_chat_model
-from app.modules.tool.builder import ToolSpec, build_tools
+from app.modules.tool.builder import TOOLS_REQUIRING_APPROVAL, ToolSpec, build_tools
 
 # Chặn đa tầng chạy vô hạn nếu lỡ có cycle lọt qua check ở AgentService (phòng thủ kép — check
 # chính vẫn là AgentService._creates_cycle lúc tạo AgentDelegation, đây chỉ là lưới an toàn).
@@ -58,6 +60,10 @@ async def run_sub_agent(
         else []
     )
     own_tools = build_tools(sub_agent.tools)
+    # KHÔNG gắn checkpointer/middleware approval gate (ADR-0014) ở đây có chủ đích — sub-agent
+    # chạy đồng bộ bên trong 1 lần gọi tool của agent cha (`_build_sub_agent_tool`), pause lồng
+    # trong lúc agent cha đang chạy là bài toán phức tạp hơn hẳn (nested interrupt), ngoài phạm vi
+    # spec `tool-approval-gate.md` — chỉ áp gate cho tool của agent top-level.
     executor = create_agent(
         chat_model, tools=[*own_tools, *nested_tools], system_prompt=sub_agent.system_prompt
     )
@@ -77,6 +83,20 @@ def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, session: AsyncSession, dep
     return _delegate
 
 
+def _human_in_the_loop_middleware(tools: list[ToolSpec]) -> list[AgentMiddleware]:
+    """Approval gate (ADR-0014) — chỉ tool nằm trong `TOOLS_REQUIRING_APPROVAL` mới bị chặn chờ
+    duyệt; không có tool nào cần gate → không thêm middleware (không ảnh hưởng turn bình
+    thường)."""
+    gated = [t.slug for t in tools if t.slug in TOOLS_REQUIRING_APPROVAL]
+    if not gated:
+        return []
+    return [
+        HumanInTheLoopMiddleware(
+            interrupt_on={slug: {"allowed_decisions": ["approve", "reject"]} for slug in gated}
+        )
+    ]
+
+
 async def build_agent_executor(
     *,
     system_prompt: str,
@@ -87,10 +107,18 @@ async def build_agent_executor(
 ) -> CompiledStateGraph:
     """Graph cho 1 turn — orchestrator có thêm tool gọi sub-agent (ADR-0006) + tool thật gán trực
     tiếp cho agent top-level (`tools`, ADR-0013). `session` dùng để tra credential provider
-    (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới."""
+    (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới. `checkpointer` (ADR-0014)
+    luôn gắn — rẻ, không ảnh hưởng turn không có tool cần duyệt; chỉ tool trong
+    `TOOLS_REQUIRING_APPROVAL` mới thực sự pause."""
     chat_model = await build_chat_model(
         provider=model.provider, model_id=model.model_id, base_url=model.base_url, session=session
     )
     sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
     all_tools = [*build_tools(tools), *sub_agent_tools]
-    return create_agent(chat_model, tools=all_tools, system_prompt=system_prompt)
+    return create_agent(
+        chat_model,
+        tools=all_tools,
+        system_prompt=system_prompt,
+        checkpointer=get_checkpointer(),
+        middleware=_human_in_the_loop_middleware(tools),
+    )

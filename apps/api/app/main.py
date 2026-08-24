@@ -1,6 +1,10 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.checkpointer import close_checkpointer, init_checkpointer
 from app.core.config import settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
@@ -22,7 +26,19 @@ from app.modules.voice.router import router as voice_router
 
 configure_logging(settings.log_level)
 
-app = FastAPI(title="Ultron API", version="0.0.1")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # Checkpointer cho approval gate (ADR-0014) — 1 connection sống suốt đời app, tách biệt
+    # SQLAlchemy async engine (khác driver, khác schema — xem app/core/checkpointer.py).
+    await init_checkpointer()
+    try:
+        yield
+    finally:
+        await close_checkpointer()
+
+
+app = FastAPI(title="Ultron API", version="0.0.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

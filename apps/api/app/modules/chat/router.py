@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.modules.chat.deps import ChatServiceDep
-from app.modules.chat.schemas import ChatRequest
+from app.modules.chat.schemas import ApprovalRequest, ChatRequest
 
 router = APIRouter(prefix="/conversations/{conversation_id}/chat", tags=["chat"])
 
@@ -21,11 +21,29 @@ async def chat(
     Response luôn `200 text/event-stream` — lỗi giữa lúc chạy (thiếu credential, model không phản
     hồi...) là 1 event `{"type": "error", "message": ...}` trong body, không phải HTTP status
     khác (status đã gửi cho client trước khi ta có thể biết lỗi). `ChatService.send` tự
-    get_or_404 conversation (qua ConversationService) — không cần check trùng ở router.
+    get_or_404 conversation (qua ConversationService) — không cần check trùng ở router. Turn có
+    thể pause giữa đường chờ duyệt (event `approval_required` — xem `/approve` bên dưới, ADR-0014).
     """
 
     async def event_stream():
         async for event in chat_service.send(conversation_id, body.content):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/approve")
+async def approve(
+    conversation_id: int,
+    body: ApprovalRequest,
+    chat_service: ChatServiceDep,
+) -> StreamingResponse:
+    """Duyệt/từ chối 1 tool call đang chờ (approval gate, ADR-0014) — resume đúng turn đang pause
+    (`thread_id` = `conversation_id` ở checkpointer), tiếp tục stream SSE từ điểm dừng (không phải
+    turn mới). Gọi khi client nhận được event `approval_required` từ `POST .../chat`."""
+
+    async def event_stream():
+        async for event in chat_service.approve(conversation_id, body.decision):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
