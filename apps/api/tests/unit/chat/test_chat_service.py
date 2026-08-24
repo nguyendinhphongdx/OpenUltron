@@ -1,0 +1,113 @@
+from types import SimpleNamespace
+
+import pytest
+
+import app.modules.chat.service as chat_service_module
+from app.core.provider_adapter import ProviderConfigError
+from app.modules.chat.graph import ModelConfig
+from app.modules.chat.service import ChatService
+from app.modules.conversation.message.schemas import MessageCreate
+
+
+class FakeMessage:
+    """Chỉ cần đủ field `_to_langchain` đọc (role/content) — không phải ORM `Message` thật
+    (03-testing.md — unit test thuần, không cần DB)."""
+
+    def __init__(self, role: str, content: str) -> None:
+        self.role = role
+        self.content = content
+
+
+class FakeMessageService:
+    def __init__(self) -> None:
+        self.history: list[FakeMessage] = []
+        self.appended: list[MessageCreate] = []
+        self._next_id = 1
+
+    async def list_all(self, conversation_id: int) -> list[FakeMessage]:
+        return self.history
+
+    async def append(self, conversation_id: int, input: MessageCreate):
+        self.appended.append(input)
+        row = SimpleNamespace(id=self._next_id, seq=self._next_id, content=input.content)
+        self._next_id += 1
+        self.history.append(FakeMessage(input.role, input.content))
+        return row
+
+
+class FakeExecutor:
+    def __init__(self, events: list[dict]) -> None:
+        self._events = events
+
+    async def astream_events(self, inputs: dict, version: str):
+        for event in self._events:
+            yield event
+
+
+def _make_service(message_service: FakeMessageService) -> ChatService:
+    service = ChatService(
+        conversation_service=None,  # type: ignore[arg-type]
+        agent_service=None,  # type: ignore[arg-type]
+        model_service=None,  # type: ignore[arg-type]
+        settings_service=None,  # type: ignore[arg-type]
+        message_service=message_service,
+        session=None,  # type: ignore[arg-type]
+    )
+
+    async def fake_resolve_context(conversation_id: int):
+        return "system prompt", ModelConfig(provider="ollama", model_id="test-model"), []
+
+    service.resolve_context = fake_resolve_context  # type: ignore[method-assign]
+    return service
+
+
+@pytest.mark.asyncio
+async def test_send_streams_delta_and_tool_events_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    events = [
+        {"event": "on_chain_start", "data": {}},  # noise — phải bị bỏ qua, không forward
+        {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content="Hello")}},
+        {"event": "on_tool_start", "name": "research-agent", "data": {}},
+        {"event": "on_tool_end", "name": "research-agent", "data": {}},
+        {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content=" world")}},
+    ]
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor(events)
+
+    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    service = _make_service(message_service)
+
+    received = [event async for event in service.send(1, "hi")]
+
+    assert received == [
+        {"type": "delta", "text": "Hello"},
+        {"type": "tool_call_start", "name": "research-agent"},
+        {"type": "tool_call_end", "name": "research-agent"},
+        {"type": "delta", "text": " world"},
+        {"type": "done", "message_id": 2, "seq": 2},
+    ]
+    assert [m.role for m in message_service.appended] == ["user", "assistant"]
+    assert message_service.appended[1].content == "Hello world"
+
+
+@pytest.mark.asyncio
+async def test_send_yields_error_event_on_provider_config_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        raise ProviderConfigError("Chưa có credential Gemini — thêm qua PUT /credentials/gemini")
+
+    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    service = _make_service(message_service)
+
+    received = [event async for event in service.send(1, "hi")]
+
+    assert received == [
+        {"type": "error", "message": "Chưa có credential Gemini — thêm qua PUT /credentials/gemini"}
+    ]
+    # User message vẫn persist (flush trước khi build executor) — không có assistant message.
+    assert [m.role for m in message_service.appended] == ["user"]

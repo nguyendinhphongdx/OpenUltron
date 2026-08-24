@@ -1,4 +1,5 @@
-from fastapi import HTTPException, status
+from collections.abc import AsyncIterator
+
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +13,7 @@ from app.modules.chat.graph import (
     SubAgentSpec,
     build_agent_executor,
 )
-from app.modules.conversation.message.schemas import MessageCreate, MessageRead
+from app.modules.conversation.message.schemas import MessageCreate
 from app.modules.conversation.message.service import MessageService
 from app.modules.conversation.models import Message
 from app.modules.conversation.service import ConversationService
@@ -39,10 +40,14 @@ def _to_config(row: Model) -> ModelConfig:
 
 
 def _extract_text(content: str | list) -> str:
-    """`AIMessage.content` không phải luôn là `str` — model có "thinking"/tool-signature (Gemini
-    2.5+, ADR-0009) trả content dạng list content-block (`[{"type": "text", "text": "..."}, ...]`,
-    có thể kèm block `thinking`/`extras.signature` không phải text hiển thị). Chỉ nối các block
-    `type == "text"`; bug thật đã xảy ra: str(content) in ra cả repr Python của list/dict."""
+    """`AIMessageChunk.content` không phải luôn là `str` — model có "thinking"/tool-signature
+    (Gemini 2.5+, ADR-0009) trả content dạng list content-block (`[{"type": "text", "text":
+    "..."}, ...]`, có thể kèm block `thinking`/`extras.signature` không phải text hiển thị). Chỉ
+    nối các block `type == "text"`; không có block text nào (vd chunk chỉ mang metadata, list
+    rỗng) → trả rỗng — KHÔNG fallback `str(content)` như trước: đó chính là bug thật phát hiện qua
+    live-test streaming (2026-08-24) — chunk `content=[]` bị `str([])` thành literal `"[]"` lẫn
+    vào giữa text stream (khác lúc dùng cho message hoàn chỉnh trước đây, mỗi chunk streaming rất
+    hay có content rỗng/không-text nên fallback stringify sai hoàn toàn ở đây)."""
     if isinstance(content, str):
         return content
     parts = [
@@ -50,7 +55,7 @@ def _extract_text(content: str | list) -> str:
         for block in content
         if isinstance(block, dict) and block.get("type") == "text"
     ]
-    return "".join(parts) if parts else str(content)
+    return "".join(parts)
 
 
 def _to_langchain(row: Message) -> BaseMessage | None:
@@ -132,7 +137,12 @@ class ChatService:
             system_prompt, model = DEFAULT_SYSTEM_PROMPT, await self._resolve_default_model()
         return system_prompt, model, sub_agent_specs
 
-    async def send(self, conversation_id: int, user_text: str) -> MessageRead:
+    async def send(self, conversation_id: int, user_text: str) -> AsyncIterator[dict]:
+        """Stream 1 turn qua SSE (chat-streaming, docs/features/chat-streaming.md) — yield dict,
+        router format thành SSE frame (`data: <json>\\n\\n`). KHÔNG raise HTTPException nữa: với
+        response dạng stream, status 200 đã gửi cho client trước khi ta có thể biết lỗi (FastAPI
+        gửi `http.response.start` trước khi lấy chunk đầu từ body iterator) — mọi lỗi phải là 1
+        event `error` trong stream, không phải HTTP status khác."""
         system_prompt, model, sub_agent_specs = await self.resolve_context(conversation_id)
 
         history_rows = await self.message_service.list_all(conversation_id)
@@ -142,6 +152,7 @@ class ChatService:
             conversation_id, MessageCreate(role="user", content=user_text)
         )
 
+        accumulated: list[str] = []
         try:
             executor = await build_agent_executor(
                 system_prompt=system_prompt,
@@ -149,26 +160,36 @@ class ChatService:
                 sub_agents=sub_agent_specs,
                 session=self.session,
             )
-            result = await executor.ainvoke(
-                {"messages": [*history, HumanMessage(content=user_text)]}
-            )
+            async for event in executor.astream_events(
+                {"messages": [*history, HumanMessage(content=user_text)]}, version="v2"
+            ):
+                kind = event["event"]
+                if kind == "on_chat_model_stream":
+                    text = _extract_text(event["data"]["chunk"].content)
+                    if text:
+                        accumulated.append(text)
+                        yield {"type": "delta", "text": text}
+                elif kind == "on_tool_start":
+                    # Tool duy nhất hiện có là "gọi sub-agent" (`_build_sub_agent_tool`,
+                    # chat/graph.py) — sub-agent tự chạy `ainvoke()` riêng (không lồng vào
+                    # astream_events này) nên chỉ thấy được lúc bắt đầu/kết thúc, không thấy
+                    # token nội bộ của sub-agent — đúng theo Non-goals của spec.
+                    yield {"type": "tool_call_start", "name": event["name"]}
+                elif kind == "on_tool_end":
+                    yield {"type": "tool_call_end", "name": event["name"]}
         except ProviderConfigError as exc:
             # Lỗi cấu hình (thiếu credential/base_url) — user có thể tự sửa ngay (thêm API key ở
-            # Settings), khác lỗi tầng network/model tầng dưới nên trả 400 kèm message rõ ràng
-            # thay vì 502 chung, để frontend hiện đúng nguyên nhân thay vì "Có lỗi xảy ra".
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+            # Settings). User message vẫn đã persist ở trên (flush, commit khi request xong qua
+            # get_session) — không có assistant message vì chưa sinh được gì.
+            yield {"type": "error", "message": str(exc)}
+            return
         except Exception as exc:
             # Không catch cụ thể theo provider — lỗi có thể đến từ bất kỳ LangChain chat model nào
-            # (Ollama/Gemini/OpenAI). Re-raise thành HTTPException để đi qua error envelope chuẩn
-            # (app/core/errors.py) thay vì bubble thành 500 thô; session sẽ rollback cả user_message
-            # vừa flush ở trên (get_session chỉ commit khi handler xong, xem app/db/session.py).
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Model không phản hồi được: {exc}",
-            ) from exc
-        ai_message = result["messages"][-1]
-        assistant_content = _extract_text(ai_message.content)
+            # (Ollama/Gemini/OpenAI).
+            yield {"type": "error", "message": f"Model không phản hồi được: {exc}"}
+            return
 
-        return await self.message_service.append(
-            conversation_id, MessageCreate(role="assistant", content=assistant_content)
+        assistant_message = await self.message_service.append(
+            conversation_id, MessageCreate(role="assistant", content="".join(accumulated))
         )
+        yield {"type": "done", "message_id": assistant_message.id, "seq": assistant_message.seq}

@@ -1,21 +1,31 @@
+import json
+
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 from app.modules.chat.deps import ChatServiceDep
 from app.modules.chat.schemas import ChatRequest
-from app.modules.conversation.message.schemas import MessageRead
 
 router = APIRouter(prefix="/conversations/{conversation_id}/chat", tags=["chat"])
 
 
-@router.post("", response_model=MessageRead)
+@router.post("")
 async def chat(
     conversation_id: int,
     body: ChatRequest,
     chat_service: ChatServiceDep,
-) -> MessageRead:
-    """Chạy 1 turn: lưu user message, chọn agent (ADR-0006), gọi graph, lưu assistant message.
+) -> StreamingResponse:
+    """Chạy 1 turn qua SSE (chat-streaming, docs/features/chat-streaming.md): lưu user message,
+    chọn agent (ADR-0006), stream token model + tool-call event, lưu assistant message khi xong.
 
-    Bản đầu: chưa streaming, chưa approval-gate (ADR-0005). `ChatService.send` tự get_or_404
-    conversation (qua ConversationService) — không cần check trùng ở router.
+    Response luôn `200 text/event-stream` — lỗi giữa lúc chạy (thiếu credential, model không phản
+    hồi...) là 1 event `{"type": "error", "message": ...}` trong body, không phải HTTP status
+    khác (status đã gửi cho client trước khi ta có thể biết lỗi). `ChatService.send` tự
+    get_or_404 conversation (qua ConversationService) — không cần check trùng ở router.
     """
-    return await chat_service.send(conversation_id, body.content)
+
+    async def event_stream():
+        async for event in chat_service.send(conversation_id, body.content):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
