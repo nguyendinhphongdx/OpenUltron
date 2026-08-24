@@ -183,6 +183,24 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       từ chối) → turn khác approve → lệnh chạy thật, output đúng trả về; **path traversal
       (`../../../../etc/...`) bị chặn dù đã approve** — xác nhận sandbox là lớp bảo vệ thật, không
       chỉ decorative.
+- [x] **MCP client generic — `kind=mcp` implement thật** (ADR-0017, 2026-08-24) — research +
+      **ground-truth verify thật** protocol MCP (spec vừa rewrite lớn 2026-07-28, không tin hẳn
+      doc/blog) bằng cách cài `mcp==2.0.0` (SDK Python chính thức) + tự viết 1 demo server/client
+      chạy thật, xác nhận đúng API (`Client(stdio_client(StdioServerParameters(...)))` cho stdio,
+      `Client(url)` cho streamable HTTP, `list_tools()`/`call_tool()`). `Tool.config` khi
+      `kind=mcp`: `McpStdioServerConfig`/`McpHttpServerConfig` (discriminated union theo
+      `transport`) + `remote_tool_name` — 1 `Tool` row = 1 tool cụ thể trên 1 MCP server cụ thể,
+      đúng model `ToolSpec` sẵn có (ADR-0013). `McpToolBuilder` **tự discover args schema qua
+      `list_tools()`** (không bắt user tự khai lại `ai_params` như `kind=http` — MCP server đã tự
+      chuẩn hoá schema), connect mới mỗi lần gọi (không giữ session xuyên turn). **Mọi tool
+      `kind=mcp` bắt buộc qua approval gate theo `kind`, không theo slug cố định**
+      (`chat/graph.py::_human_in_the_loop_middleware` — khác builtin tool vì slug MCP do user tự
+      đặt tuỳ ý, không thể liệt kê trước; MCP server là process/dịch vụ ngoài, Ultron không biết
+      trước nó làm gì). **Live-verify thật (không mock) qua API + browser**: tạo `Tool kind=mcp`
+      trỏ vào demo server thật (tool `add(a,b)`), gán agent, chat "cộng 15 và 27" → pause chờ
+      duyệt với đúng argument `{a:15,b:27}` (tên arg lấy đúng từ schema thật) → approve → kết quả
+      **42** đúng qua stdio subprocess thật; config trỏ tool không tồn tại trên server → agent vẫn
+      chat bình thường (thiếu đúng 1 tool, không crash turn).
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -212,8 +230,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
 - [ ] Wire `KnowledgeBase` (đã CRUD + search) vào chat execution — agent có `AgentKnowledgeBase` nhưng chưa có tool RAG tự động tra KB trong lúc chat
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
-- [ ] MCP client generic (Jira/Confluence...) — GitHub search/read + tool tạo file/thực thi lệnh
-      trên máy đã xong (xem "Đã xong", ADR-0015/ADR-0016)
 - [ ] Live Voice Agent — spec chuyển "accepted" (2026-08-24, xem
       [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md)). `apps/api` module
       `voice` đã có event `state` (listening/thinking/speaking/using_tool, suy từ event Gemini có
@@ -236,9 +252,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] User cần nhập lại API key Gemini/OpenAI qua UI mới (dialog Model & Credential) sau khi deploy
       — không auto-migrate từ `.env` cũ, quyết định có chủ đích
       ([ADR-0010](../adr/0010-provider-credential-in-db.md)).
-- [ ] **MCP client generic** — user tự khai bất kỳ MCP server nào (command/URL), Ultron tự list
-      tool từ server đó. Cần research protocol MCP riêng trước khi spec (transport stdio/HTTP,
-      cách discover tool) — `McpToolBuilder` hiện chỉ là chỗ đứng, trả `None`.
 
 ## Chưa quyết (cần ADR trước khi code)
 
