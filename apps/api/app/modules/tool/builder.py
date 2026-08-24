@@ -6,6 +6,7 @@ KHÔNG dynamic plugin discovery. Thêm implementation cho 1 kind = viết/sửa 
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -15,11 +16,13 @@ from pydantic import BaseModel, Field, ValidationError, create_model
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
+from app.core.workspace import resolve_safe_path
 from app.modules.connector import github as github_connector
 from app.modules.tool.schemas import HttpToolConfig
 
 _HTTP_TIMEOUT_SECONDS = 30.0
 _MAX_RESPONSE_CHARS = 8000
+_RUN_COMMAND_TIMEOUT_SECONDS = 30.0
 
 _TYPE_MAP: dict[str, Any] = {
     "string": str,
@@ -94,14 +97,17 @@ class HttpToolBuilder:
         )
 
 
-# Slug tool cần approval gate (ADR-0014) — hiện chỉ có 1 tool test để verify cơ chế pause/resume
-# thật qua UI trước khi có builtin tool nguy hiểm thật (roadmap riêng: tạo file/thực thi lệnh
-# máy). GitHub search/read chỉ đọc, không có side-effect nên KHÔNG cần approval. Thêm slug vào đây
-# khi có tool thật cần duyệt trước khi chạy.
+# Slug tool cần approval gate (ADR-0014). GitHub search/read chỉ đọc, không có side-effect nên
+# KHÔNG cần approval. `write-file`/`run-command` (ADR-0016) có side-effect thật trên máy — BẮT
+# BUỘC nằm trong tập này, không có cách nào tắt approval cho 2 slug đó.
 APPROVAL_TEST_TOOL_SLUG = "approval-test-echo"
 GITHUB_SEARCH_CODE_SLUG = "github-search-code"
 GITHUB_READ_FILE_SLUG = "github-read-file"
-TOOLS_REQUIRING_APPROVAL: frozenset[str] = frozenset({APPROVAL_TEST_TOOL_SLUG})
+WRITE_FILE_SLUG = "write-file"
+RUN_COMMAND_SLUG = "run-command"
+TOOLS_REQUIRING_APPROVAL: frozenset[str] = frozenset(
+    {APPROVAL_TEST_TOOL_SLUG, WRITE_FILE_SLUG, RUN_COMMAND_SLUG}
+)
 
 # Catalog builtin tool có sẵn — nguồn cho endpoint `GET /tools/builtin-catalog` (fix UX: form tạo
 # tool `kind=builtin` trước đây không hiện gì để chọn). Thêm builtin tool mới = thêm 1 entry ở đây
@@ -115,6 +121,12 @@ BUILTIN_TOOL_CATALOG: dict[str, str] = {
     ),
     GITHUB_READ_FILE_SLUG: (
         "Đọc nội dung 1 file trên GitHub theo owner/repo/path — cần credential 'github' (ADR-0015)."
+    ),
+    WRITE_FILE_SLUG: (
+        "Ghi nội dung vào 1 file trong workspace sandbox (ADR-0016) — cần duyệt trước khi chạy."
+    ),
+    RUN_COMMAND_SLUG: (
+        "Chạy 1 lệnh shell trong workspace sandbox (ADR-0016) — cần duyệt trước khi chạy."
     ),
 }
 
@@ -135,6 +147,21 @@ class _GitHubReadFileArgs(BaseModel):
     )
 
 
+class _WriteFileArgs(BaseModel):
+    path: str = Field(
+        description="Đường dẫn file tương đối trong workspace sandbox, vd 'notes/todo.md'"
+    )
+    content: str = Field(description="Nội dung text ghi vào file (UTF-8)")
+
+
+class _RunCommandArgs(BaseModel):
+    command: str = Field(description="Lệnh shell cần chạy, vd 'ls -la'")
+    cwd: str | None = Field(
+        default=None,
+        description="Subdirectory tương đối trong sandbox để chạy lệnh — bỏ trống dùng gốc sandbox",
+    )
+
+
 async def _github_token(session: AsyncSession, tool_slug: str) -> str | None:
     from app.core.providers import get_provider_api_key
 
@@ -145,8 +172,10 @@ async def _github_token(session: AsyncSession, tool_slug: str) -> str | None:
 
 
 class BuiltinToolBuilder:
-    """Dispatch theo `spec.slug` (ADR-0013) — mỗi builtin tool thật (GitHub search/read) chỉ gọi
-    vào `app/modules/connector/github.py` (ADR-0015), không tự viết logic gọi GitHub API ở đây."""
+    """Dispatch theo `spec.slug` (ADR-0013) — GitHub search/read gọi vào
+    `app/modules/connector/github.py` (ADR-0015); `write-file`/`run-command` gọi vào
+    `app/core/workspace.py::resolve_safe_path` (ADR-0016, sandbox 1 working directory) — không tự
+    viết logic gọi API ngoài/thao tác filesystem trực tiếp ở đây."""
 
     async def build(self, spec: ToolSpec, *, session: AsyncSession) -> BaseTool | None:
         if spec.slug == APPROVAL_TEST_TOOL_SLUG:
@@ -155,6 +184,10 @@ class BuiltinToolBuilder:
             return await _build_github_search_tool(spec, session)
         if spec.slug == GITHUB_READ_FILE_SLUG:
             return await _build_github_read_file_tool(spec, session)
+        if spec.slug == WRITE_FILE_SLUG:
+            return _build_write_file_tool(spec)
+        if spec.slug == RUN_COMMAND_SLUG:
+            return _build_run_command_tool(spec)
         return None
 
 
@@ -202,6 +235,63 @@ async def _build_github_read_file_tool(spec: ToolSpec, session: AsyncSession) ->
         args_schema=_GitHubReadFileArgs,
         handle_tool_error=True,
     )
+
+
+def _build_write_file_tool(spec: ToolSpec) -> BaseTool:
+    async def _write_file(path: str, content: str) -> str:
+        try:
+            target = resolve_safe_path(path)
+        except ValueError as exc:
+            return str(exc)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return f"Đã ghi file '{path}' ({len(content)} ký tự)."
+
+    return StructuredTool.from_function(
+        coroutine=_write_file,
+        name=spec.slug,
+        description=spec.description or BUILTIN_TOOL_CATALOG[WRITE_FILE_SLUG],
+        args_schema=_WriteFileArgs,
+        handle_tool_error=True,
+    )
+
+
+def _build_run_command_tool(spec: ToolSpec) -> BaseTool:
+    async def _run_command(command: str, cwd: str | None = None) -> str:
+        return await _execute_sandboxed_command(command, cwd)
+
+    return StructuredTool.from_function(
+        coroutine=_run_command,
+        name=spec.slug,
+        description=spec.description or BUILTIN_TOOL_CATALOG[RUN_COMMAND_SLUG],
+        args_schema=_RunCommandArgs,
+        handle_tool_error=True,
+    )
+
+
+async def _execute_sandboxed_command(command: str, cwd: str | None) -> str:
+    try:
+        working_dir = resolve_safe_path(cwd or "")
+    except ValueError as exc:
+        return str(exc)
+    process = await asyncio.create_subprocess_shell(
+        command,
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(
+            process.communicate(), timeout=_RUN_COMMAND_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+        return f"Lệnh quá thời gian cho phép ({_RUN_COMMAND_TIMEOUT_SECONDS}s), đã bị hủy."
+
+    output = stdout.decode("utf-8", errors="replace")
+    result = f"Exit code: {process.returncode}\n{output}"
+    return result[:_MAX_RESPONSE_CHARS]
 
 
 class McpToolBuilder:

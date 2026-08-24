@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # cách nhau bởi dấu phẩy trong .env, vd "http://localhost:3010,http://192.168.1.5:3010".
     cors_origins: str = "http://localhost:3010,http://127.0.0.1:3010"
 
+    # Sandbox cho builtin tool write-file/run-command (ADR-0016) — mọi path agent đưa vào bị giới
+    # hạn trong thư mục này (app/core/workspace.py::resolve_safe_path), không cho ghi/chạy lệnh
+    # ngoài phạm vi này.
+    workspace_dir: str = "./data/workspace"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

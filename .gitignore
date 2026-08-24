@@ -40,6 +40,10 @@ coverage/
 *.db
 *.db-journal
 
+# Sandbox workspace cho builtin tool write-file/run-command (ADR-0016) — nội dung tạo lúc runtime,
+# không phải source.
+apps/api/data/
+
 # Editor / OS
 .DS_Store
 Thumbs.db
