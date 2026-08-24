@@ -12,13 +12,30 @@ import { getApiErrorMessage } from '@/lib/api';
 
 import { useCreateTool } from '../hooks/useCreateTool';
 import { useUpdateTool } from '../hooks/useUpdateTool';
-import type { Tool, ToolKind } from '../types/tool.types';
+import type { HttpToolAiParam, HttpToolConfig, HttpToolRequest, Tool, ToolKind } from '../types/tool.types';
+import { AiParamFields } from './AiParamFields';
+import { HttpRequestFields } from './HttpRequestFields';
 
 const TOOL_KINDS: ToolKind[] = ['builtin', 'mcp', 'http'];
 
-function stringifyConfig(config: Record<string, unknown> | null): string {
-  if (!config) return '';
-  return JSON.stringify(config, null, 2);
+const DEFAULT_HTTP_REQUEST: HttpToolRequest = { method: 'GET', url: '', headers: [], query: [], body: null };
+
+function initialHttpRequest(config: Record<string, unknown> | null | undefined): HttpToolRequest {
+  const httpConfig = config as HttpToolConfig | null | undefined;
+  if (!httpConfig?.request || typeof httpConfig.request !== 'object') return DEFAULT_HTTP_REQUEST;
+  const { method, url, headers, query, body } = httpConfig.request;
+  return {
+    method: method === 'GET' || method === 'POST' || method === 'PUT' || method === 'DELETE' ? method : 'GET',
+    url: typeof url === 'string' ? url : '',
+    headers: Array.isArray(headers) ? headers : [],
+    query: Array.isArray(query) ? query : [],
+    body: body && typeof body === 'object' && !Array.isArray(body) ? body : null,
+  };
+}
+
+function initialAiParams(config: Record<string, unknown> | null | undefined): HttpToolAiParam[] {
+  const httpConfig = config as HttpToolConfig | null | undefined;
+  return Array.isArray(httpConfig?.ai_params) ? httpConfig.ai_params : [];
 }
 
 export function ToolForm({ tool }: { tool?: Tool }) {
@@ -31,32 +48,17 @@ export function ToolForm({ tool }: { tool?: Tool }) {
   const [name, setName] = useState(tool?.name ?? '');
   const [description, setDescription] = useState(tool?.description ?? '');
   const [kind, setKind] = useState<ToolKind>(tool?.kind ?? 'builtin');
-  const [configText, setConfigText] = useState(stringifyConfig(tool?.config ?? null));
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [httpRequest, setHttpRequest] = useState<HttpToolRequest>(initialHttpRequest(tool?.config));
+  const [aiParams, setAiParams] = useState<HttpToolAiParam[]>(initialAiParams(tool?.config));
 
   const mutation = isEditing ? updateTool : createTool;
 
-  const parseConfig = (): Record<string, unknown> | null | undefined => {
-    const trimmed = configText.trim();
-    if (!trimmed) return null;
-    try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        setConfigError('Config phải là một JSON object.');
-        return undefined;
-      }
-      setConfigError(null);
-      return parsed as Record<string, unknown>;
-    } catch {
-      setConfigError('Config không phải JSON hợp lệ.');
-      return undefined;
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const config = parseConfig();
-    if (config === undefined) return;
+    const config: Record<string, unknown> | null =
+      kind === 'http'
+        ? ({ request: httpRequest, ai_params: aiParams } satisfies HttpToolConfig as Record<string, unknown>)
+        : null;
 
     if (isEditing && tool) {
       updateTool.mutate(
@@ -120,18 +122,12 @@ export function ToolForm({ tool }: { tool?: Tool }) {
         </Select>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="config">Config (JSON)</Label>
-        <Textarea
-          id="config"
-          rows={6}
-          className="font-mono text-xs"
-          value={configText}
-          onChange={(e) => setConfigText(e.target.value)}
-          placeholder="{}"
-        />
-        {configError && <p className="text-xs text-red-500">{configError}</p>}
-      </div>
+      {kind === 'http' && (
+        <>
+          <HttpRequestFields value={httpRequest} onChange={setHttpRequest} />
+          <AiParamFields value={aiParams} onChange={setAiParams} />
+        </>
+      )}
 
       <Button type="submit" disabled={mutation.isPending} className="self-start">
         {mutation.isPending ? 'Đang lưu…' : isEditing ? 'Lưu' : 'Tạo tool'}

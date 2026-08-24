@@ -16,6 +16,35 @@ export interface Tool {
   updated_at: string;
 }
 
+/**
+ * Shape của `Tool.config` khi `kind === 'http'` — khớp
+ * `docs/adr/0013-tool-execution-builder-registry.md`. `url` phải cố định, KHÔNG chứa
+ * placeholder `{{...}}`; placeholder chỉ hợp lệ trong `headers`/`query`/`body`.
+ */
+export interface HttpKeyValue {
+  name: string;
+  value: string;
+}
+
+export interface HttpToolAiParam {
+  name: string;
+  description: string;
+  type: 'string' | 'number' | 'boolean' | 'json';
+}
+
+export interface HttpToolRequest {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  url: string;
+  headers: HttpKeyValue[];
+  query: HttpKeyValue[];
+  body: Record<string, unknown> | null;
+}
+
+export interface HttpToolConfig {
+  request: HttpToolRequest;
+  ai_params: HttpToolAiParam[];
+}
+
 export interface ToolCreateInput {
   slug: string;
   name: string;

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
+import { AgentToolManager } from '@/features/tool';
 
 import { useAgent } from '../hooks/useAgent';
 import { useDeleteAgent } from '../hooks/useDeleteAgent';
@@ -39,6 +40,11 @@ export function AgentDetailView({ id }: { id: number }) {
       <section>
         <h2 className="mb-4 text-sm font-semibold text-muted-foreground">Sub-agent</h2>
         <DelegationManager agent={agent} />
+      </section>
+
+      <section>
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground">Tool</h2>
+        <AgentToolManager agentId={agent.id} />
       </section>
 
       <section className="border-t border-border pt-4">
