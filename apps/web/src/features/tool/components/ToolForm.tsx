@@ -21,6 +21,19 @@ const TOOL_KINDS: ToolKind[] = ['builtin', 'mcp', 'http'];
 
 const DEFAULT_HTTP_REQUEST: HttpToolRequest = { method: 'GET', url: '', headers: [], query: [], body: null };
 
+// Placeholder mẫu cho `kind=mcp` — khớp `McpToolConfig` (ADR-0017): `server.transport` là
+// "stdio" (command+args) hoặc "http" (url); `remote_tool_name` là tên tool cần gọi trên MCP
+// server đó. Chưa có form có cấu trúc riêng (Non-goal của spec) — nhập JSON tay, giống mức độ
+// "user tự khai" đã áp dụng cho `kind=http` trước khi có `HttpRequestFields`.
+const DEFAULT_MCP_CONFIG_TEXT = JSON.stringify(
+  {
+    server: { transport: 'stdio', command: 'npx', args: ['-y', 'some-mcp-server'] },
+    remote_tool_name: 'tool-name-tren-server',
+  },
+  null,
+  2,
+);
+
 function initialHttpRequest(config: Record<string, unknown> | null | undefined): HttpToolRequest {
   const httpConfig = config as HttpToolConfig | null | undefined;
   if (!httpConfig?.request || typeof httpConfig.request !== 'object') return DEFAULT_HTTP_REQUEST;
@@ -51,16 +64,28 @@ export function ToolForm({ tool }: { tool?: Tool }) {
   const [kind, setKind] = useState<ToolKind>(tool?.kind ?? 'builtin');
   const [httpRequest, setHttpRequest] = useState<HttpToolRequest>(initialHttpRequest(tool?.config));
   const [aiParams, setAiParams] = useState<HttpToolAiParam[]>(initialAiParams(tool?.config));
+  const [mcpConfigText, setMcpConfigText] = useState(
+    tool?.kind === 'mcp' && tool.config ? JSON.stringify(tool.config, null, 2) : DEFAULT_MCP_CONFIG_TEXT,
+  );
+  const [mcpConfigError, setMcpConfigError] = useState<string | null>(null);
   const { data: builtinCatalog, isPending: builtinCatalogPending } = useBuiltinToolCatalog();
 
   const mutation = isEditing ? updateTool : createTool;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const config: Record<string, unknown> | null =
-      kind === 'http'
-        ? ({ request: httpRequest, ai_params: aiParams } satisfies HttpToolConfig as Record<string, unknown>)
-        : null;
+    let config: Record<string, unknown> | null = null;
+    if (kind === 'http') {
+      config = { request: httpRequest, ai_params: aiParams } satisfies HttpToolConfig as Record<string, unknown>;
+    } else if (kind === 'mcp') {
+      try {
+        config = JSON.parse(mcpConfigText);
+        setMcpConfigError(null);
+      } catch {
+        setMcpConfigError('JSON không hợp lệ — kiểm tra lại cú pháp.');
+        return;
+      }
+    }
 
     if (isEditing && tool) {
       updateTool.mutate(
@@ -171,10 +196,25 @@ export function ToolForm({ tool }: { tool?: Tool }) {
       )}
 
       {kind === 'mcp' && (
-        <p className="text-sm text-muted-foreground">
-          `kind=mcp` chưa được hỗ trợ — generic MCP client nằm trong roadmap riêng, tool loại này
-          hiện tạo được nhưng chưa chạy được trong agent.
-        </p>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="mcp-config">Config MCP server (JSON)</Label>
+          <Textarea
+            id="mcp-config"
+            rows={8}
+            className="font-mono text-xs"
+            value={mcpConfigText}
+            onChange={(e) => setMcpConfigText(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            <code className="font-mono">server.transport</code> là <code className="font-mono">&quot;stdio&quot;</code>{' '}
+            (command+args) hoặc <code className="font-mono">&quot;http&quot;</code> (url) —{' '}
+            <code className="font-mono">remote_tool_name</code> là tên tool cần gọi trên MCP server
+            đó (ADR-0017). Ultron tự discover argument schema qua <code className="font-mono">list_tools()</code>,
+            không cần khai thêm. Mọi tool <code className="font-mono">kind=mcp</code> bắt buộc chờ
+            duyệt trước khi chạy.
+          </p>
+          {mcpConfigError && <p className="text-sm text-destructive">{mcpConfigError}</p>}
+        </div>
       )}
 
       <Button type="submit" disabled={mutation.isPending} className="self-start">
