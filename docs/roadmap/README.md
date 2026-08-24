@@ -145,6 +145,29 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       approve → tool chạy, model dùng kết quả; reject → tool không chạy, model biết bị từ chối.
       Bug thật phát hiện + fix: message user hiện trùng lặp (optimistic + đã persist) nếu
       react-query refetch trong lúc đang chờ duyệt (turn có thể kéo dài).
+- [x] **Builtin tool GitHub search/read + connector adapter abstraction** (ADR-0015,
+      2026-08-24) — module mới `app/modules/connector/` (`adapter.py`: `ConnectorAdapter`
+      Protocol + registry `CONNECTORS`, độc lập hoàn toàn với `ProviderAdapter`/model provider —
+      user chốt "github là connector provider khác model provider, phải chia folder rõ ràng";
+      `github.py`: `GitHubConnectorAdapter.test_connection` + `search_code`/`read_file` gọi
+      GitHub REST API thật). `credential/service.py::_verify`/`_ensure_supported` thử registry
+      model provider (ADR-0012) trước, rồi registry connector — 2 registry độc lập, tái dùng
+      nguyên `Credential` DB table/mã hoá (ADR-0010), không đổi schema. `tool/builder.py`:
+      `ToolBuilder.build` đổi thành **async + nhận `session`** (cần tra credential GitHub) —
+      đổi cả `HttpToolBuilder`/`McpToolBuilder`/`build_tools`/2 call site ở `chat/graph.py`;
+      `BuiltinToolBuilder` dispatch theo slug (`github-search-code`/`github-read-file`), gọi
+      thẳng `connector/github.py`, KHÔNG cần approval-gate (chỉ đọc, không side-effect). Tiện thể
+      fix UX đã bị user phát hiện: form tạo `Tool kind=builtin` trước đây không hiện gì để chọn —
+      thêm `GET /tools/builtin-catalog` + dropdown chọn slug trong `ToolForm` (tự điền
+      slug+description), `kind=mcp` giờ có placeholder rõ thay vì im lặng.
+      `CredentialManageDialog` thêm section "Connector" riêng (không lẫn vào model provider list,
+      vì connector không có model để list). **Live-verify thật (không mock)**: `PUT
+      /credentials/github` với token rác → gọi thật `GET api.github.com/user`, trả `is_valid:
+      false` đúng; tạo tool `github-search-code` qua UI (chọn từ dropdown catalog, submit) →
+      persist đúng; `CredentialManageDialog` mở đúng section GitHub connector qua browser thật.
+      **Chưa live-test với token GitHub thật hợp lệ** (chưa có token — chỉ verify token sai bị
+      từ chối đúng) và **chưa live-test agent thật sự gọi tool này trong 1 turn chat** (cần gán
+      tool cho 1 agent + có credential hợp lệ).
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -197,10 +220,9 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] User cần nhập lại API key Gemini/OpenAI qua UI mới (dialog Model & Credential) sau khi deploy
       — không auto-migrate từ `.env` cũ, quyết định có chủ đích
       ([ADR-0010](../adr/0010-provider-credential-in-db.md)).
-- [ ] **Builtin tool thật**: GitHub search/read (rủi ro thấp hơn, không cần approval-gate) + tạo
-      file/thực thi lệnh trên máy (rủi ro cao, **phụ thuộc approval-gate ở trên xong trước**) —
-      dùng `BuiltinToolBuilder` đã có chỗ đứng ở `tool/builder.py` (ADR-0013), viết implementation
-      thật cho từng builtin tool.
+- [ ] **Builtin tool "tạo file/thực thi lệnh trên máy"** (rủi ro cao, dùng
+      `TOOLS_REQUIRING_APPROVAL` — ADR-0014, approval-gate đã xong) — GitHub search/read (rủi ro
+      thấp, chỉ đọc) đã implement xong, xem "Đã xong" (ADR-0015).
 - [ ] **MCP client generic** — user tự khai bất kỳ MCP server nào (command/URL), Ultron tự list
       tool từ server đó. Cần research protocol MCP riêng trước khi spec (transport stdio/HTTP,
       cách discover tool) — `McpToolBuilder` hiện chỉ là chỗ đứng, trả `None`.
