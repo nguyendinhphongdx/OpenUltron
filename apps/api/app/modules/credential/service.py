@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from app.core import crypto
 from app.core.logging import logger
 from app.core.provider_adapter import CREDENTIAL_PROVIDERS, get_provider
+from app.modules.connector.adapter import CREDENTIAL_CONNECTORS, get_connector
 from app.modules.credential.models import Credential
 from app.modules.credential.repository import CredentialRepository
 from app.modules.credential.schemas import CredentialProvider, CredentialRead, CredentialUpsert
@@ -34,19 +35,24 @@ class CredentialService:
         self.repo = repo
 
     def _ensure_supported(self, provider: str) -> None:
-        if provider not in CREDENTIAL_PROVIDERS:
+        if provider not in CREDENTIAL_PROVIDERS and provider not in CREDENTIAL_CONNECTORS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     f"Provider '{provider}' không được hỗ trợ credential — chỉ nhận "
-                    f"{sorted(CREDENTIAL_PROVIDERS)} (ollama/sglang self-host, không cần key)"
+                    f"{sorted(CREDENTIAL_PROVIDERS | CREDENTIAL_CONNECTORS)} "
+                    "(ollama/sglang self-host, không cần key)"
                 ),
             )
 
     async def _verify(self, provider: str, api_key: str) -> bool:
-        """Gọi thật API rẻ nhất của provider để xác nhận key hợp lệ (ADR-0012: logic thật nằm
-        trong `ProviderAdapter.test_connection`, không lặp lại if/elif provider ở đây)."""
-        return await get_provider(provider).test_connection(api_key)
+        """Gọi thật API rẻ nhất để xác nhận key hợp lệ — model provider (`ProviderAdapter`,
+        ADR-0012) và connector provider (`ConnectorAdapter`, ADR-0015) là 2 registry độc lập, thử
+        registry model trước rồi mới connector; không lặp lại if/elif provider ở đây."""
+        if provider in CREDENTIAL_PROVIDERS:
+            return await get_provider(provider).test_connection(api_key)
+        connector = get_connector(provider)
+        return await connector.test_connection(api_key) if connector is not None else False
 
     async def list(self) -> list[CredentialRead]:
         return [_to_read(r) for r in await self.repo.list()]

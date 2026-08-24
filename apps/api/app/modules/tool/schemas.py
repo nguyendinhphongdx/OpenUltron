@@ -61,3 +61,11 @@ class ToolRead(BaseModel):
 
 class AgentToolCreate(BaseModel):
     tool_id: int
+
+
+class BuiltinToolCatalogEntry(BaseModel):
+    """1 entry catalog builtin tool (`GET /tools/builtin-catalog`) — nguồn cho UI chọn slug khi
+    tạo `Tool` với `kind=builtin` (trước đây form không hiện gì để chọn)."""
+
+    slug: str
+    description: str

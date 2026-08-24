@@ -11,9 +11,11 @@ from typing import Any, Protocol
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
-from pydantic import Field, ValidationError, create_model
+from pydantic import BaseModel, Field, ValidationError, create_model
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
+from app.modules.connector import github as github_connector
 from app.modules.tool.schemas import HttpToolConfig
 
 _HTTP_TIMEOUT_SECONDS = 30.0
@@ -41,7 +43,7 @@ class ToolSpec:
 
 
 class ToolBuilder(Protocol):
-    def build(self, spec: ToolSpec) -> BaseTool | None: ...
+    async def build(self, spec: ToolSpec, *, session: AsyncSession) -> BaseTool | None: ...
 
 
 def _substitute(value: str, params: dict[str, Any]) -> str:
@@ -63,7 +65,7 @@ def _substitute_body(body: Any, params: dict[str, Any]) -> Any:
 class HttpToolBuilder:
     """`kind=http` — user tự khai 1 HTTP endpoint qua UI (ADR-0013), không viết code."""
 
-    def build(self, spec: ToolSpec) -> BaseTool | None:
+    async def build(self, spec: ToolSpec, *, session: AsyncSession) -> BaseTool | None:
         try:
             config = HttpToolConfig.model_validate(spec.config or {})
         except ValidationError as exc:
@@ -93,37 +95,119 @@ class HttpToolBuilder:
 
 
 # Slug tool cần approval gate (ADR-0014) — hiện chỉ có 1 tool test để verify cơ chế pause/resume
-# thật qua UI trước khi có builtin tool nguy hiểm thật (roadmap riêng: GitHub search/read, tạo
-# file/thực thi lệnh máy). Thêm slug vào đây khi có tool thật cần duyệt trước khi chạy.
+# thật qua UI trước khi có builtin tool nguy hiểm thật (roadmap riêng: tạo file/thực thi lệnh
+# máy). GitHub search/read chỉ đọc, không có side-effect nên KHÔNG cần approval. Thêm slug vào đây
+# khi có tool thật cần duyệt trước khi chạy.
 APPROVAL_TEST_TOOL_SLUG = "approval-test-echo"
+GITHUB_SEARCH_CODE_SLUG = "github-search-code"
+GITHUB_READ_FILE_SLUG = "github-read-file"
 TOOLS_REQUIRING_APPROVAL: frozenset[str] = frozenset({APPROVAL_TEST_TOOL_SLUG})
+
+# Catalog builtin tool có sẵn — nguồn cho endpoint `GET /tools/builtin-catalog` (fix UX: form tạo
+# tool `kind=builtin` trước đây không hiện gì để chọn). Thêm builtin tool mới = thêm 1 entry ở đây
+# + 1 nhánh dispatch trong `BuiltinToolBuilder.build`.
+BUILTIN_TOOL_CATALOG: dict[str, str] = {
+    APPROVAL_TEST_TOOL_SLUG: (
+        "Test tool cho approval gate (ADR-0014) — không làm gì thật, chỉ echo lại argument."
+    ),
+    GITHUB_SEARCH_CODE_SLUG: (
+        "Tìm code trên GitHub qua GitHub Search API — cần credential 'github' (ADR-0015)."
+    ),
+    GITHUB_READ_FILE_SLUG: (
+        "Đọc nội dung 1 file trên GitHub theo owner/repo/path — cần credential 'github' (ADR-0015)."
+    ),
+}
+
+
+class _GitHubSearchArgs(BaseModel):
+    query: str = Field(description="Từ khoá tìm kiếm code trên GitHub")
+    repo: str | None = Field(
+        default=None, description="Giới hạn tìm trong 1 repo, dạng 'owner/repo'"
+    )
+
+
+class _GitHubReadFileArgs(BaseModel):
+    owner: str = Field(description="Tên owner/organization trên GitHub")
+    repo: str = Field(description="Tên repository")
+    path: str = Field(description="Đường dẫn file trong repo, vd 'src/main.py'")
+    ref: str | None = Field(
+        default=None, description="Branch/tag/commit SHA — bỏ trống dùng default branch"
+    )
+
+
+async def _github_token(session: AsyncSession, tool_slug: str) -> str | None:
+    from app.core.providers import get_provider_api_key
+
+    token = await get_provider_api_key("github", session)
+    if not token:
+        logger.warning("tool.github_missing_credential", tool_slug=tool_slug)
+    return token
 
 
 class BuiltinToolBuilder:
-    """Chỗ đứng kiến trúc — chưa có builtin tool thật nào ở bản này (roadmap riêng), NGOẠI TRỪ 1
-    tool test cho approval gate (ADR-0014, `APPROVAL_TEST_TOOL_SLUG`) — echo lại argument, không
-    làm gì thật, chỉ để verify pause/resume qua UI."""
+    """Dispatch theo `spec.slug` (ADR-0013) — mỗi builtin tool thật (GitHub search/read) chỉ gọi
+    vào `app/modules/connector/github.py` (ADR-0015), không tự viết logic gọi GitHub API ở đây."""
 
-    def build(self, spec: ToolSpec) -> BaseTool | None:
-        if spec.slug != APPROVAL_TEST_TOOL_SLUG:
-            return None
+    async def build(self, spec: ToolSpec, *, session: AsyncSession) -> BaseTool | None:
+        if spec.slug == APPROVAL_TEST_TOOL_SLUG:
+            return _build_approval_test_tool(spec)
+        if spec.slug == GITHUB_SEARCH_CODE_SLUG:
+            return await _build_github_search_tool(spec, session)
+        if spec.slug == GITHUB_READ_FILE_SLUG:
+            return await _build_github_read_file_tool(spec, session)
+        return None
 
-        async def _echo(action: str) -> str:
-            return f"[approval-test] đã 'thực thi' (giả, không làm gì thật): {action}"
 
-        return StructuredTool.from_function(
-            coroutine=_echo,
-            name=spec.slug,
-            description=spec.description
-            or "Test tool cho approval gate (ADR-0014) — không làm gì thật, chỉ echo lại argument.",
-            handle_tool_error=True,
-        )
+def _build_approval_test_tool(spec: ToolSpec) -> BaseTool:
+    async def _echo(action: str) -> str:
+        return f"[approval-test] đã 'thực thi' (giả, không làm gì thật): {action}"
+
+    return StructuredTool.from_function(
+        coroutine=_echo,
+        name=spec.slug,
+        description=spec.description or BUILTIN_TOOL_CATALOG[APPROVAL_TEST_TOOL_SLUG],
+        handle_tool_error=True,
+    )
+
+
+async def _build_github_search_tool(spec: ToolSpec, session: AsyncSession) -> BaseTool | None:
+    token = await _github_token(session, spec.slug)
+    if not token:
+        return None
+
+    async def _search(query: str, repo: str | None = None) -> str:
+        return await github_connector.search_code(token, query, repo)
+
+    return StructuredTool.from_function(
+        coroutine=_search,
+        name=spec.slug,
+        description=spec.description or BUILTIN_TOOL_CATALOG[GITHUB_SEARCH_CODE_SLUG],
+        args_schema=_GitHubSearchArgs,
+        handle_tool_error=True,
+    )
+
+
+async def _build_github_read_file_tool(spec: ToolSpec, session: AsyncSession) -> BaseTool | None:
+    token = await _github_token(session, spec.slug)
+    if not token:
+        return None
+
+    async def _read_file(owner: str, repo: str, path: str, ref: str | None = None) -> str:
+        return await github_connector.read_file(token, owner, repo, path, ref)
+
+    return StructuredTool.from_function(
+        coroutine=_read_file,
+        name=spec.slug,
+        description=spec.description or BUILTIN_TOOL_CATALOG[GITHUB_READ_FILE_SLUG],
+        args_schema=_GitHubReadFileArgs,
+        handle_tool_error=True,
+    )
 
 
 class McpToolBuilder:
     """`kind=mcp` — chưa implement (Non-goals của spec, roadmap riêng)."""
 
-    def build(self, spec: ToolSpec) -> BaseTool | None:
+    async def build(self, spec: ToolSpec, *, session: AsyncSession) -> BaseTool | None:
         return None
 
 
@@ -134,16 +218,18 @@ TOOL_BUILDERS: dict[str, ToolBuilder] = {
 }
 
 
-def build_tools(specs: list[ToolSpec]) -> list[BaseTool]:
+async def build_tools(specs: list[ToolSpec], *, session: AsyncSession) -> list[BaseTool]:
     """Build tool thật cho từng `ToolSpec` — kind không có builder/`build()` trả `None` → log
-    warning + bỏ qua, KHÔNG raise (agent vẫn chat được bình thường dù thiếu 1 tool)."""
+    warning + bỏ qua, KHÔNG raise (agent vẫn chat được bình thường dù thiếu 1 tool). `session`
+    dùng để tra credential (vd token GitHub, ADR-0015) khi builtin tool cần — cùng lối
+    `build_chat_model(..., session=session)`."""
     tools: list[BaseTool] = []
     for spec in specs:
         builder = TOOL_BUILDERS.get(spec.kind)
         if builder is None:
             logger.warning("tool.build_unknown_kind", tool_slug=spec.slug, kind=spec.kind)
             continue
-        tool = builder.build(spec)
+        tool = await builder.build(spec, session=session)
         if tool is None:
             logger.warning("tool.build_skipped", tool_slug=spec.slug, kind=spec.kind)
             continue

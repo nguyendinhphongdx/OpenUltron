@@ -86,6 +86,30 @@ async def test_upsert_unsupported_provider_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_upsert_connector_provider_accepted_dispatches_to_connector_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "github" là connector provider (ADR-0015), không nằm trong `CREDENTIAL_PROVIDERS` (model
+    provider, ADR-0012) — `_ensure_supported`/`_verify` phải nhận nó qua registry connector."""
+    calls: list[str] = []
+
+    class FakeConnector:
+        async def test_connection(self, secret: str) -> bool:
+            calls.append(secret)
+            return True
+
+    import app.modules.credential.service as service_module
+
+    monkeypatch.setattr(service_module, "get_connector", lambda name: FakeConnector())
+    service = CredentialService(FakeRepository())
+
+    result = await service.upsert("github", CredentialUpsert(api_key="ghp_real_token"))
+
+    assert result.is_valid is True
+    assert calls == ["ghp_real_token"]
+
+
+@pytest.mark.asyncio
 async def test_upsert_twice_replaces_ciphertext_same_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

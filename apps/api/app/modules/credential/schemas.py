@@ -4,8 +4,10 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-# Chỉ 2 provider cần API key thật (ADR-0010) — ollama/sglang self-host, không có row Credential.
-CredentialProvider = Literal["gemini", "openai"]
+# Model provider cần API key thật (ADR-0010) — ollama/sglang self-host, không có row Credential.
+# "github" là connector provider (ADR-0015, không phải model provider) nhưng tái dùng nguyên
+# `Credential` table + mã hoá — coi field `provider` là "tên định danh secret" chung.
+CredentialProvider = Literal["gemini", "openai", "github"]
 
 
 class CredentialUpsert(BaseModel):

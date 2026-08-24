@@ -59,7 +59,7 @@ async def run_sub_agent(
         if depth < MAX_DELEGATION_DEPTH
         else []
     )
-    own_tools = build_tools(sub_agent.tools)
+    own_tools = await build_tools(sub_agent.tools, session=session)
     # KHÔNG gắn checkpointer/middleware approval gate (ADR-0014) ở đây có chủ đích — sub-agent
     # chạy đồng bộ bên trong 1 lần gọi tool của agent cha (`_build_sub_agent_tool`), pause lồng
     # trong lúc agent cha đang chạy là bài toán phức tạp hơn hẳn (nested interrupt), ngoài phạm vi
@@ -114,7 +114,7 @@ async def build_agent_executor(
         provider=model.provider, model_id=model.model_id, base_url=model.base_url, session=session
     )
     sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
-    all_tools = [*build_tools(tools), *sub_agent_tools]
+    all_tools = [*(await build_tools(tools, session=session)), *sub_agent_tools]
     return create_agent(
         chat_model,
         tools=all_tools,

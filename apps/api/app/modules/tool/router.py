@@ -1,7 +1,8 @@
 from fastapi import APIRouter, status
 
+from app.modules.tool.builder import BUILTIN_TOOL_CATALOG
 from app.modules.tool.deps import ToolServiceDep
-from app.modules.tool.schemas import ToolCreate, ToolRead, ToolUpdate
+from app.modules.tool.schemas import BuiltinToolCatalogEntry, ToolCreate, ToolRead, ToolUpdate
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -14,6 +15,17 @@ async def create_tool(body: ToolCreate, service: ToolServiceDep) -> ToolRead:
 @router.get("", response_model=list[ToolRead])
 async def list_tools(service: ToolServiceDep) -> list[ToolRead]:
     return await service.list()
+
+
+# Khai TRƯỚC `/{tool_id}` — cùng lý do `GET /models/catalog` khai trước `/{model_id}`
+# (`model/router.py`): path param int sẽ không match "builtin-catalog" nên thứ tự không bắt
+# buộc về mặt kỹ thuật ở đây, nhưng giữ quy ước khai catalog trước cho nhất quán.
+@router.get("/builtin-catalog", response_model=list[BuiltinToolCatalogEntry])
+async def list_builtin_tool_catalog() -> list[BuiltinToolCatalogEntry]:
+    return [
+        BuiltinToolCatalogEntry(slug=slug, description=description)
+        for slug, description in BUILTIN_TOOL_CATALOG.items()
+    ]
 
 
 @router.get("/{tool_id}", response_model=ToolRead)

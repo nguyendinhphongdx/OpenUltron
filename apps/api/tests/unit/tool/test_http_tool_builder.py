@@ -26,13 +26,15 @@ def _make_spec(config: dict = CONFIG) -> ToolSpec:
     )
 
 
-def test_build_returns_none_for_invalid_config() -> None:
-    tool = HttpToolBuilder().build(_make_spec(config={"invalid": "shape"}))
+@pytest.mark.asyncio
+async def test_build_returns_none_for_invalid_config() -> None:
+    tool = await HttpToolBuilder().build(_make_spec(config={"invalid": "shape"}), session=None)  # type: ignore[arg-type]
     assert tool is None
 
 
-def test_args_schema_only_exposes_ai_params() -> None:
-    tool = HttpToolBuilder().build(_make_spec())
+@pytest.mark.asyncio
+async def test_args_schema_only_exposes_ai_params() -> None:
+    tool = await HttpToolBuilder().build(_make_spec(), session=None)  # type: ignore[arg-type]
     assert tool is not None
     fields = tool.args_schema.model_fields
     assert "city" in fields
@@ -72,7 +74,7 @@ async def test_placeholder_substitution_and_json_response(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(builder_module.httpx, "AsyncClient", _MockAsyncClient)
 
-    tool = HttpToolBuilder().build(_make_spec(config=config))
+    tool = await HttpToolBuilder().build(_make_spec(config=config), session=None)  # type: ignore[arg-type]
     assert tool is not None
 
     result = await tool.ainvoke({"city": "Hanoi"})
@@ -102,7 +104,7 @@ async def test_binary_response_returns_error_string_not_raise(
 
     monkeypatch.setattr(builder_module.httpx, "AsyncClient", _MockAsyncClient)
 
-    tool = HttpToolBuilder().build(_make_spec())
+    tool = await HttpToolBuilder().build(_make_spec(), session=None)  # type: ignore[arg-type]
     assert tool is not None
 
     result = await tool.ainvoke({"city": "Hanoi"})
