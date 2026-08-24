@@ -30,9 +30,18 @@ _GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-latest"
 VoiceState = Literal["listening", "thinking", "speaking", "using_tool"]
 
 # Chỉ áp cho voice (không sửa `agent.system_prompt` dùng chung với chat text — text chat vẫn
-# linh hoạt đa ngôn ngữ theo ngôn ngữ user gõ). User yêu cầu (2026-08-24): chỉ nghe hiểu tiếng
-# Việt, ép model luôn trả lời tiếng Việt trong voice session bất kể user nói ngôn ngữ nào.
-_VOICE_LANGUAGE_INSTRUCTION = "\n\nLuôn trả lời bằng tiếng Việt, bất kể user nói/gõ ngôn ngữ nào."
+# linh hoạt đa ngôn ngữ theo ngôn ngữ user gõ). Model `_GEMINI_LIVE_MODEL` là native-audio —
+# theo tài liệu chính thức (ai.google.dev/gemini-api/docs/live-api/capabilities), dòng model
+# này KHÔNG hỗ trợ `speechConfig.languageCode` để ép ngôn ngữ ("Native audio output models
+# automatically choose the appropriate language and don't support explicitly setting the
+# language code") — cách duy nhất có tài liệu là qua `system_instruction`. User yêu cầu
+# (2026-08-24): chỉ nghe hiểu tiếng Việt/tiếng Anh, không muốn auto-detect toàn bộ ngôn ngữ (dễ
+# nhận nhầm giọng nói) — ép model chỉ phân biệt 2 ngôn ngữ này và luôn trả lời tiếng Việt.
+_VOICE_LANGUAGE_INSTRUCTION = (
+    "\n\nUser chỉ nói tiếng Việt hoặc tiếng Anh (có thể xen lẫn) — khi nhận diện giọng nói, chỉ "
+    "coi là 1 trong 2 ngôn ngữ này, không thử nhận diện ngôn ngữ khác. Luôn trả lời bằng tiếng "
+    "Việt, bất kể user nói ngôn ngữ nào trong 2 ngôn ngữ đó."
+)
 
 
 def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[dict]:
