@@ -3,24 +3,17 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { ArrowUp } from 'lucide-react';
 
-import { getApiErrorMessage } from '@/lib/api';
-
-import { useSendMessage } from '../hooks/useSendMessage';
-
 interface MessageComposerProps {
-  conversationId: number;
-  /** Cho parent biết nội dung vừa gửi (hoặc `null` khi xong) — `MessageThread` render optimistic
-   * bubble ngay khi gửi, vì list message thật chỉ refetch sau khi cả round-trip (kể cả reply)
-   * xong (`useSendMessage`), không phải ngay lúc gửi. */
-  onPendingChange?: (pendingText: string | null) => void;
+  onSend: (content: string) => void;
+  disabled?: boolean;
+  error?: string | null;
 }
 
 // Khớp `max-h-36` (144px) ở className textarea — giới hạn cao tối đa trước khi cuộn nội bộ.
 const COMPOSER_MAX_HEIGHT_PX = 144;
 
-export function MessageComposer({ conversationId, onPendingChange }: MessageComposerProps) {
+export function MessageComposer({ onSend, disabled, error }: MessageComposerProps) {
   const [content, setContent] = useState('');
-  const sendMessage = useSendMessage(conversationId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -32,12 +25,9 @@ export function MessageComposer({ conversationId, onPendingChange }: MessageComp
 
   const submit = () => {
     const trimmed = content.trim();
-    if (!trimmed || sendMessage.isPending) return;
-    onPendingChange?.(trimmed);
+    if (!trimmed || disabled) return;
     setContent('');
-    sendMessage.mutate(trimmed, {
-      onSettled: () => onPendingChange?.(null),
-    });
+    onSend(trimmed);
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -55,9 +45,7 @@ export function MessageComposer({ conversationId, onPendingChange }: MessageComp
   return (
     <form onSubmit={handleSubmit} className="border-t border-border p-4">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
-        {sendMessage.isError && (
-          <p className="text-sm text-destructive">{getApiErrorMessage(sendMessage.error)}</p>
-        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <div className="flex items-end gap-2 rounded-2xl border border-border bg-muted px-4 py-2 focus-within:border-accent">
           <textarea
             ref={textareaRef}
@@ -66,12 +54,12 @@ export function MessageComposer({ conversationId, onPendingChange }: MessageComp
             onKeyDown={handleKeyDown}
             placeholder="Nhắn gì đó…"
             rows={1}
-            disabled={sendMessage.isPending}
+            disabled={disabled}
             className="max-h-36 min-h-6 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm outline-none placeholder:text-muted-foreground"
           />
           <button
             type="submit"
-            disabled={sendMessage.isPending || !content.trim()}
+            disabled={disabled || !content.trim()}
             aria-label="Gửi"
             className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground disabled:opacity-40"
           >
