@@ -3,6 +3,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.provider_adapter import ProviderConfigError
 from app.modules.agent.schemas import AgentRead
 from app.modules.agent.service import AgentService
 from app.modules.chat.graph import (
@@ -126,16 +127,21 @@ class ChatService:
             conversation_id, MessageCreate(role="user", content=user_text)
         )
 
-        executor = await build_agent_executor(
-            system_prompt=system_prompt,
-            model=model,
-            sub_agents=sub_agent_specs,
-            session=self.session,
-        )
         try:
+            executor = await build_agent_executor(
+                system_prompt=system_prompt,
+                model=model,
+                sub_agents=sub_agent_specs,
+                session=self.session,
+            )
             result = await executor.ainvoke(
                 {"messages": [*history, HumanMessage(content=user_text)]}
             )
+        except ProviderConfigError as exc:
+            # Lỗi cấu hình (thiếu credential/base_url) — user có thể tự sửa ngay (thêm API key ở
+            # Settings), khác lỗi tầng network/model tầng dưới nên trả 400 kèm message rõ ràng
+            # thay vì 502 chung, để frontend hiện đúng nguyên nhân thay vì "Có lỗi xảy ra".
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         except Exception as exc:
             # Không catch cụ thể theo provider — lỗi có thể đến từ bất kỳ LangChain chat model nào
             # (Ollama/Gemini/OpenAI). Re-raise thành HTTPException để đi qua error envelope chuẩn
