@@ -1,0 +1,299 @@
+<title>Tool Builder (kind=http) — mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #eef0f3;
+    --panel: #ffffff;
+    --panel-alt: #f4f5f8;
+    --border: #d7dae1;
+    --text: #14161a;
+    --text-dim: #5b5f6a;
+    --text-faint: #8b8f99;
+    --accent: #5b4bd6;
+    --accent-dim: #ece9fb;
+    --accent-line: #b9aef1;
+    --good: #1f9d5c;
+    --good-bg: #e3f6ec;
+    --warn: #b4780b;
+    --warn-bg: #fbf0dd;
+    --bad: #d43d5c;
+    --bad-bg: #fbe6ea;
+    --shadow: 0 1px 2px rgba(20,22,26,0.04), 0 8px 24px -12px rgba(20,22,26,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0c0e; --panel: #16181c; --panel-alt: #1c1e23; --border: #2b2e33;
+      --text: #ecedee; --text-dim: #9a9da6; --text-faint: #6b6e77;
+      --accent: #8677f2; --accent-dim: #241f3d; --accent-line: #4a3f8c;
+      --good: #33d17a; --good-bg: #12291d; --warn: #e8a93b; --warn-bg: #2e2410;
+      --bad: #f0576b; --bad-bg: #331419;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px -16px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0c0e; --panel: #16181c; --panel-alt: #1c1e23; --border: #2b2e33;
+    --text: #ecedee; --text-dim: #9a9da6; --text-faint: #6b6e77;
+    --accent: #8677f2; --accent-dim: #241f3d; --accent-line: #4a3f8c;
+    --good: #33d17a; --good-bg: #12291d; --warn: #e8a93b; --warn-bg: #2e2410;
+    --bad: #f0576b; --bad-bg: #331419;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 32px -16px rgba(0,0,0,0.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 980px; margin: 0 auto; padding: 40px 24px 96px; }
+  .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .wordmark { font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 22px; letter-spacing: -0.01em; }
+  .wordmark span { color: var(--accent); }
+  .masthead-meta { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--text-faint); letter-spacing: 0.02em; }
+  .subhead { color: var(--text-dim); font-size: 14.5px; margin: 0 0 28px; max-width: 72ch; line-height: 1.55; }
+  .subhead b { color: var(--text-dim); }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--panel-alt);
+  }
+  .panel-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .panel-body { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+
+  .kind-tabs { display: flex; gap: 8px; }
+  .kind-tab {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; padding: 6px 12px;
+    border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); cursor: default;
+  }
+  .kind-tab.active { background: var(--accent-dim); border-color: var(--accent-line); color: var(--accent); font-weight: 600; }
+  .kind-tab.disabled { opacity: .5; }
+
+  label { font-size: 12.5px; font-weight: 600; color: var(--text-dim); display: block; margin-bottom: 5px; }
+  .hint { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; line-height: 1.4; }
+  input[type=text], select, textarea {
+    width: 100%; font-family: "IBM Plex Mono", monospace; font-size: 12.5px;
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--panel); color: var(--text);
+  }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  .row.method-url { align-items: flex-start; }
+  .row.method-url select { flex: 0 0 110px; }
+
+  .field-list { display: flex; flex-direction: column; gap: 8px; }
+  .field-row {
+    display: grid; grid-template-columns: 1fr 1fr 32px; gap: 8px; align-items: center;
+  }
+  .field-row.ai-param { grid-template-columns: 130px 1fr 100px 32px; }
+  .field-row .rm { color: var(--text-faint); font-size: 14px; text-align: center; cursor: default; }
+  .add-row {
+    font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--accent);
+    border: 1px dashed var(--accent-line); border-radius: 7px; padding: 6px 10px;
+    background: var(--accent-dim); align-self: flex-start; cursor: default;
+  }
+
+  .badge {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px; letter-spacing: 0.02em;
+  }
+  .badge.ai { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-line); }
+
+  .placeholder-tag {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; background: var(--accent-dim);
+    color: var(--accent); border: 1px solid var(--accent-line); border-radius: 5px; padding: 1px 5px;
+  }
+
+  .preview {
+    background: var(--panel-alt); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; font-family: "IBM Plex Mono", monospace; font-size: 11.5px;
+    color: var(--text-dim); white-space: pre-wrap; line-height: 1.6;
+  }
+  .preview .k { color: var(--accent); }
+  .preview .s { color: var(--good); }
+
+  .callout {
+    border: 1px solid var(--accent-line); background: var(--accent-dim); border-radius: 8px;
+    padding: 10px 14px; font-size: 12.5px; color: var(--text); line-height: 1.5;
+  }
+  .callout.muted { border-color: var(--border); background: var(--panel-alt); color: var(--text-dim); }
+
+  .btn-row { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); background: var(--panel-alt); }
+  .btn {
+    font-family: "IBM Plex Sans", sans-serif; font-size: 13px; font-weight: 600;
+    padding: 8px 16px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel);
+    color: var(--text-dim);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .footnote { font-size: 12px; color: var(--text-faint); margin-top: -8px; margin-bottom: 20px; }
+</style>
+
+<div class="page">
+  <div class="masthead">
+    <div class="wordmark">ultron<span>.</span>tools</div>
+    <div class="masthead-meta">mockup — chưa code — docs/features/agent-tool-execution.md</div>
+  </div>
+  <p class="subhead">
+    Form tạo/sửa 1 <b>Tool</b>. Đổi <b>Loại (kind)</b> đổi hẳn phần thân form bên dưới — mỗi kind có
+    bản chất khác nhau, không còn 1 ô "Config (JSON)" tự do như hiện tại.
+  </p>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Loại tool</h2>
+    </div>
+    <div class="panel-body">
+      <div class="kind-tabs">
+        <div class="kind-tab disabled">builtin — code có sẵn trong repo</div>
+        <div class="kind-tab disabled">mcp — MCP server ngoài (chưa hỗ trợ)</div>
+        <div class="kind-tab active">http — gọi 1 endpoint bạn tự khai</div>
+      </div>
+      <div class="callout muted">
+        <b>builtin</b>: chọn từ danh sách tool Python đã viết sẵn trong code (vd sau này: "GitHub
+        search") — không có form tự do, chỉ chọn slug có sẵn. <b>mcp</b>: kết nối 1 MCP server ngoài
+        (vd Jira/Confluence) — ngoài phạm vi bản này, xem roadmap. Ở đây chỉ mockup <b>http</b>.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Thông tin cơ bản</h2></div>
+    <div class="panel-body">
+      <div class="row">
+        <div>
+          <label>Slug</label>
+          <input type="text" value="weather-lookup" disabled>
+        </div>
+        <div>
+          <label>Tên hiển thị</label>
+          <input type="text" value="Tra thời tiết">
+        </div>
+      </div>
+      <div>
+        <label>Mô tả cho model (khi nào nên gọi tool này)</label>
+        <textarea rows="2">Tra thời tiết hiện tại theo tên thành phố. Dùng khi user hỏi về nhiệt độ/thời tiết.</textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>HTTP request</h2></div>
+    <div class="panel-body">
+      <div class="row method-url">
+        <div>
+          <label>Method</label>
+          <select><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
+        </div>
+        <div>
+          <label>URL</label>
+          <input type="text" value="https://api.weather.example.com/v1/current">
+          <p class="hint">URL cố định, không cho model tự đổi endpoint — muốn model điền phần path/query thì dùng placeholder <span class="placeholder-tag">{{param}}</span> tham chiếu tới 1 "tham số AI điền" khai ở dưới.</p>
+        </div>
+      </div>
+
+      <div>
+        <label>Headers</label>
+        <div class="field-list">
+          <div class="field-row">
+            <input type="text" value="Authorization" disabled>
+            <input type="text" value="Bearer sk-live-••••••••">
+            <span class="rm">✕</span>
+          </div>
+          <div class="field-row">
+            <input type="text" placeholder="Header-Name">
+            <input type="text" placeholder="giá trị (tĩnh, hoặc {{param}})">
+            <span class="rm">✕</span>
+          </div>
+        </div>
+        <div class="add-row">+ thêm header</div>
+        <p class="hint">Giá trị header có thể là tĩnh (vd API key bạn tự dán) hoặc chứa placeholder <span class="placeholder-tag">{{param}}</span>.</p>
+      </div>
+
+      <div>
+        <label>Query params</label>
+        <div class="field-list">
+          <div class="field-row">
+            <input type="text" value="city">
+            <input type="text" value="{{city}}">
+            <span class="rm">✕</span>
+          </div>
+          <div class="field-row">
+            <input type="text" value="units">
+            <input type="text" value="metric">
+            <span class="rm">✕</span>
+          </div>
+        </div>
+        <div class="add-row">+ thêm query param</div>
+      </div>
+
+      <div>
+        <label>Body (JSON, để trống nếu GET)</label>
+        <textarea rows="3" disabled placeholder="(GET không có body)"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Tham số để model tự điền <span class="badge ai">AI param</span></h2>
+    </div>
+    <div class="panel-body">
+      <p class="hint" style="margin-top:-4px;">
+        Mỗi dòng dưới đây là 1 tham số mà <b>model tự quyết giá trị</b> lúc gọi tool — không phải bạn
+        gõ JSON Schema tay. Tên tham số dùng làm placeholder <span class="placeholder-tag">{{tên}}</span>
+        ở URL/header/query/body phía trên. Ultron tự dựng schema (name/description/type) đưa cho
+        LLM từ đúng danh sách này (tham khảo cách n8n <code>$fromAI()</code> làm — xem
+        <code>docs/research/agent-tool-execution.md</code>).
+      </p>
+      <div class="field-list">
+        <div class="field-row ai-param">
+          <input type="text" value="city">
+          <input type="text" value="Tên thành phố cần tra thời tiết, viết tiếng Anh không dấu">
+          <select><option>string</option><option>number</option><option>boolean</option><option>json</option></select>
+          <span class="rm">✕</span>
+        </div>
+      </div>
+      <div class="add-row">+ thêm tham số AI điền</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Preview — cái model thật sự thấy</h2></div>
+    <div class="panel-body">
+      <div class="preview">{
+  <span class="k">"name"</span>: <span class="s">"weather-lookup"</span>,
+  <span class="k">"description"</span>: <span class="s">"Tra thời tiết hiện tại theo tên thành phố..."</span>,
+  <span class="k">"parameters"</span>: {
+    <span class="k">"type"</span>: <span class="s">"object"</span>,
+    <span class="k">"properties"</span>: {
+      <span class="k">"city"</span>: { <span class="k">"type"</span>: <span class="s">"string"</span>, <span class="k">"description"</span>: <span class="s">"Tên thành phố cần tra thời tiết, viết tiếng Anh không dấu"</span> }
+    },
+    <span class="k">"required"</span>: [<span class="s">"city"</span>]
+  }
+}</div>
+      <p class="hint">Header <code>Authorization</code> và query <code>units</code> KHÔNG xuất hiện ở đây — model không thấy giá trị tĩnh/secret, chỉ thấy đúng các "AI param" đã khai.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="btn-row">
+      <div class="btn primary">Lưu tool</div>
+      <div class="btn">Test thử (gọi request mẫu)</div>
+      <div class="btn">Hủy</div>
+    </div>
+  </div>
+
+  <p class="footnote">
+    "Test thử" ở đây là placeholder ý tưởng (giống nút "Test connection" ở
+    model-credential-management.html) — có làm thật ở bản này hay không là câu hỏi mở trong spec,
+    không phải quyết định đã chốt.
+  </p>
+</div>
