@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Bot, Cpu, KeyRound, ServerCog, Sparkles } from 'lucide-react';
+import { Bot, Cpu, Github, KeyRound, ServerCog, Sparkles } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,15 @@ const PROVIDERS: { id: Provider; label: string; icon: typeof Bot; needsCredentia
   { id: 'sglang', label: 'SGLang', icon: ServerCog, needsCredential: false },
 ];
 
+/** Connector provider (ADR-0015) — khác trục "model provider" ở trên (không có model để list),
+ * nhưng tái dùng nguyên credential store/UI. Thêm connector mới (Jira/Confluence...) = thêm 1
+ * entry ở đây. */
+const CONNECTORS: { id: 'github'; label: string; icon: typeof Bot }[] = [
+  { id: 'github', label: 'GitHub', icon: Github },
+];
+
+type SidebarId = Provider | 'github';
+
 /** Dialog 3 cột: provider filter → model + capabilities → credential của provider đang chọn.
  * ADR-0010 — 1 credential/provider, không có field "name", self-host (ollama/sglang) không cần
  * credential. Component tự quản lý state (open/active provider) — nơi gọi (`app/models/page.tsx`,
@@ -42,7 +51,7 @@ export function CredentialManageDialog({ trigger }: { trigger?: ReactNode }) {
   const [checkedProviders, setCheckedProviders] = useState<Set<Provider>>(
     new Set(PROVIDERS.map((p) => p.id)),
   );
-  const [activeProvider, setActiveProvider] = useState<Provider>('gemini');
+  const [activeProvider, setActiveProvider] = useState<SidebarId>('gemini');
 
   const { data: models, isPending: modelsPending } = useModels();
   const { data: credentials, isPending: credentialsPending } = useCredentials();
@@ -56,9 +65,12 @@ export function CredentialManageDialog({ trigger }: { trigger?: ReactNode }) {
     });
   };
 
+  const isConnector = activeProvider === 'github';
   const filteredModels = (models ?? []).filter((m) => checkedProviders.has(m.provider));
   const activeCredential = credentials?.find((c) => c.provider === activeProvider) ?? null;
-  const activeProviderMeta = PROVIDERS.find((p) => p.id === activeProvider)!;
+  const activeProviderMeta = isConnector
+    ? { ...CONNECTORS[0], needsCredential: true as const }
+    : PROVIDERS.find((p) => p.id === activeProvider)!;
 
   return (
     <Dialog>
@@ -102,11 +114,39 @@ export function CredentialManageDialog({ trigger }: { trigger?: ReactNode }) {
                 </button>
               </div>
             ))}
+
+            <p className="mt-3 border-t border-border pt-3 text-xs font-semibold text-muted-foreground">
+              Connector
+            </p>
+            {CONNECTORS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveProvider(id)}
+                className={cn(
+                  'flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors',
+                  activeProvider === id ? 'bg-muted' : 'hover:bg-muted/50',
+                )}
+              >
+                <Icon className="size-4 text-muted-foreground" />
+                <span className="flex-1 font-medium text-foreground">{label}</span>
+                {credentials?.some((c) => c.provider === id && c.is_valid) && (
+                  <span className="size-1.5 rounded-full bg-emerald-500" title="Đã có credential hợp lệ" />
+                )}
+              </button>
+            ))}
           </div>
 
-          {/* Cột giữa — model + capabilities */}
+          {/* Cột giữa — model + capabilities (connector không có model, hiện blurb riêng) */}
           <div className="flex flex-col gap-2 overflow-y-auto pr-2">
-            {modelsPending ? (
+            {isConnector ? (
+              <p className="text-sm text-muted-foreground">
+                GitHub connector (ADR-0015) — token dùng cho builtin tool{' '}
+                <code className="font-mono">github-search-code</code>/
+                <code className="font-mono">github-read-file</code>. Không phải model provider,
+                không có model để list ở đây.
+              </p>
+            ) : modelsPending ? (
               <LoadingState label="Đang tải model…" />
             ) : filteredModels.length === 0 ? (
               <EmptyState icon={Cpu} title="Không có model nào" description="Bỏ chọn ít provider hơn ở cột trái, hoặc tạo model mới." />

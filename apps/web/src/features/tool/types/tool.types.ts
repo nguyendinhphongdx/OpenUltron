@@ -54,3 +54,10 @@ export interface ToolCreateInput {
 }
 
 export type ToolUpdateInput = Partial<Pick<Tool, 'name' | 'description' | 'kind' | 'config'>>;
+
+/** 1 entry catalog builtin tool (`GET /tools/builtin-catalog`) — khớp
+ * `apps/api/app/modules/tool/schemas.py::BuiltinToolCatalogEntry`. */
+export interface BuiltinToolCatalogEntry {
+  slug: string;
+  description: string;
+}

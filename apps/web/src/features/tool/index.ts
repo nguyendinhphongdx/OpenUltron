@@ -8,6 +8,7 @@ export {
   useAgentTools,
   useAssignTool,
   useUnassignTool,
+  useBuiltinToolCatalog,
   TOOLS_QUERY_KEY,
 } from './hooks';
 export { AgentToolManager } from './components/AgentToolManager';

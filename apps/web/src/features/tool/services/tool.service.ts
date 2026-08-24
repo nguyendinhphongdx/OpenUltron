@@ -1,10 +1,15 @@
 /** Service layer — gọi `apiClient` thuần, không chứa React. */
 import { apiClient, endpoints } from '@/lib/api';
-import type { Tool, ToolCreateInput, ToolUpdateInput } from '../types/tool.types';
+import type { BuiltinToolCatalogEntry, Tool, ToolCreateInput, ToolUpdateInput } from '../types/tool.types';
 
 export const toolService = {
   list: async (): Promise<Tool[]> => {
     const res = await apiClient.get<Tool[]>(endpoints.tools.list);
+    return res.data;
+  },
+
+  builtinCatalog: async (): Promise<BuiltinToolCatalogEntry[]> => {
+    const res = await apiClient.get<BuiltinToolCatalogEntry[]>(endpoints.tools.builtinCatalog);
     return res.data;
   },
 

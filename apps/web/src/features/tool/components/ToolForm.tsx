@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { getApiErrorMessage } from '@/lib/api';
 
+import { useBuiltinToolCatalog } from '../hooks/useBuiltinToolCatalog';
 import { useCreateTool } from '../hooks/useCreateTool';
 import { useUpdateTool } from '../hooks/useUpdateTool';
 import type { HttpToolAiParam, HttpToolConfig, HttpToolRequest, Tool, ToolKind } from '../types/tool.types';
@@ -50,6 +51,7 @@ export function ToolForm({ tool }: { tool?: Tool }) {
   const [kind, setKind] = useState<ToolKind>(tool?.kind ?? 'builtin');
   const [httpRequest, setHttpRequest] = useState<HttpToolRequest>(initialHttpRequest(tool?.config));
   const [aiParams, setAiParams] = useState<HttpToolAiParam[]>(initialAiParams(tool?.config));
+  const { data: builtinCatalog, isPending: builtinCatalogPending } = useBuiltinToolCatalog();
 
   const mutation = isEditing ? updateTool : createTool;
 
@@ -127,6 +129,52 @@ export function ToolForm({ tool }: { tool?: Tool }) {
           <HttpRequestFields value={httpRequest} onChange={setHttpRequest} />
           <AiParamFields value={aiParams} onChange={setAiParams} />
         </>
+      )}
+
+      {kind === 'builtin' && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="builtin-slug">Builtin tool có sẵn</Label>
+          {builtinCatalogPending ? (
+            <p className="text-sm text-muted-foreground">Đang tải danh sách…</p>
+          ) : !builtinCatalog || builtinCatalog.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Chưa có builtin tool nào khả dụng.</p>
+          ) : (
+            <>
+              <Select
+                value={builtinCatalog.some((e) => e.slug === slug) ? slug : undefined}
+                onValueChange={(v) => {
+                  if (!v) return;
+                  setSlug(v);
+                  const entry = builtinCatalog.find((e) => e.slug === v);
+                  if (entry && !description) setDescription(entry.description);
+                }}
+                disabled={isEditing}
+              >
+                <SelectTrigger id="builtin-slug" className="w-full">
+                  <SelectValue placeholder="Chọn 1 slug…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {builtinCatalog.map((entry) => (
+                    <SelectItem key={entry.slug} value={entry.slug}>
+                      {entry.slug}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {builtinCatalog.find((e) => e.slug === slug)?.description ??
+                  'Chọn 1 slug ở trên — Slug phải khớp đúng tên trong catalog để agent chạy được (dispatch theo slug, ADR-0013).'}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {kind === 'mcp' && (
+        <p className="text-sm text-muted-foreground">
+          `kind=mcp` chưa được hỗ trợ — generic MCP client nằm trong roadmap riêng, tool loại này
+          hiện tạo được nhưng chưa chạy được trong agent.
+        </p>
       )}
 
       <Button type="submit" disabled={mutation.isPending} className="self-start">

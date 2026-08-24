@@ -1,4 +1,5 @@
 export { useTools, TOOLS_QUERY_KEY } from './useTools';
+export { useBuiltinToolCatalog } from './useBuiltinToolCatalog';
 export { useTool } from './useTool';
 export { useCreateTool } from './useCreateTool';
 export { useUpdateTool } from './useUpdateTool';

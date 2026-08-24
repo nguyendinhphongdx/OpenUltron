@@ -33,6 +33,7 @@ export const endpoints = {
     list: '/tools',
     create: '/tools',
     byId: (id: number) => `/tools/${id}`,
+    builtinCatalog: '/tools/builtin-catalog',
   },
   credentials: {
     list: '/credentials',
