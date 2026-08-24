@@ -168,6 +168,21 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       **Chưa live-test với token GitHub thật hợp lệ** (chưa có token — chỉ verify token sai bị
       từ chối đúng) và **chưa live-test agent thật sự gọi tool này trong 1 turn chat** (cần gán
       tool cho 1 agent + có credential hợp lệ).
+- [x] **Builtin tool write-file/run-command — sandbox 1 working directory** (ADR-0016,
+      2026-08-24) — module mới `app/core/workspace.py` (`resolve_safe_path`: validate path không
+      thoát ra ngoài `WORKSPACE_ROOT`, đọc từ `settings.workspace_dir`, default
+      `./data/workspace`, tự tạo nếu chưa có) — user chốt qua `AskUserQuestion` trước khi code:
+      sandbox 1 thư mục cố định, không cho path/lệnh tuỳ ý. 2 builtin tool mới trong
+      `tool/builder.py` (`write-file`, `run-command` — chạy qua
+      `asyncio.create_subprocess_shell`, timeout 30s tự kill, truncate 8000 ký tự) — **cả 2 bắt
+      buộc nằm trong `TOOLS_REQUIRING_APPROVAL`** (ADR-0014), không có cách tắt approval. Không
+      whitelist/blacklist nội dung lệnh (chủ đích, xem ADR-0016 Alternatives) — approval gate là
+      lớp chặn chính, sandbox path là lớp bổ sung. **Live-verify thật (không mock) qua API +
+      browser**: agent thật (Gemini) gọi `write-file` → pause chờ duyệt → approve → file ghi đúng
+      nội dung trên đĩa thật; `run-command` (`ls -la`) → reject → không chạy gì (model tự báo bị
+      từ chối) → turn khác approve → lệnh chạy thật, output đúng trả về; **path traversal
+      (`../../../../etc/...`) bị chặn dù đã approve** — xác nhận sandbox là lớp bảo vệ thật, không
+      chỉ decorative.
 - [x] `apps/api`: FastAPI + SQLAlchemy (Postgres/pgvector) + Pydantic
   - Module `conversation` (+ sub-resource `message`, `tool_call`), health check
   - Module `agent` — CRUD Agent (slug/system_prompt/model_id/is_orchestrator) + `AgentDelegation` (many-to-many)
@@ -197,7 +212,8 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
 - [ ] Wire `KnowledgeBase` (đã CRUD + search) vào chat execution — agent có `AgentKnowledgeBase` nhưng chưa có tool RAG tự động tra KB trong lúc chat
 - [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
-- [ ] Tool thật tự viết (tham khảo pattern OpenJarvis, không import): GitHub search/read, MCP client (Jira/Confluence), tool chạy lệnh trên máy (có approval gate — ADR-0005)
+- [ ] MCP client generic (Jira/Confluence...) — GitHub search/read + tool tạo file/thực thi lệnh
+      trên máy đã xong (xem "Đã xong", ADR-0015/ADR-0016)
 - [ ] Live Voice Agent — spec chuyển "accepted" (2026-08-24, xem
       [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md)). `apps/api` module
       `voice` đã có event `state` (listening/thinking/speaking/using_tool, suy từ event Gemini có
@@ -220,9 +236,6 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] User cần nhập lại API key Gemini/OpenAI qua UI mới (dialog Model & Credential) sau khi deploy
       — không auto-migrate từ `.env` cũ, quyết định có chủ đích
       ([ADR-0010](../adr/0010-provider-credential-in-db.md)).
-- [ ] **Builtin tool "tạo file/thực thi lệnh trên máy"** (rủi ro cao, dùng
-      `TOOLS_REQUIRING_APPROVAL` — ADR-0014, approval-gate đã xong) — GitHub search/read (rủi ro
-      thấp, chỉ đọc) đã implement xong, xem "Đã xong" (ADR-0015).
 - [ ] **MCP client generic** — user tự khai bất kỳ MCP server nào (command/URL), Ultron tự list
       tool từ server đó. Cần research protocol MCP riêng trước khi spec (transport stdio/HTTP,
       cách discover tool) — `McpToolBuilder` hiện chỉ là chỗ đứng, trả `None`.
