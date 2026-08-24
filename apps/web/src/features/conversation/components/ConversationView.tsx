@@ -19,10 +19,17 @@ export function ConversationView({ conversationId }: { conversationId: number })
           pendingUserText={chat.pendingUserText}
           assistantText={chat.assistantText}
           toolCallName={chat.toolCallName}
+          approvalRequest={chat.approvalRequest}
+          onApprove={() => chat.respond('approve')}
+          onReject={() => chat.respond('reject')}
         />
       </div>
       <VoicePanel conversationId={conversationId} />
-      <MessageComposer onSend={chat.send} disabled={chat.status === 'streaming'} error={chat.error} />
+      <MessageComposer
+        onSend={chat.send}
+        disabled={chat.status === 'streaming' || chat.status === 'awaiting_approval'}
+        error={chat.error}
+      />
     </div>
   );
 }
