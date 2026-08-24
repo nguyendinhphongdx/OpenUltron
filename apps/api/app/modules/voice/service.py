@@ -10,6 +10,7 @@ from app.modules.chat.graph import SubAgentSpec, run_sub_agent
 from app.modules.chat.service import ChatService
 from app.modules.conversation.message.deps import get_message_service
 from app.modules.conversation.message.schemas import MessageCreate
+from app.modules.conversation.models import Message
 from app.modules.voice.events import (
     AudioDelta,
     Interrupted,
@@ -42,6 +43,17 @@ _VOICE_LANGUAGE_INSTRUCTION = (
     "coi là 1 trong 2 ngôn ngữ này, không thử nhận diện ngôn ngữ khác. Luôn trả lời bằng tiếng "
     "Việt, bất kể user nói ngôn ngữ nào trong 2 ngôn ngữ đó."
 )
+
+
+def _to_gemini_turn(row: Message) -> dict | None:
+    """Map `Message` ORM row → turn Gemini Live hiểu (ADR-0009) — cùng tinh thần `_to_langchain`
+    (`chat/service.py`, text chat): chỉ nạp `user`/`assistant`, bỏ `system`/`tool` (chưa nạp tool
+    call vào history model, giống text chat)."""
+    if row.role == "user":
+        return {"role": "user", "parts": [{"text": row.content}]}
+    if row.role == "assistant":
+        return {"role": "model", "parts": [{"text": row.content}]}
+    return None
 
 
 def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[dict]:
@@ -104,6 +116,15 @@ class VoiceService:
             # sống suốt voice session (giống lý do `_flush_transcript` mở session riêng).
             async with async_session_factory() as credential_session:
                 await client.connect(credential_session)
+            # Nạp lại lịch sử hội thoại cũ (voice cũ + text chat cũ) — mỗi lần bấm "Bắt đầu voice"
+            # là 1 session Gemini Live hoàn toàn mới, KHÔNG tự nhớ gì từ session trước (bug thật,
+            # phát hiện qua feedback user 2026-08-24: dừng voice rồi bắt đầu lại mất context thật,
+            # khác với bug "ngắt lời AI giữa câu" — đó là trong CÙNG 1 session, đã fix riêng).
+            # Không cap số lượng message — cùng cách text chat làm (`chat/service.py::send`, nạp
+            # full history không phân trang), giữ nhất quán hành vi giữa 2 transport.
+            history_rows = await self.chat_service.message_service.list_all(conversation_id)
+            history_turns = [t for row in history_rows if (t := _to_gemini_turn(row)) is not None]
+            await client.send_history(history_turns)
         except Exception as exc:
             logger.error(
                 "voice.provider_connect_failed", conversation_id=conversation_id, exc_info=exc

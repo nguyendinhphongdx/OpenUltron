@@ -107,6 +107,17 @@ class GeminiLiveClient:
             )
         )
 
+    async def send_history(self, turns: list[dict]) -> None:
+        """Nạp lại lịch sử hội thoại cũ (voice cũ + text chat cũ, ADR-0009) vào context TRƯỚC khi
+        user bắt đầu nói — `turnComplete: False` để chỉ thêm context, KHÔNG kích model trả lời
+        ngay (khác `send_text`, luôn `turnComplete: True`). Không gọi gì nếu rỗng (conversation
+        mới, chưa có message nào)."""
+        if not turns:
+            return
+        if self._ws is None:
+            raise RuntimeError("Chưa connect()")
+        await self._ws.send(json.dumps({"clientContent": {"turns": turns, "turnComplete": False}}))
+
     async def send_text(self, text: str) -> None:
         """Text fallback trong lúc voice session — clientContent, không phải realtimeInput."""
         if self._ws is None:

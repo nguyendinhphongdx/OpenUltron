@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 
 import pytest
 from fastapi import status as ws_status
@@ -9,12 +10,32 @@ from app.modules.voice.events import Interrupted, TranscriptDelta, TurnComplete
 from app.modules.voice.service import VoiceService
 
 
+@dataclass
+class FakeMessage:
+    """Chỉ cần đủ field `_to_gemini_turn` đọc (role/content) — không phải ORM `Message` thật
+    (03-testing.md — unit test thuần, không cần DB)."""
+
+    role: str
+    content: str
+
+
+class FakeMessageService:
+    def __init__(self, rows: list | None = None) -> None:
+        self._rows = rows or []
+
+    async def list_all(self, conversation_id: int) -> list:
+        return self._rows
+
+
 class FakeChatService:
     """`resolve_context` trả 4-tuple thật (system_prompt, model, sub_agent_specs, tool_specs) —
     regression test cho bug thật: `VoiceService.run` từng unpack chỉ 3 giá trị (thiếu
     `tool_specs`, thêm vào `resolve_context` sau khi voice module đã viết xong), khiến MỌI voice
     session bị reject ngay từ đầu (`ValueError: too many values to unpack`), hiện ra phía browser
     là "Mất kết nối voice session." không rõ lý do."""
+
+    def __init__(self, history_rows: list | None = None) -> None:
+        self.message_service = FakeMessageService(history_rows)
 
     async def resolve_context(self, conversation_id: int):
         return "system prompt", ModelConfig(provider="gemini", model_id="test-model"), [], []
@@ -90,6 +111,9 @@ async def test_barge_in_does_not_split_user_turn_without_a_model_reply(
         async def connect(self, session: object) -> None:
             pass
 
+        async def send_history(self, turns: list[dict]) -> None:
+            pass
+
         async def close(self) -> None:
             pass
 
@@ -122,3 +146,51 @@ async def test_barge_in_does_not_split_user_turn_without_a_model_reply(
     await service.run(ws, conversation_id=1)  # type: ignore[arg-type]
 
     assert flush_calls == [{"user": ["Cloud.", " tiếp tục"], "model": ["Đã hiểu."]}]
+
+
+@pytest.mark.asyncio
+async def test_run_replays_prior_messages_as_history_before_listening(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gap thật (feedback user 2026-08-24): mỗi lần bấm "Bắt đầu voice" là 1 session Gemini Live
+    mới, không tự nhớ hội thoại cũ (khác bug "ngắt lời AI giữa câu" — đó là trong CÙNG 1 session).
+    Sau fix: `run()` phải nạp lại `message_service.list_all()` thành turns qua `send_history`
+    TRƯỚC khi vào trạng thái nghe — chỉ user/assistant, bỏ system/tool (giống `_to_langchain`)."""
+    history_rows = [
+        FakeMessage(role="system", content="ignored"),
+        FakeMessage(role="user", content="Câu hỏi cũ"),
+        FakeMessage(role="assistant", content="Trả lời cũ"),
+        FakeMessage(role="tool", content="ignored"),
+    ]
+    sent_history: list[list[dict]] = []
+
+    class RecordingGeminiLiveClient:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def connect(self, session: object) -> None:
+            pass
+
+        async def send_history(self, turns: list[dict]) -> None:
+            sent_history.append(turns)
+
+        async def close(self) -> None:
+            pass
+
+        async def events(self):
+            return
+            yield  # pragma: no cover — async generator rỗng, không có event nào
+
+    monkeypatch.setattr(voice_service_module, "GeminiLiveClient", RecordingGeminiLiveClient)
+
+    service = VoiceService(chat_service=FakeChatService(history_rows))  # type: ignore[arg-type]
+    ws = FakeWebSocket()
+
+    await service.run(ws, conversation_id=1)  # type: ignore[arg-type]
+
+    assert sent_history == [
+        [
+            {"role": "user", "parts": [{"text": "Câu hỏi cũ"}]},
+            {"role": "model", "parts": [{"text": "Trả lời cũ"}]},
+        ]
+    ]

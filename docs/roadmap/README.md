@@ -260,9 +260,15 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       `transcript_buffer["model"]` thật sự có nội dung; nói tiếp mà chưa có phản hồi thì gộp vào
       cùng buffer. Thêm flush cuối lúc session kết thúc (tránh mất trắng đoạn chưa chốt). Test
       xác nhận: barge-in giữa câu rồi nói tiếp → gộp đúng thành 1 `Message` user (không phải 2).
-      **Còn 1 gap chưa fix** (nêu ra lúc debug, chưa làm): bắt đầu voice session MỚI (sau khi bấm
-      dừng) không nạp lại lịch sử hội thoại cũ (voice cũ + text chat cũ) vào `system_instruction`
-      của session Gemini Live mới — mất context thật giữa các lần bấm "Bắt đầu voice" riêng biệt.
+      **Gap thứ 3 fix luôn cùng ngày**: bắt đầu voice session MỚI (sau khi bấm dừng) không nạp
+      lại lịch sử hội thoại cũ — mất context thật giữa các lần bấm "Bắt đầu voice" riêng biệt
+      (khác 2 bug trên, là trong CÙNG 1 session). Sửa: `GeminiLiveClient.send_history()` mới —
+      gửi `clientContent.turns` với `turnComplete: False` (chỉ thêm context, không kích trả lời)
+      ngay sau `connect()`, nạp từ `message_service.list_all()` (không cap, giống cách text chat
+      nạp full history — `chat/service.py::send`). **Live-verify thật qua `TestClient`**: hỏi
+      voice "Kết quả phép cộng vừa nãy là bao nhiêu?" trên 1 conversation đã có sẵn text-chat lịch
+      sử ("...là 42") → model trả lời đúng "**42**" — xác nhận lịch sử cũ đã nạp đúng vào session
+      Gemini Live mới.
 - [ ] `apps/web` — canvas orchestrator (graph editor kiểu ReactFlow) — hiện chỉ có mockup, xem bảng "Tầm nhìn sản phẩm"
 - [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
 - [ ] Migration `a1c2e3f4b5d6` chưa verify chạy thật trên Postgres — cần `uv run alembic upgrade head` khi có DB + môi trường `uv sync` hoạt động
