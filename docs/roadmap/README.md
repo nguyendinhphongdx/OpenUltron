@@ -182,10 +182,13 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [ ] User cần nhập lại API key Gemini/OpenAI qua UI mới (dialog Model & Credential) sau khi deploy
       — không auto-migrate từ `.env` cũ, quyết định có chủ đích
       ([ADR-0010](../adr/0010-provider-credential-in-db.md)).
-- [ ] **Approval-gate mechanism** (thứ tự đã chốt với user 2026-08-24, làm trước 2 mục builtin/MCP
-      dưới đây vì builtin tool "chạy lệnh máy" phụ thuộc cái này) — ADR-0005 mới chỉ mô tả ý tưởng
-      (node "approval" tạm dừng graph chờ duyệt), **chưa có API/checkpoint thật nào được build**.
-      Cần spec + ADR riêng trước khi code (an toàn cao, không làm vội).
+- [ ] **Approval-gate mechanism** — spec + ADR accepted (2026-08-24):
+      [`docs/features/tool-approval-gate.md`](../features/tool-approval-gate.md),
+      [ADR-0014](../adr/0014-tool-approval-gate.md). Dùng `HumanInTheLoopMiddleware`
+      (`langchain.agents.middleware`, tương thích `create_agent`) + `AsyncPostgresSaver`
+      (`langgraph-checkpoint-postgres`, đã là dependency có sẵn, chưa wire) làm checkpointer —
+      không tự viết pause/resume tay. Verify bằng 1 tool test tối giản trước khi có builtin tool
+      thật cần gate. Chưa code.
 - [ ] **Builtin tool thật**: GitHub search/read (rủi ro thấp hơn, không cần approval-gate) + tạo
       file/thực thi lệnh trên máy (rủi ro cao, **phụ thuộc approval-gate ở trên xong trước**) —
       dùng `BuiltinToolBuilder` đã có chỗ đứng ở `tool/builder.py` (ADR-0013), viết implementation
