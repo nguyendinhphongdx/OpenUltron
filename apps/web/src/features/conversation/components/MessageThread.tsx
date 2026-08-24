@@ -1,33 +1,73 @@
 'use client';
 
-import { MessagesSquare } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Bot, MessagesSquare, User } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { useMessages } from '../hooks/useMessages';
 
-export function MessageThread({ conversationId }: { conversationId: number }) {
+interface MessageThreadProps {
+  conversationId: number;
+  /** Hiện bubble "đang trả lời" (3 dot) ở cuối thread khi đang chờ response — chỉ trạng thái
+   * chờ, không phải streaming thật (backend chưa hỗ trợ SSE, xem roadmap). */
+  isAwaitingReply?: boolean;
+}
+
+export function MessageThread({ conversationId, isAwaitingReply }: MessageThreadProps) {
   const { data, isPending, isError } = useMessages(conversationId);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' });
+  }, [data?.data.length, isAwaitingReply]);
 
   if (isPending) return <LoadingState label="Đang tải tin nhắn…" />;
   if (isError) return <EmptyState icon={MessagesSquare} tone="destructive" title="Không tải được tin nhắn." />;
-  if (data.data.length === 0) {
+  if (data.data.length === 0 && !isAwaitingReply) {
     return <EmptyState icon={MessagesSquare} title="Chưa có tin nhắn nào" description="Gửi tin nhắn đầu tiên để bắt đầu." />;
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4">
-      {data.data.map((message) => (
-        <div
-          key={message.id}
-          className={cn(
-            'max-w-[75%] rounded-lg border border-border px-3 py-2 text-sm',
-            message.role === 'user' ? 'self-end bg-accent text-white' : 'self-start bg-muted text-foreground',
-          )}
-        >
-          {message.content}
+    <div className="mx-auto flex max-w-3xl flex-col gap-5 p-6">
+      {data.data.map((message) => {
+        const isUser = message.role === 'user';
+        return (
+          <div key={message.id} className={cn('flex max-w-[85%] gap-2.5', isUser ? 'self-end flex-row-reverse' : 'self-start')}>
+            <span
+              className={cn(
+                'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg',
+                isUser ? 'bg-accent/15 text-accent' : 'bg-muted text-foreground/70',
+              )}
+            >
+              {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
+            </span>
+            <div
+              className={cn(
+                'whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+                isUser
+                  ? 'rounded-br-sm bg-accent text-accent-foreground'
+                  : 'rounded-bl-sm border border-border bg-muted text-foreground',
+              )}
+            >
+              {message.content}
+            </div>
+          </div>
+        );
+      })}
+      {isAwaitingReply && (
+        <div className="flex max-w-[85%] gap-2.5 self-start">
+          <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70">
+            <Bot className="size-3.5" />
+          </span>
+          <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm border border-border bg-muted px-4 py-3">
+            <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none [animation-delay:-0.3s]" />
+            <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none [animation-delay:-0.15s]" />
+            <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none" />
+          </div>
         </div>
-      ))}
+      )}
+      <div ref={bottomRef} />
     </div>
   );
 }

@@ -1,22 +1,12 @@
-import { MessageComposer } from '@/features/conversation/components/MessageComposer';
-import { MessageThread } from '@/features/conversation/components/MessageThread';
-import { PageShell } from '@/components/layout/PageShell';
+import { ConversationView } from '@/features/conversation';
 
+// Không dùng `PageShell` (khung list/form chuẩn) — hội thoại cần layout full-height riêng
+// (header + thread scroll riêng + composer dính đáy), `ConversationView` tự lo phần chrome đó.
 export default async function ConversationPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const conversationId = Number(id);
-  return (
-    <PageShell title={`Hội thoại #${id}`}>
-      <div className="flex h-full flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto">
-          <MessageThread conversationId={conversationId} />
-        </div>
-        <MessageComposer conversationId={conversationId} />
-      </div>
-    </PageShell>
-  );
+  return <ConversationView conversationId={Number(id)} />;
 }
