@@ -210,11 +210,24 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       state `manualPositions` + `onNodesChange` (`applyNodeChanges`, API chuẩn của
       `@xyflow/react`) để giữ vị trí user tự kéo — chỉ trong session hiện tại (chưa có field toạ
       độ ở `Agent` để lưu persistent, ngoài phạm vi fix này, cần quyết định riêng nếu muốn lưu
-      lâu dài). **Chưa live-verify được bằng browser thật** — lúc tự test, canvas node trong
-      Browser pane bị stuck ở `visibility:hidden` (nghi do `ResizeObserver` không fire trong môi
-      trường sandbox lúc đó, có vẻ là artifact riêng của công cụ test, không chắc phản ánh đúng
-      hành vi trên browser thật) — chỉ verify được qua typecheck/lint/đọc code, **cần user tự xác
-      nhận trên browser thật**.
+      lâu dài).
+
+      **Bug thứ 2 phát hiện qua chính user (gửi ảnh chụp canvas trắng, không có node nào)**: node
+      bị stuck `visibility:hidden` vĩnh viễn — ban đầu nghi là artifact của công cụ test, nhưng
+      ảnh user gửi xác nhận đây là bug thật, không phải do môi trường test. Điều tra sâu (đọc
+      source `@xyflow/react` 12.11.3, tự gắn `ResizeObserver` riêng lên đúng DOM node để xác nhận
+      ResizeObserver bản thân hoạt động bình thường, loại trừ giả thuyết container 0 kích thước và
+      giả thuyết React StrictMode double-invoke bằng test trực tiếp — cả 2 đều KHÔNG phải nguyên
+      nhân): root cause thật là `node.measured` (driver cho `nodeHasDimensions()`) không bao giờ
+      được cập nhật, nghi lỗi nằm trong tầng cập nhật Zustand store nội bộ của thư viện — chưa xác
+      định chính xác dòng code lỗi (không đáng bỏ thêm thời gian debug sâu vào code bên thứ 3).
+      **Fix bằng cách né hoàn toàn runtime measurement**: khai `initialWidth`/`initialHeight` tường
+      minh trên mỗi node (API chính thức của `@xyflow/react` cho node có kích thước cố định biết
+      trước — khớp `AgentNodeCard` luôn render `w-44` cố định) — `nodeHasDimensions()` trả `true`
+      ngay từ đầu, không cần chờ `ResizeObserver`. **Live-verify thật qua browser** (sau khi loại
+      trừ nghi vấn ban đầu, tự mở tab mới sạch, khởi động lại dev server để đảm bảo không phải cache
+      cũ): node hiện đúng, kéo giữ nguyên vị trí sau khi click chọn node khác (đúng kịch bản bug gốc
+      user báo) — xác nhận cả 2 bug đã sửa dứt điểm.
 - [x] **Wire KnowledgeBase vào chat execution — RAG tool tự động** (2026-08-24,
       [`docs/features/knowledge-base-chat-wiring.md`](../features/knowledge-base-chat-wiring.md))
       — agent (top-level hoặc sub-agent, đa tầng) có N `KnowledgeBase` đã gán qua
