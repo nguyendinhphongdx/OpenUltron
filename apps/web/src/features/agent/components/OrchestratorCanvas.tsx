@@ -42,6 +42,17 @@ const ROW_HEIGHT = 130;
 const NODE_WIDTH = 176;
 const NODE_HEIGHT = 76;
 
+// Cùng lý do NODE_WIDTH/NODE_HEIGHT ở trên — `internals.handleBounds` (vị trí handle để vẽ edge)
+// cũng phụ thuộc measurement bị lỗi, khiến edge không bao giờ render (dù node đã hiện đúng nhờ
+// initialWidth/initialHeight). Khai `handles` tường minh trên node — API chính thức của
+// @xyflow/react cho đúng use-case "vị trí handle biết trước cố định", bỏ qua hẳn
+// `internals.handleBounds`/ResizeObserver. Khớp 2 <Handle> trong AgentNodeCard: target ở
+// Position.Top (giữa cạnh trên), source ở Position.Bottom (giữa cạnh dưới).
+const AGENT_NODE_HANDLES = [
+  { type: 'target' as const, position: Position.Top, x: NODE_WIDTH / 2, y: 0 },
+  { type: 'source' as const, position: Position.Bottom, x: NODE_WIDTH / 2, y: NODE_HEIGHT },
+];
+
 interface PosNode {
   key: string;
   x: number;
@@ -157,6 +168,7 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
       selected: p.agent.id === selectedAgentId,
       initialWidth: NODE_WIDTH,
       initialHeight: NODE_HEIGHT,
+      handles: AGENT_NODE_HANDLES,
     }));
 
     const edges: Edge[] = out
