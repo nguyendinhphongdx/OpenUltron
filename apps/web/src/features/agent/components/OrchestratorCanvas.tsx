@@ -29,6 +29,18 @@ import type { Agent, OrchestratorTreeNode } from '../types/agent.types';
 
 const COL_WIDTH = 200;
 const ROW_HEIGHT = 130;
+// Kích thước thật của `AgentNodeCard` (khớp `w-44` = 176px + nội dung bên trong) — khai tường
+// minh qua `initialWidth`/`initialHeight` thay vì để ReactFlow tự đo qua ResizeObserver lúc mount.
+// Bug thật phát hiện qua feedback user (2026-08-25): trong môi trường dev hiện tại, ResizeObserver
+// của chính node KHÔNG BAO GIỜ cập nhật `node.measured` dù ResizeObserver bản thân hoạt động bình
+// thường (tự test riêng bằng 1 observer khác trên đúng element đó, vẫn fire đúng) — nghi lỗi nằm
+// trong tầng cập nhật Zustand store nội bộ của `@xyflow/react` (12.11.3), không phải do container
+// 0 kích thước hay React StrictMode (đã loại trừ cả 2 giả thuyết đó bằng test trực tiếp). Vì node
+// không cần resize (card có nội dung cố định), khai sẵn kích thước là cách né an toàn,
+// không phụ thuộc runtime measurement — ReactFlow coi `initialWidth`/`initialHeight` là đủ để
+// `nodeHasDimensions()` trả `true` ngay từ frame đầu, không cần chờ `node.measured`.
+const NODE_WIDTH = 176;
+const NODE_HEIGHT = 76;
 
 interface PosNode {
   key: string;
@@ -143,6 +155,8 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
       position: manualPositions[p.key] ?? { x: p.x, y: p.y },
       data: { agent: p.agent, modelLabel: modelLabel(p.agent.model_id) },
       selected: p.agent.id === selectedAgentId,
+      initialWidth: NODE_WIDTH,
+      initialHeight: NODE_HEIGHT,
     }));
 
     const edges: Edge[] = out
@@ -183,7 +197,7 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
-      <div className="flex-1">
+      <div className="min-h-0 min-w-0 flex-1">
         <ReactFlow
           nodes={nodes}
           edges={edges}
