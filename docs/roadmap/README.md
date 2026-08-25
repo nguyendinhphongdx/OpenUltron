@@ -228,6 +228,15 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       trừ nghi vấn ban đầu, tự mở tab mới sạch, khởi động lại dev server để đảm bảo không phải cache
       cũ): node hiện đúng, kéo giữ nguyên vị trí sau khi click chọn node khác (đúng kịch bản bug gốc
       user báo) — xác nhận cả 2 bug đã sửa dứt điểm.
+
+      **Bug thứ 3 (cùng root cause, phát hiện ngay sau đó qua feedback user)**: edge nối 2 node
+      không hiện — `internals.handleBounds` (vị trí handle để vẽ đường nối) phụ thuộc đúng tầng
+      measurement đã xác định lỗi ở trên, độc lập với `initialWidth`/`initialHeight`. Sửa bằng
+      cách khai `handles` tường minh trên mỗi node (API chính thức của `@xyflow/react`,
+      `getEdgePosition` có fallback đọc thẳng `node.handles` khi `internals.handleBounds` rỗng) —
+      khớp 2 `<Handle>` thật trong `AgentNodeCard` (target `Position.Top`, source
+      `Position.Bottom`). Live-verify qua browser: edge "delegate" hiện đúng, nối 2 node, mũi tên
+      đúng hướng.
 - [x] **Wire KnowledgeBase vào chat execution — RAG tool tự động** (2026-08-24,
       [`docs/features/knowledge-base-chat-wiring.md`](../features/knowledge-base-chat-wiring.md))
       — agent (top-level hoặc sub-agent, đa tầng) có N `KnowledgeBase` đã gán qua
