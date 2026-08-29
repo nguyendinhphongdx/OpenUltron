@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { knowledgeBaseService } from '../services/knowledge-base.service';
 import { filesQueryKey } from './useFiles';
+import { knowledgeBaseStatsQueryKey } from './useKnowledgeBaseStats';
 
 export function useDeleteFile(kbId: number) {
   const queryClient = useQueryClient();
@@ -12,6 +13,7 @@ export function useDeleteFile(kbId: number) {
       knowledgeBaseService.deleteFile(kbId, fileId),
     onSuccess: (_, { folderId }) => {
       queryClient.invalidateQueries({ queryKey: filesQueryKey(kbId, folderId) });
+      queryClient.invalidateQueries({ queryKey: knowledgeBaseStatsQueryKey(kbId) });
     },
   });
 }

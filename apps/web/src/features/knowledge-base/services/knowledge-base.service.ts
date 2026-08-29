@@ -6,6 +6,7 @@ import type {
   FolderCreateInput,
   KnowledgeBase,
   KnowledgeBaseCreateInput,
+  KnowledgeBaseStats,
   KnowledgeBaseUpdateInput,
   KnowledgeChunk,
   KnowledgeFile,
@@ -38,6 +39,11 @@ export const knowledgeBaseService = {
     await apiClient.delete(endpoints.knowledgeBases.byId(id));
   },
 
+  getStats: async (id: number): Promise<KnowledgeBaseStats> => {
+    const res = await apiClient.get<KnowledgeBaseStats>(endpoints.knowledgeBases.stats(id));
+    return res.data;
+  },
+
   addChunk: async (kbId: number, input: ChunkCreateInput): Promise<KnowledgeChunk> => {
     const res = await apiClient.post<KnowledgeChunk>(endpoints.knowledgeBases.chunks(kbId), input);
     return res.data;
@@ -60,9 +66,13 @@ export const knowledgeBaseService = {
     await apiClient.post(endpoints.agents.knowledgeBases(agentId), { kb_id: kbId });
   },
 
-  listFolders: async (kbId: number, parentFolderId?: number | null): Promise<KnowledgeFolder[]> => {
+  listFolders: async (
+    kbId: number,
+    parentFolderId?: number | null,
+    limit = 50,
+  ): Promise<KnowledgeFolder[]> => {
     const res = await apiClient.get<KnowledgeFolder[]>(endpoints.knowledgeBases.folders(kbId), {
-      params: parentFolderId != null ? { parent_folder_id: parentFolderId } : undefined,
+      params: { parent_folder_id: parentFolderId ?? undefined, limit },
     });
     return res.data;
   },
@@ -76,9 +86,26 @@ export const knowledgeBaseService = {
     await apiClient.delete(endpoints.knowledgeBases.folderById(kbId, folderId));
   },
 
-  listFiles: async (kbId: number, folderId?: number | null): Promise<KnowledgeFile[]> => {
+  getFolder: async (kbId: number, folderId: number): Promise<KnowledgeFolder> => {
+    const res = await apiClient.get<KnowledgeFolder>(endpoints.knowledgeBases.folderById(kbId, folderId));
+    return res.data;
+  },
+
+  getFile: async (kbId: number, fileId: number): Promise<KnowledgeFile> => {
+    const res = await apiClient.get<KnowledgeFile>(endpoints.knowledgeBases.fileById(kbId, fileId));
+    return res.data;
+  },
+
+  listFiles: async (kbId: number, folderId?: number | null, limit = 50): Promise<KnowledgeFile[]> => {
     const res = await apiClient.get<KnowledgeFile[]>(endpoints.knowledgeBases.files(kbId), {
-      params: folderId != null ? { folder_id: folderId } : undefined,
+      params: { folder_id: folderId ?? undefined, limit },
+    });
+    return res.data;
+  },
+
+  searchFiles: async (kbId: number, query: string): Promise<KnowledgeFile[]> => {
+    const res = await apiClient.get<KnowledgeFile[]>(endpoints.knowledgeBases.filesSearch(kbId), {
+      params: { q: query },
     });
     return res.data;
   },
@@ -101,6 +128,11 @@ export const knowledgeBaseService = {
       endpoints.knowledgeBases.fileChunks(kbId, fileId),
       input,
     );
+    return res.data;
+  },
+
+  listFileChunks: async (kbId: number, fileId: number): Promise<KnowledgeChunk[]> => {
+    const res = await apiClient.get<KnowledgeChunk[]>(endpoints.knowledgeBases.fileChunks(kbId, fileId));
     return res.data;
   },
 };

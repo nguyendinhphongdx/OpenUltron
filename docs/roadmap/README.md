@@ -20,6 +20,7 @@ có **streaming** khi chat/chạy graph.
 | Streaming (SSE) cho chat text | ✅ Đã có | [`docs/features/chat-streaming.md`](../features/chat-streaming.md) |
 | Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Backend + `apps/web` client đã code — chưa live-test với mic thật (sandbox preview chặn `getUserMedia`) | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
 | Knowledge base v2 (folder nested kiểu Google Drive, per-file chunking status, embedding dimension linh hoạt thay vì fix 768) | ✅ Đã có (backend) | làm thẳng không qua ADR/spec riêng (quyết định của user) — `KnowledgeFolder`/`KnowledgeFile`, migration `a1c2e3f4b5d6` |
+| Redesign UI Knowledge Base ở `apps/web` (nhiều trang: danh sách list/grid + filter/search/sort, trang chi tiết có metric + list kiểu Google Drive folder toggle in-place, trang xem chunk của 1 file) | ✅ Đã có | [`docs/features/knowledge-base-ui-redesign.md`](../features/knowledge-base-ui-redesign.md), [research (so sánh Dify)](../research/knowledge-base-ui-redesign.md) |
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
 | Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
@@ -320,7 +321,7 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       voice "Kết quả phép cộng vừa nãy là bao nhiêu?" trên 1 conversation đã có sẵn text-chat lịch
       sử ("...là 42") → model trả lời đúng "**42**" — xác nhận lịch sử cũ đã nạp đúng vào session
       Gemini Live mới.
-- [ ] `apps/web` — KB folder tree UI (backend đã có `KnowledgeFolder`/`KnowledgeFile`, frontend chưa build — vẫn chỉ CRUD phẳng)
+- [x] `apps/web` — KB folder tree UI + redesign nhiều trang (`Files`/`Search`/`Settings`), có endpoint stats/chunk list/file search ở `apps/api`; xem [`docs/features/knowledge-base-ui-redesign.md`](../features/knowledge-base-ui-redesign.md)
 - [ ] `apps/mobile` — Expo (React Native)
 - [ ] `apps/desktop` — Tauri
 - [ ] Channel điện thoại: chọn 1 trong Telegram/WhatsApp làm kênh chính

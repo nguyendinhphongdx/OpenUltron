@@ -12,3 +12,6 @@ export { useFiles, filesQueryKey } from './useFiles';
 export { useCreateFile } from './useCreateFile';
 export { useDeleteFile } from './useDeleteFile';
 export { useAddFileChunk } from './useAddFileChunk';
+export { useKnowledgeBaseStats, knowledgeBaseStatsQueryKey } from './useKnowledgeBaseStats';
+export { useFileChunks, fileChunksQueryKey } from './useFileChunks';
+export { useSearchFiles } from './useSearchFiles';

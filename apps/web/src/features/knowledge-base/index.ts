@@ -19,10 +19,24 @@ export {
   useCreateFile,
   useDeleteFile,
   useAddFileChunk,
+  useKnowledgeBaseStats,
+  knowledgeBaseStatsQueryKey,
+  useFileChunks,
+  fileChunksQueryKey,
+  useSearchFiles,
 } from './hooks';
-export { KnowledgeBaseList } from './components/KnowledgeBaseList';
+export { useFile, fileQueryKey } from './hooks/useFile';
+export { useFolder, folderQueryKey } from './hooks/useFolder';
 export { KnowledgeBaseForm } from './components/KnowledgeBaseForm';
+export { KnowledgeBaseListView } from './components/KnowledgeBaseListView';
+export { KnowledgeBaseDetailShell } from './components/KnowledgeBaseDetailShell';
+export { KnowledgeBaseFilesView } from './components/KnowledgeBaseFilesView';
+export { KnowledgeFileDetailView } from './components/KnowledgeFileDetailView';
+export { KnowledgeBaseSettingsView } from './components/KnowledgeBaseSettingsView';
+export { KnowledgeSearchView } from './components/KnowledgeSearchView';
 export { ChunkAdder } from './components/ChunkAdder';
 export { KnowledgeSearchPanel } from './components/KnowledgeSearchPanel';
-export { FolderTree } from './components/FolderTree';
+export { DriveList } from './components/DriveList';
+export { FileStatusBadge } from './components/FileStatusBadge';
+export { KnowledgeMetrics } from './components/KnowledgeMetrics';
 export type * from './types/knowledge-base.types';

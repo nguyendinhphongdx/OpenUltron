@@ -84,3 +84,14 @@ class SearchResult(BaseModel):
 
 class AgentKnowledgeBaseCreate(BaseModel):
     kb_id: int
+
+
+class KnowledgeBaseStats(BaseModel):
+    """Số liệu tổng quan cho trang chi tiết KB — đếm phẳng theo `kb_id` (không cần đệ quy cây
+    folder vì file/chunk đều có `kb_id` trực tiếp)."""
+
+    total_folders: int
+    total_files: int
+    files_by_status: dict[str, int]
+    total_chunks: int
+    total_content_chars: int

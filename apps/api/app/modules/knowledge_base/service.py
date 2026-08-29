@@ -20,6 +20,7 @@ from app.modules.knowledge_base.schemas import (
     FolderRead,
     KnowledgeBaseCreate,
     KnowledgeBaseRead,
+    KnowledgeBaseStats,
     KnowledgeBaseUpdate,
     SearchResult,
 )
@@ -163,11 +164,17 @@ class KnowledgeBaseService:
         )
         return folder_to_read(row)
 
-    async def list_folders(self, kb_id: int, parent_folder_id: int | None) -> list[FolderRead]:
+    async def get_folder(self, kb_id: int, folder_id: int) -> FolderRead:
+        return folder_to_read(await self._get_folder_in_kb_or_404(kb_id, folder_id))
+
+    async def list_folders(
+        self, kb_id: int, parent_folder_id: int | None, limit: int, offset: int
+    ) -> list[FolderRead]:
         await self.get_or_404(kb_id)
         if parent_folder_id is not None:
             await self._get_folder_in_kb_or_404(kb_id, parent_folder_id)
-        return [folder_to_read(r) for r in await self.repo.list_folders(kb_id, parent_folder_id)]
+        rows = await self.repo.list_folders(kb_id, parent_folder_id, limit, offset)
+        return [folder_to_read(r) for r in rows]
 
     async def delete_folder(self, kb_id: int, folder_id: int) -> None:
         folder = await self._get_folder_in_kb_or_404(kb_id, folder_id)
@@ -182,15 +189,42 @@ class KnowledgeBaseService:
         )
         return file_to_read(row)
 
-    async def list_files(self, kb_id: int, folder_id: int | None) -> list[FileRead]:
+    async def list_files(
+        self, kb_id: int, folder_id: int | None, limit: int, offset: int
+    ) -> list[FileRead]:
         await self.get_or_404(kb_id)
         if folder_id is not None:
             await self._get_folder_in_kb_or_404(kb_id, folder_id)
-        return [file_to_read(r) for r in await self.repo.list_files(kb_id, folder_id)]
+        rows = await self.repo.list_files(kb_id, folder_id, limit, offset)
+        return [file_to_read(r) for r in rows]
+
+    async def search_files(self, kb_id: int, query: str) -> list[FileRead]:
+        await self.get_or_404(kb_id)
+        rows = await self.repo.search_files(kb_id, query, limit=50)
+        return [file_to_read(r) for r in rows]
+
+    async def get_file(self, kb_id: int, file_id: int) -> FileRead:
+        return file_to_read(await self._get_file_in_kb_or_404(kb_id, file_id))
 
     async def delete_file(self, kb_id: int, file_id: int) -> None:
         file = await self._get_file_in_kb_or_404(kb_id, file_id)
         await self.repo.delete_file(file)
+
+    async def list_file_chunks(self, kb_id: int, file_id: int) -> list[ChunkRead]:
+        await self._get_file_in_kb_or_404(kb_id, file_id)
+        return [chunk_to_read(r) for r in await self.repo.list_file_chunks(kb_id, file_id)]
+
+    async def get_stats(self, kb_id: int) -> KnowledgeBaseStats:
+        await self.get_or_404(kb_id)
+        files_by_status = await self.repo.count_files_by_status(kb_id)
+        total_chunks, total_content_chars = await self.repo.chunk_stats(kb_id)
+        return KnowledgeBaseStats(
+            total_folders=await self.repo.count_folders(kb_id),
+            total_files=sum(files_by_status.values()),
+            files_by_status=files_by_status,
+            total_chunks=total_chunks,
+            total_content_chars=total_content_chars,
+        )
 
     async def add_file_chunk(self, kb_id: int, file_id: int, input: ChunkCreate) -> ChunkRead:
         """Chunk 1 file — cập nhật `KnowledgeFile.status` theo vòng đời pending→chunking→done/error.

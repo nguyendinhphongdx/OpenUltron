@@ -72,3 +72,11 @@ export interface SearchResult {
   chunk: KnowledgeChunk;
   score: number; // cosine distance — càng nhỏ càng giống
 }
+
+export interface KnowledgeBaseStats {
+  total_folders: number;
+  total_files: number;
+  files_by_status: Partial<Record<FileStatus, number>>;
+  total_chunks: number;
+  total_content_chars: number;
+}

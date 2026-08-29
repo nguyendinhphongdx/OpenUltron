@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.knowledge_base.models import (
@@ -55,9 +55,17 @@ class KnowledgeBaseRepository:
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
-    async def list_folders(self, kb_id: int, parent_folder_id: int | None) -> list[KnowledgeFolder]:
-        stmt = select(KnowledgeFolder).where(
-            KnowledgeFolder.kb_id == kb_id, KnowledgeFolder.parent_folder_id == parent_folder_id
+    async def list_folders(
+        self, kb_id: int, parent_folder_id: int | None, limit: int, offset: int
+    ) -> list[KnowledgeFolder]:
+        stmt = (
+            select(KnowledgeFolder)
+            .where(
+                KnowledgeFolder.kb_id == kb_id, KnowledgeFolder.parent_folder_id == parent_folder_id
+            )
+            .order_by(KnowledgeFolder.name.asc())
+            .limit(limit)
+            .offset(offset)
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
@@ -73,14 +81,59 @@ class KnowledgeBaseRepository:
     async def get_file(self, file_id: int) -> KnowledgeFile | None:
         return await self.session.get(KnowledgeFile, file_id)
 
-    async def list_files(self, kb_id: int, folder_id: int | None) -> list[KnowledgeFile]:
-        stmt = select(KnowledgeFile).where(
-            KnowledgeFile.kb_id == kb_id, KnowledgeFile.folder_id == folder_id
+    async def list_files(
+        self, kb_id: int, folder_id: int | None, limit: int, offset: int
+    ) -> list[KnowledgeFile]:
+        stmt = (
+            select(KnowledgeFile)
+            .where(KnowledgeFile.kb_id == kb_id, KnowledgeFile.folder_id == folder_id)
+            .order_by(KnowledgeFile.name.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def search_files(self, kb_id: int, query: str, limit: int) -> list[KnowledgeFile]:
+        stmt = (
+            select(KnowledgeFile)
+            .where(KnowledgeFile.kb_id == kb_id, KnowledgeFile.name.ilike(f"%{query}%"))
+            .order_by(KnowledgeFile.name.asc())
+            .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def delete_file(self, row: KnowledgeFile) -> None:
         await self.session.delete(row)
+
+    async def list_file_chunks(self, kb_id: int, file_id: int) -> list[KnowledgeChunk]:
+        stmt = (
+            select(KnowledgeChunk)
+            .where(KnowledgeChunk.kb_id == kb_id, KnowledgeChunk.file_id == file_id)
+            .order_by(KnowledgeChunk.created_at.asc())
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def count_folders(self, kb_id: int) -> int:
+        stmt = (
+            select(func.count()).select_from(KnowledgeFolder).where(KnowledgeFolder.kb_id == kb_id)
+        )
+        return (await self.session.execute(stmt)).scalar_one()
+
+    async def count_files_by_status(self, kb_id: int) -> dict[str, int]:
+        stmt = (
+            select(KnowledgeFile.status, func.count())
+            .where(KnowledgeFile.kb_id == kb_id)
+            .group_by(KnowledgeFile.status)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        return {file_status: count for file_status, count in rows}
+
+    async def chunk_stats(self, kb_id: int) -> tuple[int, int]:
+        stmt = select(
+            func.count(), func.coalesce(func.sum(func.length(KnowledgeChunk.content)), 0)
+        ).where(KnowledgeChunk.kb_id == kb_id)
+        total, total_chars = (await self.session.execute(stmt)).one()
+        return total, total_chars
 
     async def add_chunk(self, **fields: object) -> KnowledgeChunk:
         row = KnowledgeChunk(**fields)

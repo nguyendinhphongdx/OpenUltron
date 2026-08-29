@@ -10,6 +10,7 @@ from app.modules.knowledge_base.schemas import (
     FolderRead,
     KnowledgeBaseCreate,
     KnowledgeBaseRead,
+    KnowledgeBaseStats,
     KnowledgeBaseUpdate,
     SearchRequest,
     SearchResult,
@@ -47,6 +48,11 @@ async def delete_kb(kb_id: int, service: KnowledgeBaseServiceDep) -> None:
     await service.remove(kb_id)
 
 
+@router.get("/{kb_id}/stats", response_model=KnowledgeBaseStats)
+async def get_kb_stats(kb_id: int, service: KnowledgeBaseServiceDep) -> KnowledgeBaseStats:
+    return await service.get_stats(kb_id)
+
+
 @router.post("/{kb_id}/chunks", response_model=ChunkRead, status_code=status.HTTP_201_CREATED)
 async def add_chunk(kb_id: int, body: ChunkCreate, service: KnowledgeBaseServiceDep) -> ChunkRead:
     return await service.add_chunk(kb_id, body)
@@ -71,8 +77,15 @@ async def list_folders(
     kb_id: int,
     service: KnowledgeBaseServiceDep,
     parent_folder_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> list[FolderRead]:
-    return await service.list_folders(kb_id, parent_folder_id)
+    return await service.list_folders(kb_id, parent_folder_id, limit, offset)
+
+
+@router.get("/{kb_id}/folders/{folder_id}", response_model=FolderRead)
+async def get_folder(kb_id: int, folder_id: int, service: KnowledgeBaseServiceDep) -> FolderRead:
+    return await service.get_folder(kb_id, folder_id)
 
 
 @router.delete("/{kb_id}/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -90,8 +103,26 @@ async def list_files(
     kb_id: int,
     service: KnowledgeBaseServiceDep,
     folder_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> list[FileRead]:
-    return await service.list_files(kb_id, folder_id)
+    return await service.list_files(kb_id, folder_id, limit, offset)
+
+
+@router.get("/{kb_id}/files/search", response_model=list[FileRead])
+async def search_files(
+    kb_id: int, service: KnowledgeBaseServiceDep, q: str = Query(min_length=1)
+) -> list[FileRead]:
+    """Tìm file theo tên (substring, không phân biệt hoa/thường) trên toàn bộ KB — không phụ
+    thuộc folder, vì UI cần tìm xuyên cây mà không phải mở từng folder. Đặt TRƯỚC route
+    `/{file_id}` — FastAPI thử khớp theo thứ tự khai báo, đặt sau sẽ bị `/{file_id}` nuốt mất
+    (path "search" khớp cú pháp path param, 422 khi ép kiểu int thay vì rơi xuống route này)."""
+    return await service.search_files(kb_id, q)
+
+
+@router.get("/{kb_id}/files/{file_id}", response_model=FileRead)
+async def get_file(kb_id: int, file_id: int, service: KnowledgeBaseServiceDep) -> FileRead:
+    return await service.get_file(kb_id, file_id)
 
 
 @router.delete("/{kb_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -106,3 +137,10 @@ async def add_file_chunk(
     kb_id: int, file_id: int, body: ChunkCreate, service: KnowledgeBaseServiceDep
 ) -> ChunkRead:
     return await service.add_file_chunk(kb_id, file_id, body)
+
+
+@router.get("/{kb_id}/files/{file_id}/chunks", response_model=list[ChunkRead])
+async def list_file_chunks(
+    kb_id: int, file_id: int, service: KnowledgeBaseServiceDep
+) -> list[ChunkRead]:
+    return await service.list_file_chunks(kb_id, file_id)

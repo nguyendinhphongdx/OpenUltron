@@ -50,11 +50,13 @@ export const endpoints = {
     list: '/knowledge-bases',
     create: '/knowledge-bases',
     byId: (id: number) => `/knowledge-bases/${id}`,
+    stats: (id: number) => `/knowledge-bases/${id}/stats`,
     chunks: (id: number) => `/knowledge-bases/${id}/chunks`,
     search: (id: number) => `/knowledge-bases/${id}/search`,
     folders: (id: number) => `/knowledge-bases/${id}/folders`,
     folderById: (kbId: number, folderId: number) => `/knowledge-bases/${kbId}/folders/${folderId}`,
     files: (id: number) => `/knowledge-bases/${id}/files`,
+    filesSearch: (id: number) => `/knowledge-bases/${id}/files/search`,
     fileById: (kbId: number, fileId: number) => `/knowledge-bases/${kbId}/files/${fileId}`,
     fileChunks: (kbId: number, fileId: number) =>
       `/knowledge-bases/${kbId}/files/${fileId}/chunks`,
