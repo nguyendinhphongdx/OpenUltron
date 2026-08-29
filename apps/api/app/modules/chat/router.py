@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 from app.modules.chat.deps import ChatServiceDep
-from app.modules.chat.schemas import ApprovalRequest, ChatRequest
+from app.modules.chat.schemas import AgUiRunRequest, ApprovalRequest, ChatRequest
 
 router = APIRouter(prefix="/conversations/{conversation_id}/chat", tags=["chat"])
 
@@ -44,6 +44,23 @@ async def approve(
 
     async def event_stream():
         async for event in chat_service.approve(conversation_id, body.decision):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/agui")
+async def chat_agui(
+    conversation_id: int,
+    body: AgUiRunRequest,
+    chat_service: ChatServiceDep,
+) -> StreamingResponse:
+    """AG-UI adapter endpoint (ADR-0019): nhận `RunAgentInput` từ `@ag-ui/client` `HttpAgent`,
+    stream AG-UI `EventType` JSON qua SSE để `assistant-ui` đọc trực tiếp. Endpoint `/chat` cũ
+    vẫn giữ compatibility trong giai đoạn migrate."""
+
+    async def event_stream():
+        async for event in chat_service.send_agui(conversation_id, body):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

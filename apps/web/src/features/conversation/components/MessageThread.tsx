@@ -1,149 +1,85 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { Bot, MessagesSquare, User } from 'lucide-react';
+import { MessagePartPrimitive, MessagePrimitive, ThreadPrimitive } from '@assistant-ui/react';
 
+import { EmptyState } from '@/components/shared/EmptyState';
 import { cn } from '@/lib/utils';
-import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
-import { useMessages } from '../hooks/useMessages';
-import type { ApprovalRequest } from '../hooks/useChatStream';
 
-interface MessageThreadProps {
-  conversationId: number;
-  /** Nội dung user vừa gửi, chưa có trong `data` (list message thật chỉ refetch khi có event
-   * `done` từ stream — xem `useChatStream`) — render optimistic ngay lúc gửi. */
-  pendingUserText?: string | null;
-  /** Text model đang stream (tăng dần theo từng `delta`) — rỗng nếu chưa có token nào tới. */
-  assistantText?: string;
-  /** Tên sub-agent orchestrator đang gọi (giữa `tool_call_start`/`tool_call_end`), `null` nếu
-   * không có tool nào đang chạy. */
-  toolCallName?: string | null;
-  /** Tool đang chờ duyệt (approval gate, ADR-0014) — `null` khi không có gì chờ. */
-  approvalRequest?: ApprovalRequest | null;
-  onApprove?: () => void;
-  onReject?: () => void;
+function TextParts() {
+  return (
+    <MessagePrimitive.Parts
+      components={{
+        Text: () => (
+          <MessagePartPrimitive.Text
+            component="p"
+            className="whitespace-pre-wrap text-[15px] leading-relaxed"
+            smooth
+          />
+        ),
+      }}
+    />
+  );
 }
 
-function MessageBubble({ isUser, content }: { isUser: boolean; content: string }) {
+function UserMessage() {
   return (
-    <div className={cn('flex max-w-[88%] gap-2.5', isUser ? 'self-end flex-row-reverse' : 'self-start')}>
-      <span
-        className={cn(
-          'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border shadow-sm',
-          isUser
-            ? 'border-accent/20 bg-accent/10 text-accent'
-            : 'border-border bg-white/82 text-foreground/70',
-        )}
-      >
-        {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
+    <MessagePrimitive.Root className="flex max-w-[88%] flex-row-reverse gap-2.5 self-end">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-accent/20 bg-accent/10 text-accent shadow-sm">
+        <User className="size-3.5" />
+      </span>
+      <div className="rounded-[1.15rem] rounded-br-md bg-foreground px-4 py-2.5 text-white shadow-sm">
+        <TextParts />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
+function AssistantMessage() {
+  return (
+    <MessagePrimitive.Root className="flex max-w-[88%] gap-2.5 self-start">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-white/82 text-foreground/70 shadow-sm">
+        <Bot className="size-3.5" />
       </span>
       <div
         className={cn(
-          'whitespace-pre-wrap rounded-[1.15rem] px-4 py-2.5 text-[15px] leading-relaxed shadow-sm',
-          isUser
-            ? 'rounded-br-md bg-foreground text-white'
-            : 'rounded-bl-md border border-border bg-white/86 text-foreground',
+          'min-w-0 rounded-[1.15rem] rounded-bl-md border border-border bg-white/86 px-4 py-2.5 text-foreground shadow-sm',
+          '[&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted/60 [&_pre]:p-2',
+          '[&_button]:cursor-pointer [&_button]:rounded-full [&_button]:border [&_button]:px-3 [&_button]:py-1.5',
         )}
       >
-        {content}
+        <TextParts />
+        <MessagePrimitive.Error>
+          <p className="text-sm text-destructive">Không chạy được phản hồi này.</p>
+        </MessagePrimitive.Error>
       </div>
-    </div>
+    </MessagePrimitive.Root>
   );
 }
 
-function TypingDots() {
+export function MessageThread() {
   return (
-    <div className="flex items-center gap-1 rounded-[1.15rem] rounded-bl-md border border-border bg-white/86 px-4 py-3 shadow-sm">
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none [animation-delay:-0.3s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none [animation-delay:-0.15s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none" />
-    </div>
-  );
-}
-
-export function MessageThread({
-  conversationId,
-  pendingUserText,
-  assistantText = '',
-  toolCallName,
-  approvalRequest,
-  onApprove,
-  onReject,
-}: MessageThreadProps) {
-  const { data, isPending, isError } = useMessages(conversationId);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [data?.data.length, pendingUserText, assistantText, toolCallName, approvalRequest]);
-
-  if (isPending) return <LoadingState label="Đang tải tin nhắn…" />;
-  if (isError) return <EmptyState icon={MessagesSquare} tone="destructive" title="Không tải được tin nhắn." />;
-  if (data.data.length === 0 && !pendingUserText) {
-    return <EmptyState icon={MessagesSquare} title="Chưa có tin nhắn nào" description="Gửi tin nhắn đầu tiên để bắt đầu." />;
-  }
-
-  // Turn đang chờ (streaming/awaiting_approval) có thể mất nhiều giây/phút — nếu react-query
-  // refetch `messages` trong lúc đó (background refetch, không phải do `done`), message user vừa
-  // gửi đã thật sự persist ở BE ngay từ đầu (trước khi model chạy) nên có thể đã xuất hiện trong
-  // `data.data` — không render optimistic bubble trùng lặp nữa trong trường hợp đó.
-  const lastMessage = data.data[data.data.length - 1];
-  const alreadyPersisted =
-    lastMessage?.role === 'user' && lastMessage.content === pendingUserText;
-
-  return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-7 sm:px-6">
-      {data.data.map((message) => (
-        <MessageBubble key={message.id} isUser={message.role === 'user'} content={message.content} />
-      ))}
-      {pendingUserText && (
-        <>
-          {!alreadyPersisted && <MessageBubble isUser content={pendingUserText} />}
-          <div className="flex max-w-[85%] flex-col gap-1.5 self-start">
-            <div className="flex gap-2.5">
-              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-white/82 text-foreground/70 shadow-sm">
-                <Bot className="size-3.5" />
-              </span>
-              {approvalRequest ? (
-                <div className="flex flex-col gap-2.5 rounded-[1.15rem] rounded-bl-md border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm shadow-sm dark:border-amber-900 dark:bg-amber-950">
-                  <p className="font-medium text-foreground">
-                    Cần duyệt trước khi chạy tool <code className="font-mono">{approvalRequest.toolName}</code>
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-background/60 p-2 font-mono text-xs text-muted-foreground">
-                    {JSON.stringify(approvalRequest.arguments, null, 2)}
-                  </pre>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={onApprove}
-                      className="rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground"
-                    >
-                      Duyệt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onReject}
-                      className="rounded-full border border-border bg-white/70 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-                    >
-                      Từ chối
-                    </button>
-                  </div>
-                </div>
-              ) : assistantText ? (
-                <div className="whitespace-pre-wrap rounded-[1.15rem] rounded-bl-md border border-border bg-white/86 px-4 py-2.5 text-[15px] leading-relaxed text-foreground shadow-sm">
-                  {assistantText}
-                </div>
-              ) : (
-                <TypingDots />
-              )}
-            </div>
-            {toolCallName && (
-              <p className="pl-9 text-xs text-muted-foreground">Đang chạy tool: {toolCallName}...</p>
-            )}
-          </div>
-        </>
-      )}
-      <div ref={bottomRef} />
-    </div>
+    <ThreadPrimitive.Root className="min-h-0 flex-1 overflow-hidden bg-[linear-gradient(180deg,rgb(255_255_255/0.72),rgb(247_248_246/0.9))]">
+      <ThreadPrimitive.Viewport
+        autoScroll
+        className="h-full overflow-y-auto scroll-smooth px-4 py-7 sm:px-6"
+      >
+        <ThreadPrimitive.Empty>
+          <EmptyState
+            icon={MessagesSquare}
+            title="Chưa có tin nhắn nào"
+            description="Gửi tin nhắn đầu tiên để bắt đầu."
+          />
+        </ThreadPrimitive.Empty>
+        <div className="mx-auto flex max-w-3xl flex-col gap-5">
+          <ThreadPrimitive.Messages
+            components={{
+              UserMessage,
+              AssistantMessage,
+            }}
+          />
+        </div>
+      </ThreadPrimitive.Viewport>
+    </ThreadPrimitive.Root>
   );
 }

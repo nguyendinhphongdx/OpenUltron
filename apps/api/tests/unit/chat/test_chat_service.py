@@ -5,6 +5,7 @@ import pytest
 import app.modules.chat.service as chat_service_module
 from app.core.provider_adapter import ProviderConfigError
 from app.modules.chat.graph import ModelConfig
+from app.modules.chat.schemas import AgUiRunRequest
 from app.modules.chat.service import ChatContext, ChatService
 from app.modules.conversation.message.schemas import MessageCreate
 
@@ -209,3 +210,131 @@ async def test_approve_resumes_and_persists_assistant_message(
     ]
     # approve() không tự persist user message mới (không phải turn mới) — chỉ assistant.
     assert [m.role for m in message_service.appended] == ["assistant"]
+
+
+@pytest.mark.asyncio
+async def test_send_agui_maps_stream_to_ag_ui_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    events = [
+        {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content="Xin")}},
+        {"event": "on_tool_start", "name": "research-agent", "data": {}},
+        {"event": "on_tool_end", "name": "research-agent", "data": {}},
+        {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content=" chào")}},
+    ]
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor(events)
+
+    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    service = _make_service(message_service)
+    request = AgUiRunRequest(
+        threadId="1",
+        runId="run-1",
+        messages=[{"id": "user-1", "role": "user", "content": "hi"}],
+        state={},
+        tools=[],
+        context=[],
+        forwardedProps={},
+    )
+
+    received = [event async for event in service.send_agui(1, request)]
+
+    assert [event["type"] for event in received] == [
+        "RUN_STARTED",
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CONTENT",
+        "TOOL_CALL_START",
+        "TOOL_CALL_END",
+        "TEXT_MESSAGE_CONTENT",
+        "TEXT_MESSAGE_END",
+        "RUN_FINISHED",
+    ]
+    assert received[0]["threadId"] == "1"
+    assert received[0]["runId"] == "run-1"
+    assert received[2]["delta"] == "Xin"
+    assert received[3]["toolCallName"] == "research-agent"
+    assert received[3]["toolCallId"] == received[4]["toolCallId"]
+    assert received[-1]["outcome"] == {"type": "success"}
+    assert message_service.appended[0].content == "hi"
+    assert message_service.appended[1].content == "Xin chào"
+
+
+@pytest.mark.asyncio
+async def test_send_agui_maps_approval_to_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
+    paused_state = FakeState(
+        next_nodes=("HumanInTheLoopMiddleware.after_model",),
+        interrupt_value={
+            "action_requests": [{"name": "run-command", "args": {"command": "ls"}}]
+        },
+    )
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor([], state=paused_state)
+
+    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    service = _make_service(message_service)
+    request = AgUiRunRequest(
+        threadId="1",
+        runId="run-approval",
+        messages=[{"id": "user-1", "role": "user", "content": "list files"}],
+    )
+
+    received = [event async for event in service.send_agui(1, request)]
+
+    assert [event["type"] for event in received] == [
+        "RUN_STARTED",
+        "TEXT_MESSAGE_START",
+        "TOOL_CALL_START",
+        "TOOL_CALL_ARGS",
+        "TOOL_CALL_END",
+        "TEXT_MESSAGE_END",
+        "RUN_FINISHED",
+    ]
+    outcome = received[-1]["outcome"]
+    assert outcome["type"] == "interrupt"
+    interrupt = outcome["interrupts"][0]
+    assert interrupt["reason"] == "tool_call"
+    assert interrupt["toolCallId"] == received[2]["toolCallId"]
+    assert interrupt["metadata"] == {"toolName": "run-command", "arguments": {"command": "ls"}}
+
+
+@pytest.mark.asyncio
+async def test_send_agui_resume_reject_calls_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+    events = [
+        {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content="Đã từ chối")}}
+    ]
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor(events)
+
+    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    service = _make_service(message_service)
+    request = AgUiRunRequest(
+        threadId="1",
+        runId="run-resume",
+        messages=[],
+        resume=[
+            {
+                "interruptId": "interrupt-1",
+                "status": "resolved",
+                "payload": {"approved": False},
+            }
+        ],
+    )
+
+    received = [event async for event in service.send_agui(1, request)]
+
+    assert [event["type"] for event in received] == [
+        "RUN_STARTED",
+        "TEXT_MESSAGE_START",
+        "TEXT_MESSAGE_CONTENT",
+        "TEXT_MESSAGE_END",
+        "RUN_FINISHED",
+    ]
+    assert message_service.appended[0].role == "assistant"
+    assert message_service.appended[0].content == "Đã từ chối"

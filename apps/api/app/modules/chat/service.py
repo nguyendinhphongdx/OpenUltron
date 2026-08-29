@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.types import Command
@@ -17,6 +18,7 @@ from app.modules.chat.graph import (
     SubAgentSpec,
     build_agent_executor,
 )
+from app.modules.chat.schemas import AgUiRunRequest
 from app.modules.conversation.message.schemas import MessageCreate
 from app.modules.conversation.message.service import MessageService
 from app.modules.conversation.models import Message
@@ -315,3 +317,173 @@ class ChatService:
             yield {"type": "error", "message": str(exc)}
         except Exception as exc:
             yield {"type": "error", "message": f"Model không phản hồi được: {exc}"}
+
+    async def send_agui(
+        self, conversation_id: int, request: AgUiRunRequest
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Adapter AG-UI (ADR-0019) — map `ChatService.send/approve` events tự chế hiện tại sang
+        AG-UI events để `@ag-ui/client` + `assistant-ui` đọc được. Đây là compatibility layer ở
+        boundary, chưa đổi execution core bên trong."""
+        run_id = request.runId
+        thread_id = str(conversation_id)
+        message_id = f"msg-{uuid4()}"
+        text_started = False
+        active_tool_call_ids: dict[str, str] = {}
+
+        yield {"type": "RUN_STARTED", "threadId": thread_id, "runId": run_id}
+
+        if request.resume:
+            decision = _decision_from_agui_resume(request.resume)
+            source = self.approve(conversation_id, decision)
+        else:
+            user_text = _last_user_text_from_agui_messages(request.messages)
+            if user_text is None:
+                yield {
+                    "type": "RUN_ERROR",
+                    "message": "AG-UI request thiếu message user cuối cùng.",
+                    "code": "chat.missing_user_message",
+                }
+                return
+            source = self.send(conversation_id, user_text)
+
+        async for event in source:
+            event_type = event.get("type")
+            if event_type == "delta":
+                if not text_started:
+                    yield {
+                        "type": "TEXT_MESSAGE_START",
+                        "messageId": message_id,
+                        "role": "assistant",
+                    }
+                    text_started = True
+                yield {
+                    "type": "TEXT_MESSAGE_CONTENT",
+                    "messageId": message_id,
+                    "delta": event.get("text", ""),
+                }
+            elif event_type == "tool_call_start":
+                if not text_started:
+                    yield {
+                        "type": "TEXT_MESSAGE_START",
+                        "messageId": message_id,
+                        "role": "assistant",
+                    }
+                    text_started = True
+                tool_name = str(event.get("name", "unknown"))
+                tool_call_id = f"tool-{uuid4()}"
+                active_tool_call_ids[tool_name] = tool_call_id
+                yield {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": tool_call_id,
+                    "toolCallName": tool_name,
+                    "parentMessageId": message_id,
+                }
+            elif event_type == "tool_call_end":
+                tool_name = str(event.get("name", "unknown"))
+                tool_call_id = active_tool_call_ids.pop(tool_name, f"tool-{uuid4()}")
+                yield {"type": "TOOL_CALL_END", "toolCallId": tool_call_id}
+            elif event_type == "approval_required":
+                if not text_started:
+                    yield {
+                        "type": "TEXT_MESSAGE_START",
+                        "messageId": message_id,
+                        "role": "assistant",
+                    }
+                    text_started = True
+                tool_call_id = f"tool-{uuid4()}"
+                interrupt_id = f"interrupt-{uuid4()}"
+                tool_name = str(event.get("tool_name", "unknown"))
+                arguments = event.get("arguments", {})
+                yield {
+                    "type": "TOOL_CALL_START",
+                    "toolCallId": tool_call_id,
+                    "toolCallName": tool_name,
+                    "parentMessageId": message_id,
+                }
+                yield {
+                    "type": "TOOL_CALL_ARGS",
+                    "toolCallId": tool_call_id,
+                    "delta": _json_dumps_compact(arguments),
+                }
+                yield {"type": "TOOL_CALL_END", "toolCallId": tool_call_id}
+                yield {"type": "TEXT_MESSAGE_END", "messageId": message_id}
+                yield {
+                    "type": "RUN_FINISHED",
+                    "threadId": thread_id,
+                    "runId": run_id,
+                    "outcome": {
+                        "type": "interrupt",
+                        "interrupts": [
+                            {
+                                "id": interrupt_id,
+                                "reason": "tool_call",
+                                "message": f"Cần duyệt trước khi chạy tool {tool_name}",
+                                "toolCallId": tool_call_id,
+                                "metadata": {"toolName": tool_name, "arguments": arguments},
+                            }
+                        ],
+                    },
+                }
+                return
+            elif event_type == "error":
+                yield {
+                    "type": "RUN_ERROR",
+                    "message": str(event.get("message", "Model không phản hồi được.")),
+                    "code": "chat.run_error",
+                }
+                return
+            elif event_type == "done":
+                if text_started:
+                    yield {"type": "TEXT_MESSAGE_END", "messageId": message_id}
+                yield {
+                    "type": "RUN_FINISHED",
+                    "threadId": thread_id,
+                    "runId": run_id,
+                    "outcome": {"type": "success"},
+                    "result": {
+                        "messageId": event.get("message_id"),
+                        "seq": event.get("seq"),
+                    },
+                }
+                return
+
+        yield {
+            "type": "RUN_ERROR",
+            "message": "Agent stream kết thúc mà không có done/interrupt.",
+            "code": "chat.stream_incomplete",
+        }
+
+
+def _last_user_text_from_agui_messages(messages: list[dict[str, Any]]) -> str | None:
+    for message in reversed(messages):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            text = content.strip()
+            return text or None
+        if isinstance(content, list):
+            parts = [
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            ]
+            text = "\n".join(p for p in parts if p).strip()
+            return text or None
+    return None
+
+
+def _decision_from_agui_resume(resume: list[dict[str, Any]]) -> str:
+    for entry in resume:
+        if entry.get("status") == "cancelled":
+            return "reject"
+        payload = entry.get("payload")
+        if isinstance(payload, dict) and payload.get("approved") is False:
+            return "reject"
+    return "approve"
+
+
+def _json_dumps_compact(value: Any) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))

@@ -13,9 +13,9 @@ có **streaming** khi chat/chạy graph.
 | Feature | Trạng thái | Spec |
 |---|---|---|
 | Agent/Model/Tool/KnowledgeBase (CRUD + gắn nhau qua FK/join-table) | ✅ Đã có | ADR-0006, ADR-0007 |
-| Chat trực tiếp với 1 agent (đơn hoặc orchestrator gọi sub-agent, đa tầng) | ✅ Đã có | ADR-0005, ADR-0006 |
-| Multi-tier orchestrator (sub-agent gọi tiếp sub-agent khác) | ✅ Đã có (backend) | mở rộng ADR-0006, làm thẳng không qua ADR/spec riêng (quyết định của user) — xem `AgentService._creates_cycle` |
-| Orchestrator graph editor (canvas kiểu ReactFlow) | ✅ Đã có (`apps/web`) — roadmap trước đó ghi sai "chỉ có mockup", đã sửa 2026-08-25 | `OrchestratorCanvas.tsx` (`@xyflow/react`) — xem/thêm/gỡ delegation qua canvas; chưa có `docs/features/` riêng (mockup cũ: `docs/mockups/`) |
+| Chat trực tiếp với 1 agent (đơn hoặc orchestrator gọi sub-agent, đa tầng) | ⚠️ Partial — chạy được path cơ bản, chưa phải orchestrator runtime đúng nghĩa | ADR-0005, ADR-0006; cần Orchestrator v2 spec |
+| Multi-tier orchestrator (sub-agent gọi tiếp sub-agent khác) | ⚠️ Partial backend — có delegation đệ quy, nhưng chưa có edge contract/routing policy/debug trace/approval nested đầy đủ | mở rộng ADR-0006, làm thẳng không qua ADR/spec riêng (quyết định cũ của user) — cần spec/ADR mới để chuẩn hoá |
+| Orchestrator graph editor (canvas kiểu ReactFlow) | ⚠️ Partial UI — xem/thêm/gỡ edge được, nhưng setup agent graph chưa đủ tốt để chạy thật ổn định | `OrchestratorCanvas.tsx` (`@xyflow/react`); thiếu edge config, run simulator, readiness check, saved layout |
 | SGLang provider (model tự host cạnh ollama/gemini/openai) | ✅ Đã có (backend) | mở rộng ADR-0007, `core/providers.py` (dùng `ChatOpenAI`/`OpenAIEmbeddings` trỏ `base_url`) |
 | Streaming (SSE) cho chat text | ✅ Đã có | [`docs/features/chat-streaming.md`](../features/chat-streaming.md) |
 | Live Voice Agent (realtime voice, full-duplex, barge-in, VAD) | 🔜 Backend + `apps/web` client đã code — chưa live-test với mic thật (sandbox preview chặn `getUserMedia`) | [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md), [ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md), [research](../research/live-voice-agent.md) |
@@ -24,6 +24,9 @@ có **streaming** khi chat/chạy graph.
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
 | Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
+| Orchestrator v2 — setup/run/debug đúng nghĩa | 🔜 Cần spec/ADR trước khi code | Tách rõ agent graph definition, edge/task contract, routing, run trace, readiness validation, nested approval/tool/KB/MCP |
+| Unified agent runtime + chuẩn hoá stream/chat UI | 🚧 Đang làm | [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md), [ADR-0019](../adr/0019-ag-ui-assistant-ui-runtime.md) — chuẩn hoá text stream bằng AG-UI + assistant-ui, chưa refactor voice |
+| Voice là input modality của agent thường | 🔜 Cần spec/ADR trước khi code | Voice session phải dùng chung agent runtime: tool, KB/RAG, MCP, sub-agent, approval; không tách thành flow voice riêng chỉ gọi provider realtime |
 
 Feature mới nào không nhỏ → viết `docs/features/<slug>.md` (skill `feature-spec` / `/spec`) trước,
 cập nhật link ở bảng trên, rồi mới code — xem `.claude/hooks/session-start.mjs`.
@@ -268,6 +271,34 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 
 ## Đang làm / tiếp theo
 
+- [ ] **P0 — Orchestrator v2: setup/run/debug đúng nghĩa** — hiện tại orchestrator mới là
+      `Agent.is_orchestrator=true` + `AgentDelegation` edge đơn giản + canvas xem/thêm/gỡ cạnh.
+      Cần thiết kế lại như 1 graph/app có thể chạy ổn định: edge có mô tả nhiệm vụ/contract rõ ràng
+      (khi nào gọi sub-agent, input/output mong đợi), readiness check trước khi run (agent thiếu
+      model/credential/tool/KB config thì báo ngay), saved layout, run simulator, trace inspector
+      theo từng node/edge, persist `tool_calls`/delegation trace, và chiến lược nested approval khi
+      sub-agent gọi tool rủi ro. Đây là epic riêng, không nên nhét lẫn vào chat UI.
+- [ ] **P0 — Chuẩn hoá agent runtime + stream contract + chat UI** — hiện text chat dùng SSE tự parse
+      chunk ở `apps/web`, voice dùng WebSocket riêng, approval/tool trace là event riêng lẻ; cần gom
+      lại thành 1 contract chuẩn cho frontend runtime đọc được: `message_delta`, `message_done`,
+      `tool_call_start/end`, `approval_required`, `state`, `error`, `done`, metadata trace ổn định.
+      Mục tiêu: UI chat không phụ thuộc implementation LangGraph/SSE nội bộ; sau này nếu dùng
+      `assistant-ui`, Vercel AI SDK, AG-UI, hoặc runtime tự viết thì chỉ đổi adapter, không đổi toàn bộ
+      màn chat. Cần spec trước, rồi ADR nếu chọn protocol/runtime chính.
+- [ ] **P0 — Hợp nhất Voice Agent vào agent runtime thường** — voice không được là flow riêng chỉ nối
+      Gemini Live; nó chỉ khác **input/output modality** (audio/text) còn execution phải dùng chung
+      Agent hiện có: Model/Provider, Tool HTTP/Builtin/MCP, KnowledgeBase/RAG, sub-agent delegation,
+      approval gate, transcript/message persistence và tool trace. Cần thiết kế `AgentRuntime`/
+      `TurnRunner` dùng chung cho text + voice, rồi để Gemini/OpenAI/self-host realtime provider chỉ là
+      adapter modality ở rìa hệ thống.
+- [ ] **P0 — Provider-neutral realtime voice** — hiện voice đã có provider adapter nhưng thực tế vẫn
+      neo sâu vào Gemini Live protocol; cần mở đường cho OpenAI Realtime/GPT voice và self-host
+      speech stack (STT/TTS + LLM) mà không sửa UI/agent capability. Nên tách rõ 3 lớp:
+      transport/audio codec, realtime model provider, và agent runtime/tool execution.
+- [ ] **P1 — Conversation UX v2** — ngoài visual refresh đã có, cần flow tạo hội thoại mới tốt hơn:
+      chọn agent trước khi vào chat, empty state có starter prompts, pin/archive/search/filter, rename
+      inline, grouping theo thời gian/agent, keyboard shortcuts, trạng thái stream/approval rõ ràng.
+      Việc này nên đi sau stream contract để UI không tiếp tục mọc state tạm.
 - [ ] **Áp dụng phần còn lại của convention 03-08 vào code thật** — `testcontainers[postgres]` +
       `tests/conftest.py` cho integration test, migrate `app/core/errors.py` sang `UltronError`
       (xem [ADR-0008](../adr/0008-testing-logging-foundations.md) +
