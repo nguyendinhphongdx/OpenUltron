@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from websockets.asyncio.client import ClientConnection
 
 from app.core.providers import get_provider_api_key
+from app.modules.voice.contracts import VoiceHistoryTurn, VoiceToolDeclaration
 from app.modules.voice.events import (
     AudioDelta,
     Interrupted,
@@ -44,7 +45,11 @@ class GeminiLiveClient:
     """
 
     def __init__(
-        self, *, model: str, system_instruction: str, tools: list[dict] | None = None
+        self,
+        *,
+        model: str,
+        system_instruction: str,
+        tools: list[VoiceToolDeclaration] | None = None,
     ) -> None:
         self._model = model
         self._system_instruction = system_instruction
@@ -76,7 +81,7 @@ class GeminiLiveClient:
                             "systemInstruction": {"parts": [{"text": self._system_instruction}]},
                             "inputAudioTranscription": {},
                             "outputAudioTranscription": {},
-                            "tools": self._tools,
+                            "tools": self._to_gemini_tools(self._tools),
                         }
                     }
                 )
@@ -107,7 +112,7 @@ class GeminiLiveClient:
             )
         )
 
-    async def send_history(self, turns: list[dict]) -> None:
+    async def send_history(self, turns: list[VoiceHistoryTurn]) -> None:
         """Nạp lại lịch sử hội thoại cũ (voice cũ + text chat cũ, ADR-0009) vào context TRƯỚC khi
         user bắt đầu nói — `turnComplete: False` để chỉ thêm context, KHÔNG kích model trả lời
         ngay (khác `send_text`, luôn `turnComplete: True`). Không gọi gì nếu rỗng (conversation
@@ -116,7 +121,16 @@ class GeminiLiveClient:
             return
         if self._ws is None:
             raise RuntimeError("Chưa connect()")
-        await self._ws.send(json.dumps({"clientContent": {"turns": turns, "turnComplete": False}}))
+        await self._ws.send(
+            json.dumps(
+                {
+                    "clientContent": {
+                        "turns": [self._to_gemini_turn(turn) for turn in turns],
+                        "turnComplete": False,
+                    }
+                }
+            )
+        )
 
     async def send_text(self, text: str) -> None:
         """Text fallback trong lúc voice session — clientContent, không phải realtimeInput."""
@@ -205,3 +219,22 @@ class GeminiLiveClient:
             events.append(SessionEnding(time_left=go_away.get("timeLeft")))
 
         return events
+
+    def _to_gemini_turn(self, turn: VoiceHistoryTurn) -> dict:
+        return {"role": turn.role, "parts": [{"text": turn.text}]}
+
+    def _to_gemini_tools(self, tools: list[VoiceToolDeclaration]) -> list[dict]:
+        if not tools:
+            return []
+        return [
+            {
+                "functionDeclarations": [
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                    }
+                    for tool in tools
+                ]
+            }
+        ]

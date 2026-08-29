@@ -11,7 +11,7 @@ async def voice_session(
     conversation_id: int,
     voice_service: VoiceServiceDep,
 ) -> None:
-    """Relay 1 voice session — browser audio (PCM binary frame) ↔ Gemini Live (ADR-0009).
+    """Relay 1 voice session — browser audio (PCM binary frame) ↔ voice provider (ADR-0009/0018).
 
     Đã live-test qua text fallback với `GEMINI_API_KEY` thật (xem `gemini_live_client.py`) — nhánh
     audio binary frame chưa test (chưa có client capture audio thật ở `apps/web`). Chưa có

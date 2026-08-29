@@ -7,6 +7,7 @@ from fastapi import status as ws_status
 import app.modules.voice.service as voice_service_module
 from app.modules.chat.graph import ModelConfig
 from app.modules.chat.service import ChatContext
+from app.modules.voice.contracts import VoiceHistoryTurn
 from app.modules.voice.events import Interrupted, TranscriptDelta, TurnComplete
 from app.modules.voice.service import VoiceService
 
@@ -74,6 +75,16 @@ class FakeWebSocket:
         raise AssertionError("unreachable")
 
 
+class FakeVoiceProvider:
+    default_model_id = "fake-live-model"
+
+    def __init__(self, client_class: type) -> None:
+        self.client_class = client_class
+
+    def build_client(self, **kwargs: object) -> object:
+        return self.client_class(**kwargs)
+
+
 @pytest.mark.asyncio
 async def test_run_reaches_gemini_connect_after_resolving_context(
     monkeypatch: pytest.MonkeyPatch,
@@ -84,14 +95,18 @@ async def test_run_reaches_gemini_connect_after_resolving_context(
     test này như smoke test happy-path: `accept()` phải được gọi rồi mới tới bước connect Gemini
     (mock để raise ngay, giữ test hermetic — không gọi Gemini/DB thật)."""
 
-    class RaisingGeminiLiveClient:
+    class RaisingVoiceClient:
         def __init__(self, **kwargs: object) -> None:
             pass
 
         async def connect(self, session: object) -> None:
             raise RuntimeError("mocked — không gọi Gemini thật trong unit test")
 
-    monkeypatch.setattr(voice_service_module, "GeminiLiveClient", RaisingGeminiLiveClient)
+    monkeypatch.setattr(
+        voice_service_module,
+        "get_voice_provider",
+        lambda name: FakeVoiceProvider(RaisingVoiceClient),
+    )
 
     service = VoiceService(chat_service=FakeChatService())  # type: ignore[arg-type]
     ws = FakeWebSocket()
@@ -112,7 +127,7 @@ async def test_barge_in_does_not_split_user_turn_without_a_model_reply(
     `TurnComplete` đi cùng `interrupted` (chưa có phản hồi thật). Sau fix: chỉ chốt khi model đã
     thật sự trả lời — 2 đoạn user nói trước/sau khi ngắt lời AI phải gộp thành 1 `Message`."""
 
-    class FakeGeminiLiveClient:
+    class FakeVoiceClient:
         def __init__(self, **kwargs: object) -> None:
             pass
 
@@ -136,7 +151,9 @@ async def test_barge_in_does_not_split_user_turn_without_a_model_reply(
             yield TranscriptDelta(role="model", text="Đã hiểu.")
             yield TurnComplete()
 
-    monkeypatch.setattr(voice_service_module, "GeminiLiveClient", FakeGeminiLiveClient)
+    monkeypatch.setattr(
+        voice_service_module, "get_voice_provider", lambda name: FakeVoiceProvider(FakeVoiceClient)
+    )
 
     flush_calls: list[dict] = []
 
@@ -172,7 +189,7 @@ async def test_run_replays_prior_messages_as_history_before_listening(
     ]
     sent_history: list[list[dict]] = []
 
-    class RecordingGeminiLiveClient:
+    class RecordingVoiceClient:
         def __init__(self, **kwargs: object) -> None:
             pass
 
@@ -189,7 +206,11 @@ async def test_run_replays_prior_messages_as_history_before_listening(
             return
             yield  # pragma: no cover — async generator rỗng, không có event nào
 
-    monkeypatch.setattr(voice_service_module, "GeminiLiveClient", RecordingGeminiLiveClient)
+    monkeypatch.setattr(
+        voice_service_module,
+        "get_voice_provider",
+        lambda name: FakeVoiceProvider(RecordingVoiceClient),
+    )
 
     service = VoiceService(chat_service=FakeChatService(history_rows))  # type: ignore[arg-type]
     ws = FakeWebSocket()
@@ -198,7 +219,7 @@ async def test_run_replays_prior_messages_as_history_before_listening(
 
     assert sent_history == [
         [
-            {"role": "user", "parts": [{"text": "Câu hỏi cũ"}]},
-            {"role": "model", "parts": [{"text": "Trả lời cũ"}]},
+            VoiceHistoryTurn(role="user", text="Câu hỏi cũ"),
+            VoiceHistoryTurn(role="model", text="Trả lời cũ"),
         ]
     ]

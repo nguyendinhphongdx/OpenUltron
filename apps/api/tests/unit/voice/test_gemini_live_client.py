@@ -1,5 +1,6 @@
 import base64
 
+from app.modules.voice.contracts import VoiceHistoryTurn, VoiceToolDeclaration
 from app.modules.voice.events import (
     AudioDelta,
     Interrupted,
@@ -90,3 +91,32 @@ def test_map_message_go_away() -> None:
 
 def test_map_message_empty() -> None:
     assert _client()._map_message({}) == []
+
+
+def test_to_gemini_turn_maps_provider_neutral_history_turn() -> None:
+    turn = VoiceHistoryTurn(role="model", text="xin chào")
+
+    assert _client()._to_gemini_turn(turn) == {
+        "role": "model",
+        "parts": [{"text": "xin chào"}],
+    }
+
+
+def test_to_gemini_tools_maps_provider_neutral_tool_declarations() -> None:
+    tool = VoiceToolDeclaration(
+        name="researcher",
+        description="Delegate research",
+        parameters={"type": "object"},
+    )
+
+    assert _client()._to_gemini_tools([tool]) == [
+        {
+            "functionDeclarations": [
+                {
+                    "name": "researcher",
+                    "description": "Delegate research",
+                    "parameters": {"type": "object"},
+                }
+            ]
+        }
+    ]

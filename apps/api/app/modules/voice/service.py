@@ -11,6 +11,7 @@ from app.modules.chat.service import ChatService
 from app.modules.conversation.message.deps import get_message_service
 from app.modules.conversation.message.schemas import MessageCreate
 from app.modules.conversation.models import Message
+from app.modules.voice.contracts import VoiceHistoryTurn, VoiceToolDeclaration
 from app.modules.voice.events import (
     AudioDelta,
     Interrupted,
@@ -20,18 +21,12 @@ from app.modules.voice.events import (
     TranscriptDelta,
     TurnComplete,
 )
-from app.modules.voice.gemini_live_client import GeminiLiveClient
-
-# Xác nhận thật qua GET /v1beta/models (ListModels) với GEMINI_API_KEY thật — model này là 1
-# trong số ít model hỗ trợ bidiGenerateContent tại thời điểm live-test (2026-08-23). Google có
-# thể đổi/rotate model Live theo thời gian — nếu lỗi "model not found for bidiGenerateContent",
-# gọi lại ListModels để lấy tên hiện hành thay vì đoán.
-_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-latest"
+from app.modules.voice.provider_adapter import get_voice_provider
 
 VoiceState = Literal["listening", "thinking", "speaking", "using_tool"]
 
 # Chỉ áp cho voice (không sửa `agent.system_prompt` dùng chung với chat text — text chat vẫn
-# linh hoạt đa ngôn ngữ theo ngôn ngữ user gõ). Model `_GEMINI_LIVE_MODEL` là native-audio —
+# linh hoạt đa ngôn ngữ theo ngôn ngữ user gõ). Gemini native-audio models —
 # theo tài liệu chính thức (ai.google.dev/gemini-api/docs/live-api/capabilities), dòng model
 # này KHÔNG hỗ trợ `speechConfig.languageCode` để ép ngôn ngữ ("Native audio output models
 # automatically choose the appropriate language and don't support explicitly setting the
@@ -45,45 +40,44 @@ _VOICE_LANGUAGE_INSTRUCTION = (
 )
 
 
-def _to_gemini_turn(row: Message) -> dict | None:
-    """Map `Message` ORM row → turn Gemini Live hiểu (ADR-0009) — cùng tinh thần `_to_langchain`
-    (`chat/service.py`, text chat): chỉ nạp `user`/`assistant`, bỏ `system`/`tool` (chưa nạp tool
-    call vào history model, giống text chat)."""
+def _to_voice_turn(row: Message) -> VoiceHistoryTurn | None:
+    """Map `Message` ORM row → voice history turn — cùng tinh thần `_to_langchain`
+    (`chat/service.py`, text chat): chỉ nạp `user`/`assistant`, bỏ `system`/`tool`."""
     if row.role == "user":
-        return {"role": "user", "parts": [{"text": row.content}]}
+        return VoiceHistoryTurn(role="user", text=row.content)
     if row.role == "assistant":
-        return {"role": "model", "parts": [{"text": row.content}]}
+        return VoiceHistoryTurn(role="model", text=row.content)
     return None
 
 
-def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[dict]:
-    """Khai cho Gemini Live biết agent orchestrator có thể delegate sub-agent nào. Chỉ khai tool ở
-    tầng ngoài (không đệ quy sub-agent của sub-agent) — đủ cho scope hiện tại; nếu Gemini gọi 1
-    sub-agent orchestrator, `run_sub_agent` vẫn tự xử lý đệ quy nội bộ như chat text."""
+def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[VoiceToolDeclaration]:
+    """Khai cho voice provider biết agent orchestrator có thể delegate sub-agent nào.
+
+    Chỉ khai tool ở tầng ngoài (không đệ quy sub-agent của sub-agent) — đủ cho scope hiện tại; nếu
+    provider gọi 1 sub-agent orchestrator, `run_sub_agent` vẫn tự xử lý đệ quy nội bộ như chat text.
+    """
     if not sub_agents:
         return []
     return [
-        {
-            "functionDeclarations": [
-                {
-                    "name": sa.slug,
-                    "description": sa.description or f"Delegate task to '{sa.slug}'",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"task": {"type": "string"}},
-                        "required": ["task"],
-                    },
-                }
-                for sa in sub_agents
-            ]
-        }
+        VoiceToolDeclaration(
+            name=sa.slug,
+            description=sa.description or f"Delegate task to '{sa.slug}'",
+            parameters={
+                "type": "object",
+                "properties": {"task": {"type": "string"}},
+                "required": ["task"],
+            },
+        )
+        for sa in sub_agents
     ]
 
 
 class VoiceService:
-    """Relay 1 voice session: browser WebSocket ↔ Gemini Live (ADR-0009). KHÔNG viết lại
-    orchestrator — resolve agent/model/sub-agent qua `ChatService.resolve_context`, tool-call
-    forward vào `run_sub_agent` (chat/graph.py) — y như chat text, transport khác nhau."""
+    """Relay 1 voice session: browser WebSocket ↔ voice provider (ADR-0009, ADR-0018).
+
+    KHÔNG viết lại orchestrator — resolve agent/model/sub-agent qua `ChatService.resolve_context`,
+    tool-call forward vào `run_sub_agent` (chat/graph.py) — y như chat text, transport khác nhau.
+    """
 
     def __init__(self, chat_service: ChatService) -> None:
         self.chat_service = chat_service
@@ -103,8 +97,11 @@ class VoiceService:
         sub_agents = ctx.sub_agents
 
         try:
-            client = GeminiLiveClient(
-                model=_GEMINI_LIVE_MODEL,
+            # ADR-0018: chỉ Gemini là voice provider thật trong scope hiện tại. Tách qua registry
+            # để thêm OpenAI Realtime/self-host pipeline sau này mà không sửa relay orchestration.
+            provider = get_voice_provider("gemini")
+            client = provider.build_client(
+                model_id=provider.default_model_id,
                 system_instruction=ctx.system_prompt + _VOICE_LANGUAGE_INSTRUCTION,
                 tools=_tool_declarations(sub_agents),
             )
@@ -119,7 +116,7 @@ class VoiceService:
             # Không cap số lượng message — cùng cách text chat làm (`chat/service.py::send`, nạp
             # full history không phân trang), giữ nhất quán hành vi giữa 2 transport.
             history_rows = await self.chat_service.message_service.list_all(conversation_id)
-            history_turns = [t for row in history_rows if (t := _to_gemini_turn(row)) is not None]
+            history_turns = [t for row in history_rows if (t := _to_voice_turn(row)) is not None]
             await client.send_history(history_turns)
         except Exception as exc:
             logger.error(
@@ -150,7 +147,7 @@ class VoiceService:
 
         await set_state("listening")
 
-        async def forward_browser_to_gemini() -> None:
+        async def forward_browser_to_provider() -> None:
             while True:
                 message = await websocket.receive()
                 if message["type"] == "websocket.disconnect":
@@ -196,7 +193,7 @@ class VoiceService:
                     # Hết tool call đang chờ — model sẽ tiếp tục xử lý kết quả trước khi nói tiếp.
                     await set_state("thinking")
 
-        async def forward_gemini_to_browser() -> None:
+        async def forward_provider_to_browser() -> None:
             async for event in client.events():
                 if isinstance(event, AudioDelta):
                     await set_state("speaking")
@@ -247,8 +244,8 @@ class VoiceService:
                     )
 
         tasks = [
-            asyncio.create_task(forward_browser_to_gemini()),
-            asyncio.create_task(forward_gemini_to_browser()),
+            asyncio.create_task(forward_browser_to_provider()),
+            asyncio.create_task(forward_provider_to_browser()),
         ]
         try:
             # 1 trong 2 chiều đóng (browser disconnect hoặc Gemini đóng kết nối) là đủ để kết
