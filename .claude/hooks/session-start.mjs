@@ -15,6 +15,8 @@ const context = `Đầu session này trong Ultron — trước khi làm việc, 
 4. Quyết định kiến trúc thật (đổi ORM/DB/thư viện lớn, đổi cách agent gọi nhau, thêm entity mới)
    → ADR trước khi code (\`docs/adr/_template.md\`, skill \`adr-writer\` / \`/new-adr\`), không code
    trước rồi giải thích sau.
+5. Đụng UI \`apps/web\`: đọc \`docs/conventions/09-ui-visual-design.md\` trước — Ultron theo
+   Soft Glass Workspace Console, chat-first AI workspace, không generic admin dashboard.
 
 Iron law: có skill/subagent cho việc gì thì dùng nó, không tự làm tay lặp lại quy tắc đã có.`;
 

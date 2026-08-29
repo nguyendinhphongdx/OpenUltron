@@ -16,7 +16,8 @@ kiểu chung — bám đúng quyết định của repo này.
 - Convention chuyên đề: [`03-testing.md`](../../docs/conventions/03-testing.md) (test),
   [`04-error-handling.md`](../../docs/conventions/04-error-handling.md) (đọc `error.code` từ BE),
   [`05-naming.md`](../../docs/conventions/05-naming.md) (field JSON giữ `snake_case`, không tự
-  đổi camelCase).
+  đổi camelCase), [`09-ui-visual-design.md`](../../docs/conventions/09-ui-visual-design.md)
+  (Soft Glass Workspace Console, màu/layout/chat-first UI).
 - 📁 Reference feature: `apps/web/src/features/conversation/` — mẫu layering chuẩn nhất
   (`types → services → hooks → components`).
 - `AGENTS.md` (root) — rule 4 (convention chưa cover → đề xuất bổ sung trước khi code) và rule 6.

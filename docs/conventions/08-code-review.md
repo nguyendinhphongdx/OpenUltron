@@ -12,10 +12,10 @@ Khác với "Self-check trước khi xong" ở từng convention doc ([01](01-ba
 ## Cách dùng
 
 1. `git status`/`git diff` xem thay đổi thật.
-2. Soát đủ 8 nhóm dưới, map mỗi finding vào severity 🔴/🟡/🟢.
+2. Soát đủ 9 nhóm dưới, map mỗi finding vào severity 🔴/🟡/🟢.
 3. Output: `file:line — issue — fix`, nhóm theo severity, nặng nhất trước.
 
-## Checklist (8 nhóm)
+## Checklist (9 nhóm)
 
 ### 1. Layering & module boundary
 
@@ -48,20 +48,27 @@ Khác với "Self-check trước khi xong" ở từng convention doc ([01](01-ba
       (`conversation_id`/`agent_id`/`tool_name`).
 - [ ] Không log PII/secret.
 
-### 5. Naming
+### 5. UI visual design
+
+- [ ] `apps/web` UI mới khớp [`09-ui-visual-design.md`](09-ui-visual-design.md): Soft Glass
+      Workspace Console, chat-first, low-contrast workspace, không generic admin dashboard.
+- [ ] Màu/layout/typography dùng token/direction chung; không tự tạo palette riêng trong feature.
+- [ ] Chat/voice/tool trace có state rõ, responsive, accessible, không lấn át nội dung chính.
+
+### 6. Naming
 
 - [ ] Đúng casing per-language ([`05-naming.md`](05-naming.md)), không mix trong 1 file.
 - [ ] Field JSON mới vẫn `snake_case` — không tự đổi camelCase.
 - [ ] Entity mới → có trong "Domain glossary" của `05-naming.md`.
 
-### 6. Test
+### 7. Test
 
 - [ ] Code mới có test tương ứng (unit hoặc integration — [`03-testing.md`](03-testing.md)).
 - [ ] `apps/api`: test integration dùng DB thật (testcontainer), không mock repository.
 - [ ] Edge case/invariant (không chỉ happy path) có test reject.
 - [ ] `apps/web`: golden path + 1 edge case đã verify tay trong browser (nếu chưa có test tự động).
 
-### 7. Scope / ADR — 🔴 nếu vi phạm
+### 8. Scope / ADR — 🔴 nếu vi phạm
 
 - [ ] Không vượt scope yêu cầu (AGENTS.md rule 2) — feature không nhỏ mà chưa có
       `docs/features/<slug>.md` thì đây là vấn đề, không phải chi tiết code.
@@ -70,7 +77,7 @@ Khác với "Self-check trước khi xong" ở từng convention doc ([01](01-ba
 - [ ] Convention chưa cover case này → đã đề xuất bổ sung trước khi code (rule 4), không tự nghĩ
       pattern riêng.
 
-### 8. Hygiene
+### 9. Hygiene
 
 - [ ] Không `console.log`/`print`/`debugger`/`it.only`/`pytest.mark.skip` sót lại.
 - [ ] Không commit `.env`/secret/file build.

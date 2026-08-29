@@ -44,6 +44,7 @@ docs/
 | Security (secret, input/output, tool)  | [docs/conventions/06-security.md](docs/conventions/06-security.md) |
 | Logging/Observability (`apps/api`)     | [docs/conventions/07-logging-observability.md](docs/conventions/07-logging-observability.md) |
 | Review checklist (severity 🔴🟡🟢)     | [docs/conventions/08-code-review.md](docs/conventions/08-code-review.md) |
+| UI visual design (`apps/web`)          | [docs/conventions/09-ui-visual-design.md](docs/conventions/09-ui-visual-design.md) |
 | Quyết định kiến trúc / "tại sao chọn X"| [docs/adr/](docs/adr/)                                          |
 | Thiết kế tính năng mới / chốt scope trước khi code | [docs/features/](docs/features/) — viết bằng skill `feature-spec` / `/spec`, xem [docs/roadmap/README.md](docs/roadmap/README.md) mục "Tầm nhìn sản phẩm" trước |
 
@@ -52,7 +53,9 @@ docs/
 ## Conventions
 
 - **`apps/api`**: `uv`, Pydantic v2 ([ADR-0004](docs/adr/0004-validation-pydantic.md)), SQLAlchemy + Alembic ([ADR-0002](docs/adr/0002-orm-sqlalchemy.md)), Postgres+pgvector ([ADR-0003](docs/adr/0003-db-postgres-pgvector.md)).
-- **`apps/web`/`mobile`/`desktop`**: pnpm, TypeScript.
+- **`apps/web`/`mobile`/`desktop`**: pnpm, TypeScript. UI visual direction mặc định là
+  [Soft Glass Workspace Console](docs/conventions/09-ui-visual-design.md) — chat-first AI workspace,
+  không generic admin dashboard.
 - **Commit**: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`).
 
 ## Quy tắc cứng

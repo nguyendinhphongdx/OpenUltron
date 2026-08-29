@@ -8,6 +8,9 @@ vì Ultron [là công cụ 1 người dùng](../../AGENTS.md), chưa có auth �
 
 Web console — chat với agent (orchestrator + sub-agent) và quản lý agent org chart
 ([ADR-0006](../adr/0006-multi-agent-org-chart.md)). Gọi thẳng `apps/api`, không qua gateway.
+Visual direction bắt buộc nằm ở [`09-ui-visual-design.md`](09-ui-visual-design.md): Ultron là
+chat-first AI workspace theo style **Soft Glass Workspace Console**, không phải generic admin
+dashboard.
 
 ## Stack bắt buộc — không tự đổi/thêm song song
 
@@ -21,6 +24,9 @@ Web console — chat với agent (orchestrator + sub-agent) và quản lý agent
   `src/components/ui/` → chạy `pnpm dlx shadcn@latest add <name>` để generate đúng convention
   shadcn, **không tự viết tay 1 component "trông giống" thay thế** — dễ lệch a11y/behavior mà
   shadcn đã lo sẵn (keyboard nav, focus trap, ARIA).
+- **Visual design** theo [`09-ui-visual-design.md`](09-ui-visual-design.md) cho màu, layout,
+  typography, chat/voice state, table/list và anti-pattern. Không tự chọn palette/style mới trong
+  từng feature.
 - **`@tanstack/react-query`** cho toàn bộ server state (không dùng `useEffect` + `fetch` tay, không
   thêm Redux/Zustand/Jotai cho state đến từ API — chỉ dùng state client cục bộ (`useState`) cho UI
   state thuần, ví dụ form input trước submit, tab đang mở).
@@ -159,6 +165,8 @@ Không liệt kê lại ở đây.
 - [ ] Type trong `types/` khớp `apps/api/app/modules/**/schemas.py` thật (không đoán/nhớ nhầm)?
 - [ ] Không có business logic/fetch trực tiếp trong `components/`/`hooks/` (nằm ở `services/`)?
 - [ ] Primitive UI mới dùng shadcn (generate qua `pnpm dlx shadcn@latest add`), không tự viết tay?
+- [ ] Visual direction khớp [`09-ui-visual-design.md`](09-ui-visual-design.md) — chat-first,
+      low-contrast workspace, màu/token/layout nhất quán?
 - [ ] Helper/component dùng ≥ 2 feature đã lên `src/lib/`/`src/components/shared/`, không
       copy-paste?
 - [ ] Không hardcode URL — path khai ở `src/lib/api/endpoints.ts`?
