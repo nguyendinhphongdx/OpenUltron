@@ -9,7 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
+  DialogBody,
+  DialogClose,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -86,7 +89,7 @@ export function CredentialManageDialog({ trigger }: { trigger?: ReactNode }) {
         <DialogHeader>
           <DialogTitle>Model & Credential</DialogTitle>
         </DialogHeader>
-        <div className="grid h-[28rem] grid-cols-[13rem_1fr_18rem] gap-4 overflow-hidden">
+        <DialogBody className="grid h-[28rem] grid-cols-[13rem_1fr_18rem] gap-4 overflow-hidden">
           {/* Cột trái — provider filter */}
           <div className="flex flex-col gap-1 overflow-y-auto border-r border-border pr-3">
             {PROVIDERS.map(({ id, label, icon: Icon }) => (
@@ -208,7 +211,10 @@ export function CredentialManageDialog({ trigger }: { trigger?: ReactNode }) {
               />
             )}
           </div>
-        </div>
+        </DialogBody>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>Đóng</DialogClose>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

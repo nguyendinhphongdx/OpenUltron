@@ -26,21 +26,23 @@ interface MessageThreadProps {
 
 function MessageBubble({ isUser, content }: { isUser: boolean; content: string }) {
   return (
-    <div className={cn('flex max-w-[85%] gap-2.5', isUser ? 'self-end flex-row-reverse' : 'self-start')}>
+    <div className={cn('flex max-w-[88%] gap-2.5', isUser ? 'self-end flex-row-reverse' : 'self-start')}>
       <span
         className={cn(
-          'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg',
-          isUser ? 'bg-accent/15 text-accent' : 'bg-muted text-foreground/70',
+          'mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border shadow-sm',
+          isUser
+            ? 'border-accent/20 bg-accent/10 text-accent'
+            : 'border-border bg-white/82 text-foreground/70',
         )}
       >
         {isUser ? <User className="size-3.5" /> : <Bot className="size-3.5" />}
       </span>
       <div
         className={cn(
-          'whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+          'whitespace-pre-wrap rounded-[1.15rem] px-4 py-2.5 text-[15px] leading-relaxed shadow-sm',
           isUser
-            ? 'rounded-br-sm bg-accent text-accent-foreground'
-            : 'rounded-bl-sm border border-border bg-muted text-foreground',
+            ? 'rounded-br-md bg-foreground text-white'
+            : 'rounded-bl-md border border-border bg-white/86 text-foreground',
         )}
       >
         {content}
@@ -51,7 +53,7 @@ function MessageBubble({ isUser, content }: { isUser: boolean; content: string }
 
 function TypingDots() {
   return (
-    <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm border border-border bg-muted px-4 py-3">
+    <div className="flex items-center gap-1 rounded-[1.15rem] rounded-bl-md border border-border bg-white/86 px-4 py-3 shadow-sm">
       <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none [animation-delay:-0.3s]" />
       <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none [animation-delay:-0.15s]" />
       <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/50 motion-reduce:animate-none" />
@@ -90,7 +92,7 @@ export function MessageThread({
     lastMessage?.role === 'user' && lastMessage.content === pendingUserText;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-5 p-6">
+    <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-7 sm:px-6">
       {data.data.map((message) => (
         <MessageBubble key={message.id} isUser={message.role === 'user'} content={message.content} />
       ))}
@@ -99,11 +101,11 @@ export function MessageThread({
           {!alreadyPersisted && <MessageBubble isUser content={pendingUserText} />}
           <div className="flex max-w-[85%] flex-col gap-1.5 self-start">
             <div className="flex gap-2.5">
-              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground/70">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-white/82 text-foreground/70 shadow-sm">
                 <Bot className="size-3.5" />
               </span>
               {approvalRequest ? (
-                <div className="flex flex-col gap-2.5 rounded-2xl rounded-bl-sm border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950">
+                <div className="flex flex-col gap-2.5 rounded-[1.15rem] rounded-bl-md border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm shadow-sm dark:border-amber-900 dark:bg-amber-950">
                   <p className="font-medium text-foreground">
                     Cần duyệt trước khi chạy tool <code className="font-mono">{approvalRequest.toolName}</code>
                   </p>
@@ -114,21 +116,21 @@ export function MessageThread({
                     <button
                       type="button"
                       onClick={onApprove}
-                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground"
+                      className="rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground"
                     >
                       Duyệt
                     </button>
                     <button
                       type="button"
                       onClick={onReject}
-                      className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                      className="rounded-full border border-border bg-white/70 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
                     >
                       Từ chối
                     </button>
                   </div>
                 </div>
               ) : assistantText ? (
-                <div className="whitespace-pre-wrap rounded-2xl rounded-bl-sm border border-border bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">
+                <div className="whitespace-pre-wrap rounded-[1.15rem] rounded-bl-md border border-border bg-white/86 px-4 py-2.5 text-[15px] leading-relaxed text-foreground shadow-sm">
                   {assistantText}
                 </div>
               ) : (
@@ -136,7 +138,7 @@ export function MessageThread({
               )}
             </div>
             {toolCallName && (
-              <p className="pl-9 text-xs text-muted-foreground">Đang chạy tool: {toolCallName}…</p>
+              <p className="pl-9 text-xs text-muted-foreground">Đang chạy tool: {toolCallName}...</p>
             )}
           </div>
         </>

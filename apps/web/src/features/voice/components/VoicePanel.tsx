@@ -29,15 +29,15 @@ export function VoicePanel({ conversationId }: { conversationId: number }) {
   const isActive = status === 'active' || status === 'connecting';
 
   return (
-    <div className="border-t border-border">
+    <div className="border-t border-border/70 bg-white/55 backdrop-blur-xl">
       {isActive && (
-        <div className="mx-auto flex max-w-3xl flex-col gap-2 px-6 pt-4">
+        <div className="mx-auto flex max-w-3xl flex-col gap-2 px-4 pt-4 sm:px-6">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className={cn('size-1.5 rounded-full motion-safe:animate-pulse', STATE_DOT_CLASS[voiceState])} />
             {STATE_LABEL[voiceState]}
           </div>
           {transcript.length > 0 && (
-            <div className="flex flex-col gap-1.5 rounded-xl border border-border bg-muted/50 px-3 py-2 text-sm">
+            <div className="flex flex-col gap-1.5 rounded-2xl border border-border bg-white/78 px-3 py-2 text-sm shadow-sm">
               {transcript.map((line, i) => (
                 <p key={i} className={line.role === 'user' ? 'text-foreground' : 'text-muted-foreground'}>
                   {line.text}
@@ -47,18 +47,18 @@ export function VoicePanel({ conversationId }: { conversationId: number }) {
           )}
         </div>
       )}
-      {error && <p className="mx-auto max-w-3xl px-6 pt-3 text-sm text-destructive">{error}</p>}
-      <div className="mx-auto flex max-w-3xl items-center gap-2 px-6 py-3">
+      {error && <p className="mx-auto max-w-3xl px-4 pt-3 text-sm text-destructive sm:px-6">{error}</p>}
+      <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3 sm:px-6">
         <button
           type="button"
           onClick={isActive ? stop : start}
           disabled={status === 'connecting'}
           aria-label={isActive ? 'Kết thúc voice session' : 'Bắt đầu voice session'}
           className={cn(
-            'flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+            'flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm transition-colors',
             isActive
-              ? 'bg-destructive/10 text-destructive hover:bg-destructive/15'
-              : 'bg-muted text-muted-foreground hover:bg-muted/70',
+              ? 'border-destructive/15 bg-destructive/10 text-destructive hover:bg-destructive/15'
+              : 'border-border bg-white/72 text-muted-foreground hover:bg-white hover:text-foreground',
           )}
         >
           {isActive ? <MicOff className="size-3.5" /> : <Mic className="size-3.5" />}

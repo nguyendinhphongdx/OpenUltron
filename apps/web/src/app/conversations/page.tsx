@@ -4,7 +4,12 @@ import { PageShell } from '@/components/layout/PageShell';
 
 export default function ConversationsPage() {
   return (
-    <PageShell title="Hội thoại" description="Chat trực tiếp với 1 agent." action={<NewConversationButton />}>
+    <PageShell
+      title="Hội thoại"
+      description="Không gian chat, voice và agent handoff của Ultron."
+      action={<NewConversationButton />}
+      maxWidth="wide"
+    >
       <ConversationList />
     </PageShell>
   );

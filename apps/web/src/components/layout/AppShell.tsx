@@ -4,9 +4,9 @@ import { Sidebar } from './Sidebar';
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex">
+    <div className="flex min-h-screen overflow-hidden bg-background text-foreground">
       <Sidebar />
-      <div className="h-screen flex-1 overflow-y-auto bg-background">{children}</div>
+      <main className="h-screen min-w-0 flex-1 overflow-y-auto">{children}</main>
     </div>
   );
 }

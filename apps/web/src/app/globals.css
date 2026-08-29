@@ -5,38 +5,38 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --border: oklch(0.922 0 0);
-  --accent: oklch(0.585 0.196 275.75);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --border: #e5e7e2;
+  --accent: #0d9488;
+  --background: #f7f8f6;
+  --foreground: #242624;
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: #242624;
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.585 0.196 275.75);
+  --popover-foreground: #242624;
+  --primary: #242624;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f4f1;
+  --secondary-foreground: #242624;
+  --muted: #f2f4f1;
+  --muted-foreground: #6f746d;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --input: #e5e7e2;
+  --ring: #0d9488;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.5rem;
+  --sidebar: rgb(255 255 255 / 0.68);
+  --sidebar-foreground: #242624;
+  --sidebar-primary: #0d9488;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f2f4f1;
+  --sidebar-accent-foreground: #242624;
+  --sidebar-border: rgb(229 231 226 / 0.72);
+  --sidebar-ring: #0d9488;
 }
 
 @theme inline {
@@ -123,8 +123,59 @@
   }
   body {
     @apply bg-background text-foreground;
+    background:
+      radial-gradient(circle at top left, rgb(13 148 136 / 0.08), transparent 28rem),
+      linear-gradient(180deg, #fbfbfa 0%, #f7f8f6 46%, #f1f3f0 100%);
   }
   html {
     @apply font-sans;
   }
+  button,
+  a {
+    @apply touch-manipulation;
+  }
+}
+
+/* ─── Scrollbars: thin và chỉ hiện khi hover (mặc định cho mọi element,
+   không cần gắn class riêng) — mượn pattern từ CAP (apps/web/src/app/globals.css). */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
+}
+
+*:hover,
+*:focus-within {
+  scrollbar-color: oklch(0.7 0 0 / 35%) transparent;
+}
+
+.dark *:hover,
+.dark *:focus-within {
+  scrollbar-color: oklch(1 0 0 / 20%) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background-color: oklch(0.7 0 0 / 35%);
+}
+
+.dark *:hover::-webkit-scrollbar-thumb,
+.dark *:focus-within::-webkit-scrollbar-thumb {
+  background-color: oklch(1 0 0 / 20%);
 }
