@@ -166,6 +166,13 @@ class KnowledgeBaseRepository:
         await self.session.flush()
         return row
 
+    async def remove_agent_kb(self, agent_id: int, kb_id: int) -> bool:
+        row = await self.get_agent_kb(agent_id, kb_id)
+        if row is None:
+            return False
+        await self.session.delete(row)
+        return True
+
     async def list_kbs_for_agent(self, agent_id: int) -> list[KnowledgeBase]:
         stmt = (
             select(KnowledgeBase)

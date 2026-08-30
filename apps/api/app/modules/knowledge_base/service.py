@@ -269,5 +269,10 @@ class KnowledgeBaseService:
             raise ConflictError(f"Agent {agent_id} đã được gán KnowledgeBase {kb_id}")
         await self.repo.add_agent_kb(agent_id, kb_id)
 
+    async def unassign_from_agent(self, agent_id: int, kb_id: int) -> None:
+        removed = await self.repo.remove_agent_kb(agent_id, kb_id)
+        if not removed:
+            raise ResourceNotFoundError("AgentKnowledgeBase", f"{kb_id} (agent_id={agent_id})")
+
     async def list_for_agent(self, agent_id: int) -> list[KnowledgeBaseRead]:
         return [kb_to_read(r) for r in await self.repo.list_kbs_for_agent(agent_id)]

@@ -18,3 +18,8 @@ async def list_agent_kbs(
     agent_id: int, service: KnowledgeBaseServiceDep
 ) -> list[KnowledgeBaseRead]:
     return await service.list_for_agent(agent_id)
+
+
+@router.delete("/{kb_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unassign_kb(agent_id: int, kb_id: int, service: KnowledgeBaseServiceDep) -> None:
+    await service.unassign_from_agent(agent_id, kb_id)
