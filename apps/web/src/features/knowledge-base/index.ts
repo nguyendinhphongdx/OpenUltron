@@ -25,6 +25,10 @@ export {
   fileChunksQueryKey,
   useSearchFiles,
   useKnowledgeUpload,
+  useAgentKnowledgeBases,
+  agentKnowledgeBasesQueryKey,
+  useAssignKnowledgeBase,
+  useUnassignKnowledgeBase,
 } from './hooks';
 export { useFile, fileQueryKey } from './hooks/useFile';
 export { useFolder, folderQueryKey } from './hooks/useFolder';
@@ -42,4 +46,5 @@ export { DriveList } from './components/DriveList';
 export { KnowledgeUploadDialog } from './components/KnowledgeUpload';
 export { FileStatusBadge } from './components/FileStatusBadge';
 export { KnowledgeMetrics } from './components/KnowledgeMetrics';
+export { AgentKnowledgeBaseManager } from './components/AgentKnowledgeBaseManager';
 export type * from './types/knowledge-base.types';

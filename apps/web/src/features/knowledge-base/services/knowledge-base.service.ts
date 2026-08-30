@@ -66,6 +66,10 @@ export const knowledgeBaseService = {
     await apiClient.post(endpoints.agents.knowledgeBases(agentId), { kb_id: kbId });
   },
 
+  unassignFromAgent: async (agentId: number, kbId: number): Promise<void> => {
+    await apiClient.delete(endpoints.agents.unassignKnowledgeBase(agentId, kbId));
+  },
+
   listFolders: async (
     kbId: number,
     parentFolderId?: number | null,

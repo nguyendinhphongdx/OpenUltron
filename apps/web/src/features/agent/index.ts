@@ -17,6 +17,7 @@ export {
 export { AgentList } from './components/AgentList';
 export { AgentForm } from './components/AgentForm';
 export { NewAgentView } from './components/NewAgentView';
+export { AgentCreationWizard } from './components/AgentCreationWizard';
 export { AgentDetailView } from './components/AgentDetailView';
 export { DelegationManager } from './components/DelegationManager';
 export { OrchestratorCanvas } from './components/OrchestratorCanvas';

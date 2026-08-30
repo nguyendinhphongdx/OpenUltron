@@ -1,17 +1,13 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-
 import { PageShell } from '@/components/layout/PageShell';
 
-import { AgentForm } from './AgentForm';
+import { AgentCreationWizard } from './AgentCreationWizard';
 
 export function NewAgentView() {
-  const router = useRouter();
-
   return (
     <PageShell title="Agent mới">
-      <AgentForm onSuccess={(agent) => router.push(`/agents/${agent.id}`)} />
+      <AgentCreationWizard />
     </PageShell>
   );
 }

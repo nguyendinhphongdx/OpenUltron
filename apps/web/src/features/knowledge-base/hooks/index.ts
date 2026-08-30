@@ -16,3 +16,6 @@ export { useKnowledgeBaseStats, knowledgeBaseStatsQueryKey } from './useKnowledg
 export { useFileChunks, fileChunksQueryKey } from './useFileChunks';
 export { useSearchFiles } from './useSearchFiles';
 export { useKnowledgeUpload } from './useKnowledgeUpload';
+export { useAgentKnowledgeBases, agentKnowledgeBasesQueryKey } from './useAgentKnowledgeBases';
+export { useAssignKnowledgeBase } from './useAssignKnowledgeBase';
+export { useUnassignKnowledgeBase } from './useUnassignKnowledgeBase';

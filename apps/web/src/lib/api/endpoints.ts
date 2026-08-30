@@ -22,6 +22,8 @@ export const endpoints = {
     tools: (id: number) => `/agents/${id}/tools`,
     unassignTool: (agentId: number, toolId: number) => `/agents/${agentId}/tools/${toolId}`,
     knowledgeBases: (id: number) => `/agents/${id}/knowledge-bases`,
+    unassignKnowledgeBase: (agentId: number, kbId: number) =>
+      `/agents/${agentId}/knowledge-bases/${kbId}`,
   },
   models: {
     list: '/models',

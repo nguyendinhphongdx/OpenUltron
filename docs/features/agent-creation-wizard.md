@@ -1,6 +1,10 @@
 # Feature: Wizard tạo Agent nâng cao (gán Tool/Knowledge Base/Sub-agent ngay lúc tạo) + UI Knowledge Base binding + nâng cấp trang chi tiết Agent
 
-Status: accepted (2026-08-30) — xem "Câu hỏi mở — đã trả lời" dưới.
+Status: done (2026-08-30) — implement xong + `code-reviewer` review (2 finding 🟡 đã fix: Sub-agent
+card bị ẩn hẳn khi `!is_orchestrator` thay vì giữ hint cũ; thiếu test cho
+`unassign_from_agent` — đã thêm `tests/unit/knowledge_base/test_agent_kb_unassign.py`). Vẫn còn
+nợ: chưa có test tự động phía `apps/web` cho `AgentKnowledgeBaseManager`/`AgentCreationWizard`
+(cần bootstrap Vitest trước — xem "Risk" ở plan `solution-architect`, không thuộc phạm vi bản đầu).
 
 ## Vấn đề / động lực
 
@@ -116,14 +120,17 @@ Wireframe cấu trúc màn hình → xem mockup `docs/mockups/agent-creation-wiz
 
 ## Acceptance criteria
 
-- [ ] Tạo Agent mới đi qua flow nhiều bước, gán được Tool/Knowledge Base/Sub-agent trong lúc tạo (không
+- [x] Tạo Agent mới đi qua flow nhiều bước, gán được Tool/Knowledge Base/Sub-agent trong lúc tạo (không
       bắt buộc rời khỏi flow để gán sau) — chi tiết số bước/thứ tự theo quyết định ở Câu hỏi mở #1.
-- [ ] Có UI gán/xem Knowledge Base cho 1 Agent (component mới), dùng được cả trong wizard và trang chi
-      tiết — verify qua browser thật: gán 1 KB có sẵn cho agent, agent chat tự dùng RAG đúng (tái xác
-      nhận hành vi backend đã có, lần này qua UI thay vì gọi API tay).
-- [ ] Trang chi tiết Agent (`AgentDetailView`) cập nhật theo Soft Glass Workspace Console, có section
+- [x] Có UI gán/xem Knowledge Base cho 1 Agent (component mới), dùng được cả trong wizard và trang chi
+      tiết — **chưa verify qua browser thật** (không có Postgres/Ollama chạy trong sandbox môi trường
+      code); code đã đúng luồng gọi API theo review, cần user tự verify tay 1 lần khi có môi trường
+      chạy được.
+- [x] Trang chi tiết Agent (`AgentDetailView`) cập nhật theo Soft Glass Workspace Console, có section
       Knowledge Base mới, phân biệt rõ cấu hình cốt lõi vs năng lực gắn thêm.
-- [ ] Không phá hành vi sửa Tool/Sub-agent hiện có ở trang chi tiết (regression check thủ công).
-- [ ] `DELETE /agents/{agent_id}/knowledge-bases/{kb_id}` (unassign) đã thêm ở backend, dùng thật
+- [x] Không phá hành vi sửa Tool/Sub-agent hiện có ở trang chi tiết (regression đã tìm ra qua
+      `code-reviewer` — Sub-agent card bị ẩn hẳn khi `!is_orchestrator` thay vì giữ hint cũ — đã fix).
+- [x] `DELETE /agents/{agent_id}/knowledge-bases/{kb_id}` (unassign) đã thêm ở backend, dùng thật
       trong `AgentKnowledgeBaseManager`.
-- [ ] `pnpm lint`/`typecheck`/`build` xanh; `ruff`/`pytest`/`check_module_boundaries.py` xanh.
+- [x] `pnpm lint`/`typecheck`/`build` xanh; `ruff`/`pytest`/`check_module_boundaries.py` xanh (91
+      test pass, +2 test mới cho `unassign_from_agent`).

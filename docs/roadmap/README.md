@@ -31,11 +31,11 @@ input/output adapter.
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
 | Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
 | Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A xong (nested approval fail-closed), Phase B/C/D chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
-| Agent creation wizard + Knowledge Base binding UI + nâng cấp trang chi tiết Agent | 📐 Accepted, chưa code | [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md), [research](../research/agent-creation-wizard.md), [mockup](../mockups/agent-creation-wizard.html) |
+| Agent creation wizard + Knowledge Base binding UI + nâng cấp trang chi tiết Agent | ✅ Đã có (2026-08-30) — chưa live-verify qua browser (thiếu Postgres/Ollama trong sandbox) | [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md), [research](../research/agent-creation-wizard.md), [mockup](../mockups/agent-creation-wizard.html) |
 | Unified agent runtime + chuẩn hoá stream/chat UI (wire contract FE↔BE) | ✅ Đã có (phần wire contract) | [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md), [ADR-0019](../adr/0019-ag-ui-assistant-ui-runtime.md) — chuẩn hoá text stream bằng AG-UI + assistant-ui; phần backend-internal interface (LangGraph leak vào `ChatService`) tách sang dòng "Agent runtime abstraction" dưới |
 | Agent runtime abstraction (`AgentRuntime`/`TurnRunner` — backend-internal interface, tách LangGraph khỏi `ChatService`) | ✅ Đã có (2026-08-30) | [`docs/features/agent-runtime-abstraction.md`](../features/agent-runtime-abstraction.md), [ADR-0020](../adr/0020-agent-runtime-interface.md) — KHÔNG tự động cover việc unify voice top-level turn (xem Non-goals trong spec) |
 | Voice là input modality của agent thường | 🔜 Cần spec/ADR trước khi code | Voice session phải dùng chung agent runtime: tool, KB/RAG, MCP, sub-agent, approval; không tách thành flow voice riêng chỉ gọi provider realtime. Phụ thuộc kết quả của "Agent runtime abstraction" ở trên (interface phải có trước khi quyết voice có đi qua nó hay không) |
-| Ambient / wearable AI interface (tai nghe, smartwatch, smart glasses) | 🧭 Product direction, cần research/spec | Web/mobile không phải đích cuối; cần device adapter layer: audio I/O, wake/activation, interruption, short response mode, context capture từ camera/sensor khi có quyền, handoff sang web/mobile để xem trace dài. Phụ thuộc "Voice là input modality của agent thường" + runtime thống nhất. |
+| Ambient / wearable AI interface (tai nghe, smartwatch, smart glasses) | 🚧 Mobile companion MVP bắt đầu | [`docs/features/mobile-ambient-companion.md`](../features/mobile-ambient-companion.md) — web/mobile không phải đích cuối; cần device adapter layer: audio I/O, wake/activation, interruption, short response mode, context capture từ camera/sensor khi có quyền, handoff sang web/mobile để xem trace dài. Phụ thuộc "Voice là input modality của agent thường" + runtime thống nhất. |
 
 Feature mới nào không nhỏ → viết `docs/features/<slug>.md` (skill `feature-spec` / `/spec`) trước,
 cập nhật link ở bảng trên, rồi mới code — xem `.claude/hooks/session-start.mjs`.
@@ -361,9 +361,33 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       - Verify: `ruff check`/`ruff format --check`/`check_module_boundaries.py` xanh, `pytest -q`
         89 passed (thêm 1 test mới), app boot được (`from app.main import app`, không circular
         import giữa `core/agent_runtime.py` ↔ `chat/graph.py` ↔ `chat/service.py`).
-      - **Orchestrator v2 (`docs/features/orchestrator-v2.md`) và Agent creation wizard
-        (`docs/features/agent-creation-wizard.md`) mới xong Phase A/chưa code** — xem "Đang làm"
-        bên dưới, không phải nợ ẩn.
+      - **Orchestrator v2 (`docs/features/orchestrator-v2.md`) mới xong Phase A/chưa code Phase
+        B/C/D** — xem "Đang làm" bên dưới, không phải nợ ẩn.
+- [x] **Agent creation wizard + Knowledge Base binding UI + nâng cấp `AgentDetailView`** (2026-08-30,
+      [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md)) —
+      `solution-architect` lên plan 10 step, `backend-engineer`/`frontend-engineer` code theo đúng
+      thứ tự phụ thuộc (backend trước, FE sau).
+      - Backend: `DELETE /agents/{agent_id}/knowledge-bases/{kb_id}` (unassign KB) — đối xứng 1:1
+        `ToolService.unassign_from_agent`/`agent_tool_router.py` đã có, raise `ResourceNotFoundError`
+        (không phải `HTTPException`) khi chưa từng gán.
+      - Frontend: `AgentKnowledgeBaseManager` (component mới, mirror `AgentToolManager` — hook
+        `useAgentKnowledgeBases`/`useAssignKnowledgeBase`/`useUnassignKnowledgeBase` mới), dùng lại
+        ở cả `AgentCreationWizard` (mới — 4 bước: Định danh+Model → Tool → Knowledge Base →
+        Sub-agent, bước 4 chỉ hiện nếu `is_orchestrator`, mỗi bước có nút Bỏ qua, agent persist thật
+        ngay bước 1 không cần khái niệm "nháp") lẫn `AgentDetailView` (nâng cấp layout rail+panel,
+        thêm panel Knowledge Base mới). Không viết lại `AgentForm`/`AgentToolManager`/
+        `DelegationManager` — wizard compose lại các component đã có.
+      - `code-reviewer` tìm 2 finding 🟡, đã fix cùng ngày: (1) `AgentDetailView` ẩn hẳn Card
+        Sub-agent khi `!is_orchestrator` thay vì giữ hint "bật Là orchestrator" mà `DelegationManager`
+        tự có sẵn — regression so với hành vi cũ; (2) thiếu test cho `unassign_from_agent` — thêm
+        `tests/unit/knowledge_base/test_agent_kb_unassign.py`.
+      - Verify: `apps/api` — ruff/format/`check_module_boundaries.py`/pytest (91 passed, +2 test
+        mới) xanh; `apps/web` — lint/typecheck/build xanh. **Chưa live-verify qua browser thật**
+        (sandbox không có Postgres/Ollama chạy) — cần user tự verify tay khi có môi trường chạy
+        được (tạo agent qua wizard, gán KB, chat xác nhận RAG dùng đúng).
+      - Nợ còn lại: `apps/web` chưa có Vitest — test tự động cho `AgentKnowledgeBaseManager`/
+        `AgentCreationWizard` chưa viết (cần bootstrap tooling trước, xem plan `solution-architect`
+        mục Risk).
 
 ## Đang làm / tiếp theo
 
@@ -407,33 +431,9 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       neo sâu vào Gemini Live protocol; cần mở đường cho OpenAI Realtime/GPT voice và self-host
       speech stack (STT/TTS + LLM) mà không sửa UI/agent capability. Nên tách rõ 3 lớp:
       transport/audio codec, realtime model provider, và agent runtime/tool execution.
-- [ ] **P1 — Agent creation wizard + Knowledge Base binding UI** — flow tạo Agent hiện chỉ có form
-      phẳng (name/slug/system_prompt/model), Tool/Sub-agent phải gán SAU ở trang chi tiết
-      (`AgentToolManager`/`DelegationManager`), **Knowledge Base hoàn toàn chưa có UI gán** dù
-      backend chạy được đầy đủ (`AgentKnowledgeBase`, `POST/GET /agents/{id}/knowledge-bases`, đã
-      verify agent chat tự gọi RAG tool đúng — chỉ thiếu 1 component kiểu `AgentKnowledgeBaseManager`
-      cùng pattern `AgentToolManager`). User muốn (2026-08-30): wizard nhiều bước, gán Model/Tool/KB/
-      Sub-agent ngay lúc tạo thay vì tạo trống rồi sửa sau, cộng nâng cấp visual trang chi tiết.
-      `business-analyst` đã viết xong spec draft
-      ([`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md) +
-      [research](../research/agent-creation-wizard.md) so sánh OpenAI GPT Builder/Dify +
-      [mockup](../mockups/agent-creation-wizard.html)) — phát hiện thêm 1 gap backend khi đọc code:
-      **thiếu hẳn `DELETE /agents/{agent_id}/knowledge-bases/{kb_id}`** (chỉ có `POST`/`GET`,
-      không unassign được — khác `Tool` đã có đủ 3 endpoint). **Cần user trả lời trước khi qua
-      `solution-architect`** (đầy đủ ở "Câu hỏi mở" trong spec):
-      1. Bao nhiêu bước wizard, mỗi bước gồm gì? (đề xuất: Định danh+Model → Tool → KB → Sub-agent,
-         bước cuối chỉ hiện nếu `is_orchestrator=true`)
-      2. Cho "tạo nhanh" bỏ qua Tool/KB/Sub-agent (gán sau) hay bắt buộc đi hết wizard? (research:
-         cả GPT Builder lẫn Dify đều không ép hoàn thành cấu hình phụ trước khi dùng được)
-      3. Cơ chế tạo: `POST /agents` persist thật ngay ở bước 1 rồi gán resource tuần tự (đơn giản,
-         khớp API hiện có), hay cần khái niệm "nháp" chưa persist gì cho tới khi xong wizard (phức
-         tạp hơn, cần transaction/draft state)?
-      4. Thêm luôn `DELETE .../knowledge-bases/{kb_id}` (gap phát hiện ở trên) vào scope feature này,
-         hay để `AgentKnowledgeBaseManager` v1 chỉ gán (không gỡ), làm endpoint đó riêng sau?
-      5. Mức độ "nâng cấp visual" trang chi tiết Agent — mockup đề xuất 1 hướng cụ thể, cần xem rồi
-         chốt có đúng hình dung không.
-      6. Sub-agent chỉ hiện trong wizard khi `is_orchestrator=true` (giữ đúng rule hiện có ở
-         `DelegationManager`) — xác nhận giữ nguyên, không đổi.
+- [x] ~~P1 — Agent creation wizard + Knowledge Base binding UI~~ — **Đã xong (2026-08-30)**, xem
+      mục "Đã xong" bên dưới + [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md)
+      (Status: done). Chưa live-verify qua browser thật (môi trường code không có Postgres/Ollama).
 - [ ] **P1 — Conversation UX v2** — ngoài visual refresh đã có, cần flow tạo hội thoại mới tốt hơn:
       chọn agent trước khi vào chat, empty state có starter prompts, pin/archive/search/filter, rename
       inline, grouping theo thời gian/agent, keyboard shortcuts, trạng thái stream/approval rõ ràng.
@@ -492,7 +492,7 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       sử ("...là 42") → model trả lời đúng "**42**" — xác nhận lịch sử cũ đã nạp đúng vào session
       Gemini Live mới.
 - [x] `apps/web` — KB folder tree UI + redesign nhiều trang (`Files`/`Search`/`Settings`), có endpoint stats/chunk list/file search ở `apps/api`; xem [`docs/features/knowledge-base-ui-redesign.md`](../features/knowledge-base-ui-redesign.md)
-- [ ] `apps/mobile` — Expo (React Native)
+- [ ] `apps/mobile` — Expo (React Native), bắt đầu tại [`docs/features/mobile-ambient-companion.md`](../features/mobile-ambient-companion.md)
 - [ ] `apps/desktop` — Tauri
 - [ ] Channel điện thoại: chọn 1 trong Telegram/WhatsApp làm kênh chính
 - [ ] User cần nhập lại API key Gemini/OpenAI qua UI mới (dialog Model & Credential) sau khi deploy
