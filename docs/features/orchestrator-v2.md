@@ -110,14 +110,20 @@ Chi tiết câu hỏi gốc (giữ lại tham khảo ngữ cảnh quyết địn
 
 ## Acceptance criteria
 
-- [x] **Phase B backend xong (2026-08-30)**: Sửa được mô tả nhiệm vụ riêng cho 1 `AgentDelegation`
-      (edge) — `task_description` (migration mới, `PATCH /agents/{id}/delegations/{sub_agent_id}`),
-      giá trị đó được `ChatService._resolve_sub_agent_spec` dùng làm `description` của tool
-      `delegate` (ưu tiên `task_description`, fallback `agent.description`). **Canvas (FE) chưa
-      code** — API đã có (`GET /agents/{id}/delegations`), chỉ thiếu UI sửa/hiển thị.
-- [x] **Phase B backend xong (2026-08-30)**: `GET /agents/{id}/readiness` (`AgentReadinessService`,
-      `app/modules/agent/readiness.py`) — BFS đệ quy toàn graph, check model/credential/tool-config/
-      KB-rỗng, trả `issues` theo từng node. **Canvas (FE) chưa code** — chỉ thiếu badge hiển thị.
+- [x] **Phase B xong (2026-08-30, cả backend + canvas)**: Sửa được mô tả nhiệm vụ riêng cho 1
+      `AgentDelegation` (edge) — `task_description` (migration `b7c9e1a4f2d8`,
+      `PATCH /agents/{id}/delegations/{sub_agent_id}`), giá trị đó được
+      `ChatService._resolve_sub_agent_spec` dùng làm `description` của tool `delegate` (ưu tiên
+      `task_description`, fallback `agent.description`). `OrchestratorCanvas.tsx`: click 1 edge →
+      panel "Cạnh đang chọn" sửa `task_description` qua `useUpdateDelegation`.
+- [x] **Phase B xong (2026-08-30, cả backend + canvas)**: `GET /agents/{id}/readiness`
+      (`AgentReadinessService`, `app/modules/agent/readiness.py`) — BFS đệ quy toàn graph, check
+      model/credential/tool-config/KB-rỗng, trả `issues` theo từng node. Canvas: badge màu trên mỗi
+      node (`bg-emerald-500` sẵn sàng / `bg-orange-500` + issue đầu tiên khi thiếu), panel node chọn
+      hiện đủ list issues khi `!ready`. `useReadiness` tự refetch khi mount canvas
+      (`staleTime: 0`) + invalidate sau add/remove/update delegation.
+      **Chưa live-verify qua browser** — migration `task_description` mới áp vào DB thật của user
+      (xem "Đã xong" ở roadmap), cần user tự thử canvas.
 - [ ] Kéo sắp xếp lại vị trí node, rời trang rồi quay lại vẫn giữ đúng vị trí đã kéo (persist, không
       chỉ session).
 - [ ] Chạy thử graph với 1 input mẫu ngay trong canvas, thấy được path/token stream đi qua node nào

@@ -1,6 +1,13 @@
 /** Service layer — gọi `apiClient` thuần, không chứa React. */
 import { apiClient, endpoints } from '@/lib/api';
-import type { Agent, AgentCreateInput, AgentDelegation, AgentUpdateInput } from '../types/agent.types';
+import type {
+  Agent,
+  AgentCreateInput,
+  AgentDelegation,
+  AgentDelegationDetail,
+  AgentReadiness,
+  AgentUpdateInput,
+} from '../types/agent.types';
 
 export const agentService = {
   list: async (): Promise<Agent[]> => {
@@ -41,5 +48,29 @@ export const agentService = {
 
   removeDelegation: async (orchestratorId: number, subAgentId: number): Promise<void> => {
     await apiClient.delete(endpoints.agents.unassignDelegation(orchestratorId, subAgentId));
+  },
+
+  listDelegationDetails: async (orchestratorId: number): Promise<AgentDelegationDetail[]> => {
+    const res = await apiClient.get<AgentDelegationDetail[]>(
+      endpoints.agents.delegations(orchestratorId),
+    );
+    return res.data;
+  },
+
+  updateDelegation: async (
+    orchestratorId: number,
+    subAgentId: number,
+    taskDescription: string | null,
+  ): Promise<AgentDelegation> => {
+    const res = await apiClient.patch<AgentDelegation>(
+      endpoints.agents.unassignDelegation(orchestratorId, subAgentId),
+      { task_description: taskDescription },
+    );
+    return res.data;
+  },
+
+  getReadiness: async (agentId: number): Promise<AgentReadiness> => {
+    const res = await apiClient.get<AgentReadiness>(endpoints.agents.readiness(agentId));
+    return res.data;
   },
 };

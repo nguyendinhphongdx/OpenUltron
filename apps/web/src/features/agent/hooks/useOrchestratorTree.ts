@@ -9,13 +9,20 @@ import type { Agent, OrchestratorTreeNode } from '../types/agent.types';
 // cycle lọt qua check backend (`AgentService._creates_cycle`), không phải cơ chế chính.
 const MAX_DEPTH = 5;
 
-async function buildTree(agent: Agent, depth: number): Promise<OrchestratorTreeNode> {
+async function buildTree(
+  agent: Agent,
+  depth: number,
+  delegationId: number | null,
+  taskDescription: string | null,
+): Promise<OrchestratorTreeNode> {
   if (!agent.is_orchestrator || depth >= MAX_DEPTH) {
-    return { agent, children: [] };
+    return { agent, delegationId, taskDescription, children: [] };
   }
-  const subAgents = await agentService.listSubAgents(agent.id);
-  const children = await Promise.all(subAgents.map((sa) => buildTree(sa, depth + 1)));
-  return { agent, children };
+  const delegations = await agentService.listDelegationDetails(agent.id);
+  const children = await Promise.all(
+    delegations.map((d) => buildTree(d.sub_agent, depth + 1, d.id, d.task_description)),
+  );
+  return { agent, delegationId, taskDescription, children };
 }
 
 export function orchestratorTreeQueryKey(rootAgentId: number) {
@@ -28,7 +35,7 @@ export function useOrchestratorTree(rootAgentId: number) {
     queryKey: orchestratorTreeQueryKey(rootAgentId),
     queryFn: async () => {
       const root = await agentService.get(rootAgentId);
-      return buildTree(root, 0);
+      return buildTree(root, 0, null, null);
     },
     enabled: Number.isFinite(rootAgentId),
   });

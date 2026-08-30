@@ -19,14 +19,17 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { Workflow } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { useModels } from '@/features/model/hooks';
 import { useAddDelegation } from '../hooks/useAddDelegation';
 import { useAgents } from '../hooks/useAgents';
 import { orchestratorTreeQueryKey, useOrchestratorTree } from '../hooks/useOrchestratorTree';
+import { useReadiness } from '../hooks/useReadiness';
 import { useRemoveDelegation } from '../hooks/useRemoveDelegation';
-import type { Agent, OrchestratorTreeNode } from '../types/agent.types';
+import { useUpdateDelegation } from '../hooks/useUpdateDelegation';
+import type { Agent, AgentNodeReadiness, OrchestratorTreeNode } from '../types/agent.types';
 
 const COL_WIDTH = 200;
 const ROW_HEIGHT = 130;
@@ -61,6 +64,15 @@ interface PosNode {
   agent: Agent;
   parentKey: string | null;
   parentAgentId: number | null;
+  delegationId: number | null;
+  taskDescription: string | null;
+}
+
+interface EdgeData {
+  orchestratorAgentId: number;
+  subAgentId: number;
+  delegationId: number;
+  taskDescription: string | null;
 }
 
 function layout(
@@ -75,17 +87,39 @@ function layout(
   if (node.children.length === 0) {
     const x = counter.n * COL_WIDTH;
     counter.n += 1;
-    out.push({ key, x, y: depth * ROW_HEIGHT, agent: node.agent, parentKey, parentAgentId });
+    out.push({
+      key,
+      x,
+      y: depth * ROW_HEIGHT,
+      agent: node.agent,
+      parentKey,
+      parentAgentId,
+      delegationId: node.delegationId,
+      taskDescription: node.taskDescription,
+    });
     return x;
   }
   const childXs = node.children.map((c) => layout(c, depth + 1, key, node.agent.id, counter, out));
   const x = (Math.min(...childXs) + Math.max(...childXs)) / 2;
-  out.push({ key, x, y: depth * ROW_HEIGHT, agent: node.agent, parentKey, parentAgentId });
+  out.push({
+    key,
+    x,
+    y: depth * ROW_HEIGHT,
+    agent: node.agent,
+    parentKey,
+    parentAgentId,
+    delegationId: node.delegationId,
+    taskDescription: node.taskDescription,
+  });
   return x;
 }
 
-function AgentNodeCard({ data, selected }: NodeProps<Node<{ agent: Agent; modelLabel: string }>>) {
-  const { agent, modelLabel } = data;
+function AgentNodeCard({
+  data,
+  selected,
+}: NodeProps<Node<{ agent: Agent; modelLabel: string; readiness?: AgentNodeReadiness }>>) {
+  const { agent, modelLabel, readiness } = data;
+  const ready = readiness?.ready ?? true;
   return (
     <div
       className={cn(
@@ -101,7 +135,9 @@ function AgentNodeCard({ data, selected }: NodeProps<Node<{ agent: Agent; modelL
           agent.is_orchestrator && 'bg-accent/10',
         )}
       >
-        <span className={cn('h-1.5 w-1.5 rounded-full', 'bg-green-500')} />
+        <span
+          className={cn('h-1.5 w-1.5 shrink-0 rounded-full', ready ? 'bg-emerald-500' : 'bg-orange-500')}
+        />
         <span className="truncate text-xs font-semibold">{agent.slug}</span>
         {agent.is_orchestrator && (
           <span className="ml-auto shrink-0 font-mono text-[9px] uppercase text-accent">
@@ -113,6 +149,14 @@ function AgentNodeCard({ data, selected }: NodeProps<Node<{ agent: Agent; modelL
         <span className="rounded border border-border bg-foreground/5 px-1.5 py-0.5 font-mono text-[10px] text-foreground/70">
           {modelLabel}
         </span>
+        {!ready && readiness && readiness.issues.length > 0 && (
+          <p
+            className="mt-1 truncate text-[9px] text-orange-600"
+            title={readiness.issues.join('; ')}
+          >
+            ⚠ {readiness.issues[0]}
+          </p>
+        )}
       </div>
       <Handle type="source" position={Position.Bottom} className="bg-accent!" />
     </div>
@@ -121,11 +165,65 @@ function AgentNodeCard({ data, selected }: NodeProps<Node<{ agent: Agent; modelL
 
 const nodeTypes = { agentNode: AgentNodeCard };
 
+/** Panel bên phải khi chọn 1 edge (delegation) — `key={edge.id}` ở nơi gọi để reset local state
+ * mỗi lần đổi edge chọn, tránh cần `useEffect` đồng bộ ngược từ props. */
+function EdgeContractPanel({
+  edge,
+  sourceLabel,
+  targetLabel,
+  onSave,
+  isSaving,
+  isError,
+}: {
+  edge: Edge;
+  sourceLabel: string;
+  targetLabel: string;
+  onSave: (taskDescription: string) => void;
+  isSaving: boolean;
+  isError: boolean;
+}) {
+  const data = edge.data as unknown as EdgeData;
+  const [value, setValue] = useState(data.taskDescription ?? '');
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <p className="mb-1 font-mono text-xs uppercase tracking-wide text-foreground/50">
+          Cạnh đang chọn
+        </p>
+        <p className="text-sm font-semibold">
+          {sourceLabel} → {targetLabel}
+        </p>
+      </div>
+      <div>
+        <p className="mb-1 font-mono text-xs uppercase tracking-wide text-foreground/50">
+          Task description
+        </p>
+        <textarea
+          className="min-h-24 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Mô tả nhiệm vụ riêng cho cạnh delegation này…"
+        />
+      </div>
+      <Button size="sm" onClick={() => onSave(value)} disabled={isSaving}>
+        {isSaving ? 'Đang lưu…' : 'Lưu'}
+      </Button>
+      {isError && <p className="text-xs text-red-500">Không lưu được task description.</p>}
+      <p className="text-xs text-foreground/50">
+        Chọn cạnh rồi nhấn Delete/Backspace để gỡ delegation đó.
+      </p>
+    </div>
+  );
+}
+
 export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
   const { data: tree, isPending, isError } = useOrchestratorTree(rootAgentId);
   const { data: allAgents } = useAgents();
   const { data: models } = useModels();
+  const { data: readiness } = useReadiness(rootAgentId);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   // Vị trí node user tự kéo — auto-layout (`layout()`) chỉ dùng làm vị trí KHỞI TẠO; không lưu
   // đè lên đây thì mọi re-render (vd đổi `selectedAgentId` lúc click chọn node) sẽ tính lại
   // `nodes` từ đầu và snap ngược về vị trí auto-layout, y như kéo không có tác dụng gì (bug thật
@@ -139,12 +237,19 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
 
   // `useAddDelegation` chỉ invalidate `subAgentsQueryKey` (đủ cho `DelegationManager`) — canvas
   // cần thêm invalidate `orchestratorTreeQueryKey` để re-layout graph, làm ở `onSuccess` per-call
-  // bên dưới thay vì sửa hook dùng chung.
-  const addDelegation = useAddDelegation(selectedAgentId ?? -1);
+  // bên dưới thay vì sửa hook dùng chung. `rootAgentId` truyền thêm để hook tự invalidate readiness.
+  const addDelegation = useAddDelegation(selectedAgentId ?? -1, rootAgentId);
   const removeDelegation = useRemoveDelegation(rootAgentId);
+  const updateDelegation = useUpdateDelegation(rootAgentId);
 
   const modelLabel = (modelId: number) =>
     models?.find((m) => m.id === modelId)?.slug ?? `model #${modelId}`;
+
+  const readinessMap = useMemo(() => {
+    const map = new Map<number, AgentNodeReadiness>();
+    for (const n of readiness?.nodes ?? []) map.set(n.agent_id, n);
+    return map;
+  }, [readiness]);
 
   const { nodes, edges, positions } = useMemo(() => {
     if (!tree) return { nodes: [] as Node[], edges: [] as Edge[], positions: [] as PosNode[] };
@@ -155,7 +260,11 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
       id: p.key,
       type: 'agentNode',
       position: manualPositions[p.key] ?? { x: p.x, y: p.y },
-      data: { agent: p.agent, modelLabel: modelLabel(p.agent.model_id) },
+      data: {
+        agent: p.agent,
+        modelLabel: modelLabel(p.agent.model_id),
+        readiness: readinessMap.get(p.agent.id),
+      },
       selected: p.agent.id === selectedAgentId,
       initialWidth: NODE_WIDTH,
       initialHeight: NODE_HEIGHT,
@@ -163,18 +272,24 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
     }));
 
     const edges: Edge[] = out
-      .filter((p) => p.parentKey !== null && p.parentAgentId !== null)
+      .filter((p) => p.parentKey !== null && p.parentAgentId !== null && p.delegationId !== null)
       .map((p) => ({
-        id: `${p.parentKey}->${p.key}`,
+        id: `delegation-${p.delegationId}`,
         source: p.parentKey as string,
         target: p.key,
         label: 'delegate',
-        data: { orchestratorAgentId: p.parentAgentId, subAgentId: p.agent.id },
+        selected: `delegation-${p.delegationId}` === selectedEdgeId,
+        data: {
+          orchestratorAgentId: p.parentAgentId as number,
+          subAgentId: p.agent.id,
+          delegationId: p.delegationId as number,
+          taskDescription: p.taskDescription,
+        } satisfies EdgeData,
       }));
 
     return { nodes, edges, positions: out };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, models, selectedAgentId, manualPositions]);
+  }, [tree, models, selectedAgentId, selectedEdgeId, manualPositions, readinessMap]);
 
   const handleNodesChange = (changes: NodeChange[]) => {
     const updated = applyNodeChanges(changes, nodes);
@@ -191,6 +306,8 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
   }
 
   const selectedPos = positions.find((p) => p.agent.id === selectedAgentId);
+  const selectedReadiness = selectedPos ? readinessMap.get(selectedPos.agent.id) : undefined;
+  const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
   const directChildAgentIds = new Set(
     positions.filter((p) => p.parentAgentId === selectedAgentId).map((p) => p.agent.id),
   );
@@ -209,14 +326,20 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
           onNodeClick={(_, node) => {
             const pos = positions.find((p) => p.key === node.id);
             setSelectedAgentId(pos?.agent.id ?? null);
+            setSelectedEdgeId(null);
+          }}
+          onEdgeClick={(_, edge) => {
+            setSelectedEdgeId(edge.id);
+            setSelectedAgentId(null);
           }}
           onEdgesDelete={(deleted: Edge[]) => {
             deleted.forEach((edge) => {
-              const data = edge.data as { orchestratorAgentId: number; subAgentId: number };
+              const data = edge.data as unknown as EdgeData;
               removeDelegation.mutate({
                 orchestratorId: data.orchestratorAgentId,
                 subAgentId: data.subAgentId,
               });
+              if (edge.id === selectedEdgeId) setSelectedEdgeId(null);
             });
           }}
           fitView
@@ -228,8 +351,29 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
       </div>
 
       <aside className="w-72 shrink-0 overflow-y-auto border-l border-border p-4">
-        {!selectedPos ? (
-          <p className="text-sm text-foreground/60">Chọn 1 node để xem chi tiết.</p>
+        {selectedEdge ? (
+          <EdgeContractPanel
+            key={selectedEdge.id}
+            edge={selectedEdge}
+            sourceLabel={
+              positions.find((p) => p.key === selectedEdge.source)?.agent.slug ?? selectedEdge.source
+            }
+            targetLabel={
+              positions.find((p) => p.key === selectedEdge.target)?.agent.slug ?? selectedEdge.target
+            }
+            isSaving={updateDelegation.isPending}
+            isError={updateDelegation.isError}
+            onSave={(taskDescription) => {
+              const data = selectedEdge.data as unknown as EdgeData;
+              updateDelegation.mutate({
+                orchestratorId: data.orchestratorAgentId,
+                subAgentId: data.subAgentId,
+                taskDescription: taskDescription.trim() === '' ? null : taskDescription,
+              });
+            }}
+          />
+        ) : !selectedPos ? (
+          <p className="text-sm text-foreground/60">Chọn 1 node hoặc 1 cạnh để xem chi tiết.</p>
         ) : (
           <div className="flex flex-col gap-4">
             <div>
@@ -240,6 +384,20 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
               <p className="mb-1 font-mono uppercase tracking-wide text-foreground/50">Model</p>
               <p>{modelLabel(selectedPos.agent.model_id)}</p>
             </div>
+
+            {selectedReadiness && !selectedReadiness.ready && (
+              <div>
+                <p className="mb-1 flex items-center gap-1.5 font-mono text-xs uppercase tracking-wide text-orange-600">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+                  Chưa sẵn sàng
+                </p>
+                <ul className="list-inside list-disc text-xs text-foreground/70">
+                  {selectedReadiness.issues.map((issue, i) => (
+                    <li key={i}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {selectedPos.agent.is_orchestrator && (
               <div>

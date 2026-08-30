@@ -19,6 +19,7 @@ export const endpoints = {
     unassignDelegation: (orchestratorId: number, subAgentId: number) =>
       `/agents/${orchestratorId}/delegations/${subAgentId}`,
     subAgents: (id: number) => `/agents/${id}/sub-agents`,
+    readiness: (id: number) => `/agents/${id}/readiness`,
     tools: (id: number) => `/agents/${id}/tools`,
     unassignTool: (agentId: number, toolId: number) => `/agents/${agentId}/tools/${toolId}`,
     knowledgeBases: (id: number) => `/agents/${id}/knowledge-bases`,

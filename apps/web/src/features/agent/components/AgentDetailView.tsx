@@ -1,10 +1,10 @@
 'use client';
 
 import { Bot, BookOpen, Settings, Users, Wrench } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 import { AgentToolManager, useAgentTools } from '@/features/tool';
@@ -17,8 +17,25 @@ import { useSubAgents } from '../hooks/useSubAgents';
 import { AgentForm } from './AgentForm';
 import { DelegationManager } from './DelegationManager';
 
+type AgentDetailTab = 'info' | 'kb' | 'tools' | 'sub-agents';
+
+const TAB_VALUES: AgentDetailTab[] = ['info', 'kb', 'tools', 'sub-agents'];
+
+function isAgentDetailTab(value: string | null): value is AgentDetailTab {
+  return TAB_VALUES.includes(value as AgentDetailTab);
+}
+
 export function AgentDetailView({ id }: { id: number }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeTab = isAgentDetailTab(searchParams.get('tab')) ? (searchParams.get('tab') as AgentDetailTab) : 'info';
+  const setActiveTab = (tab: string) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
   const { data: agent, isPending, isError } = useAgent(id);
   const deleteAgent = useDeleteAgent();
 
@@ -96,55 +113,59 @@ export function AgentDetailView({ id }: { id: number }) {
       </aside>
 
       <div className="flex flex-col gap-4">
-        <Tabs defaultValue="info" className="rounded-xl border border-border bg-card">
-          <TabsList className="w-full justify-start gap-1 rounded-t-xl rounded-b-none border-b border-border bg-muted/30 p-2">
-            <TabsTrigger value="info" className="gap-1.5">
-              <Settings className="size-4" />
-              Thông tin
-            </TabsTrigger>
-            <TabsTrigger value="kb" className="gap-1.5">
-              <BookOpen className="size-4" />
-              Knowledge Base
-              <span className="ml-1 font-mono text-[11px] text-muted-foreground">
-                {agentKnowledgeBases?.length ?? 0}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="tools" className="gap-1.5">
-              <Wrench className="size-4" />
-              Tool
-              <span className="ml-1 font-mono text-[11px] text-muted-foreground">
-                {agentTools?.length ?? 0}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="sub-agents" className="gap-1.5">
-              <Users className="size-4" />
-              Sub-agent
-              {agent.is_orchestrator && (
+        <div className="rounded-xl border border-border bg-card">
+          {/* `Tabs` chỉ dùng cho phần điều hướng (TabsList/TabsTrigger, giữ keyboard nav/ARIA) —
+              nội dung mỗi tab tự render theo `activeTab` bên dưới thay vì qua `TabsContent`:
+              `TabsContent` (base-ui) mặc định chờ transition-detection trước khi tháo mount panel
+              cũ, gây hiệu ứng "tab cũ còn hiện 1 lúc" khi chuyển — feedback thật từ user. Render
+              tay đảm bảo chỉ đúng 1 tab được mount tại 1 thời điểm, không delay. */}
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as string)}>
+            <TabsList className="w-full justify-start gap-1 rounded-t-xl rounded-b-none border-b border-border bg-muted/30 p-2">
+              <TabsTrigger value="info" className="gap-1.5">
+                <Settings className="size-4" />
+                Thông tin
+              </TabsTrigger>
+              <TabsTrigger value="kb" className="gap-1.5">
+                <BookOpen className="size-4" />
+                Knowledge Base
                 <span className="ml-1 font-mono text-[11px] text-muted-foreground">
-                  {subAgents?.length ?? 0}
+                  {agentKnowledgeBases?.length ?? 0}
                 </span>
-              )}
-            </TabsTrigger>
-          </TabsList>
+              </TabsTrigger>
+              <TabsTrigger value="tools" className="gap-1.5">
+                <Wrench className="size-4" />
+                Tool
+                <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+                  {agentTools?.length ?? 0}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="sub-agents" className="gap-1.5">
+                <Users className="size-4" />
+                Sub-agent
+                {agent.is_orchestrator && (
+                  <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+                    {subAgents?.length ?? 0}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-          <TabsContent value="info" className="p-4">
-            <AgentForm agent={agent} />
-          </TabsContent>
-
-          <TabsContent value="kb" className="p-4">
-            <AgentKnowledgeBaseManager agentId={agent.id} />
-          </TabsContent>
-
-          <TabsContent value="tools" className="p-4">
-            <AgentToolManager agentId={agent.id} />
-          </TabsContent>
-
-          <TabsContent value="sub-agents" className="p-4">
-            {/* DelegationManager tự hiện hint "bật Là orchestrator" khi !is_orchestrator — không
-                ẩn hẳn tab này, giữ đúng hành vi cũ (regression phát hiện qua code-reviewer). */}
-            <DelegationManager agent={agent} />
-          </TabsContent>
-        </Tabs>
+          <div className="p-4">
+            {activeTab === 'info' && <AgentForm agent={agent} />}
+            {activeTab === 'kb' && <AgentKnowledgeBaseManager agentId={agent.id} />}
+            {activeTab === 'tools' && <AgentToolManager agentId={agent.id} />}
+            {activeTab === 'sub-agents' && (
+              // TODO(2026-08-30): feedback user — nên hiện OrchestratorCanvas thay list phẳng
+              // này khi agent.is_orchestrator. Chưa làm ngay: OrchestratorCanvas.tsx tự set
+              // `h-[calc(100vh-3.5rem)]` (giả định trang toàn màn hình) + đang được sửa dở (edge
+              // contract/readiness, Orchestrator v2 Phase B) — cần thêm prop height linh hoạt
+              // trước khi nhúng vào đây, làm ở đợt riêng ngay sau khi Phase B xong để tránh đụng
+              // độ file đang sửa.
+              <DelegationManager agent={agent} />
+            )}
+          </div>
+        </div>
 
         <div className="border-t border-border pt-4">
           <Button

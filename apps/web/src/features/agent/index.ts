@@ -13,6 +13,9 @@ export {
   useRemoveDelegation,
   useOrchestratorTree,
   orchestratorTreeQueryKey,
+  useUpdateDelegation,
+  useReadiness,
+  readinessQueryKey,
 } from './hooks';
 export { AgentList } from './components/AgentList';
 export { AgentForm } from './components/AgentForm';

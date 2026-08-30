@@ -30,7 +30,7 @@ input/output adapter.
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
 | Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
-| Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A+B backend xong, Phase B canvas (FE)/C/D chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
+| Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A+B xong (edge contract, readiness, cả backend+canvas), Phase C/D chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
 | Agent creation wizard + Knowledge Base binding UI + nâng cấp trang chi tiết Agent | ✅ Đã có (2026-08-30) — chưa live-verify qua browser (thiếu Postgres/Ollama trong sandbox) | [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md), [research](../research/agent-creation-wizard.md), [mockup](../mockups/agent-creation-wizard.html) |
 | Unified agent runtime + chuẩn hoá stream/chat UI (wire contract FE↔BE) | ✅ Đã có (phần wire contract) | [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md), [ADR-0019](../adr/0019-ag-ui-assistant-ui-runtime.md) — chuẩn hoá text stream bằng AG-UI + assistant-ui; phần backend-internal interface (LangGraph leak vào `ChatService`) tách sang dòng "Agent runtime abstraction" dưới |
 | Agent runtime abstraction (`AgentRuntime`/`TurnRunner` — backend-internal interface, tách LangGraph khỏi `ChatService`) | ✅ Đã có (2026-08-30) | [`docs/features/agent-runtime-abstraction.md`](../features/agent-runtime-abstraction.md), [ADR-0020](../adr/0020-agent-runtime-interface.md) — KHÔNG tự động cover việc unify voice top-level turn (xem Non-goals trong spec) |
@@ -388,11 +388,16 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       - Nợ còn lại: `apps/web` chưa có Vitest — test tự động cho `AgentKnowledgeBaseManager`/
         `AgentCreationWizard` chưa viết (cần bootstrap tooling trước, xem plan `solution-architect`
         mục Risk).
-- [x] **Orchestrator v2 Phase B — backend xong** (2026-08-30,
+- [x] **Orchestrator v2 Phase B — xong cả backend + canvas** (2026-08-30,
       [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md)) —
-      `solution-architect` lên plan 25 step (backend trước, FE canvas sau); `backend-engineer` code
-      xong phần backend (step 1-15), **FE canvas (step 16-24) chưa làm** — badge readiness/panel
-      sửa edge trên `OrchestratorCanvas.tsx` vẫn còn nợ.
+      `solution-architect` lên plan 25 step (backend trước, FE canvas sau); `backend-engineer` +
+      `frontend-engineer` code đủ cả 25 step.
+      - **Canvas (FE, step 16-24)**: `OrchestratorCanvas.tsx` — edge giờ mang `delegationId`/
+        `taskDescription` thật (không tự synthesize id), click 1 edge → panel "Cạnh đang chọn" sửa
+        `task_description` qua `useUpdateDelegation` mới. Badge readiness trên mỗi node
+        (`bg-emerald-500`/`bg-orange-500` + issue đầu tiên) qua `useReadiness` mới
+        (`staleTime: 0`, tự refetch khi mount); `useAddDelegation`/`useRemoveDelegation` thêm
+        invalidate `readinessQueryKey`. Panel node chọn hiện đủ list issues khi `!ready`.
       - **Edge contract**: cột `task_description` mới trên `AgentDelegation` (mô tả nhiệm vụ RIÊNG
         theo cạnh, migration `b7c9e1a4f2d8`), `PATCH`/`GET /agents/{id}/delegations` (route mới,
         giữ nguyên `GET /agents/{id}/sub-agents` cũ không đổi). `ChatService._resolve_sub_agent_spec`

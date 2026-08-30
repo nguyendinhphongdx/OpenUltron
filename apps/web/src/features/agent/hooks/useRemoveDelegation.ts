@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { agentService } from '../services/agent.service';
 import { orchestratorTreeQueryKey } from './useOrchestratorTree';
+import { readinessQueryKey } from './useReadiness';
 
 /**
  * `rootAgentId` = gốc cây orchestrator đang xem (`OrchestratorCanvas`) — không phải orchestrator
@@ -19,6 +20,7 @@ export function useRemoveDelegation(rootAgentId: number) {
       agentService.removeDelegation(orchestratorId, subAgentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: orchestratorTreeQueryKey(rootAgentId) });
+      queryClient.invalidateQueries({ queryKey: readinessQueryKey(rootAgentId) });
     },
   });
 }
