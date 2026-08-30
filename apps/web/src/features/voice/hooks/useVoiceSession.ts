@@ -26,6 +26,33 @@ function pcm16ToFloat32(buffer: ArrayBuffer): Float32Array {
   return out;
 }
 
+// Tần số riêng mỗi trạng thái (Hz) — user nghe phân biệt được đang chuyển sang trạng thái nào,
+// không chỉ biết "có gì đó vừa đổi". Chọn quãng gần nhau (E4-A5), tránh chói tai.
+const STATE_TONE_HZ: Record<VoiceState, number> = {
+  listening: 660,
+  thinking: 440,
+  speaking: 880,
+  using_tool: 330,
+};
+
+/** Beep ngắn (~120ms), âm lượng thấp, fade in/out tránh tiếng "tách" — báo hiệu voice state vừa
+ * đổi. Dùng lại `ctx` (AudioContext playback đã có sẵn cho audio model) thay vì tạo context riêng
+ * — tránh giới hạn số AudioContext đồng thời của trình duyệt. */
+function playStateTone(ctx: AudioContext, frequencyHz: number): void {
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = frequencyHz;
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.05, now + 0.01);
+  gain.gain.linearRampToValueAtTime(0, now + 0.12);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + 0.13);
+}
+
 /** Quản lý 1 voice session (ADR-0009): mic capture (AudioWorklet, 16kHz PCM) → WebSocket →
  * relay `apps/api` → phát lại audio model trả về (24kHz PCM) + transcript/state realtime.
  * KHÔNG dùng cho SSR — chỉ gọi trong component `'use client'`. */
@@ -42,6 +69,9 @@ export function useVoiceSession(conversationId: number) {
   const playbackContextRef = useRef<AudioContext | null>(null);
   const nextPlayTimeRef = useRef(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  // Mirror `voiceState` — `ws.onmessage` đóng closure lúc `start()` nên đọc `voiceState` trực
+  // tiếp sẽ bị stale; cần ref để so sánh "state có thực sự đổi không" trước khi phát tone.
+  const voiceStateRef = useRef<VoiceState>('listening');
 
   const stopPlayback = useCallback(() => {
     for (const source of activeSourcesRef.current) {
@@ -101,6 +131,7 @@ export function useVoiceSession(conversationId: number) {
     playbackContextRef.current = null;
     setStatus('idle');
     setVoiceState('listening');
+    voiceStateRef.current = 'listening';
   }, [stopPlayback]);
 
   const start = useCallback(async () => {
@@ -151,6 +182,10 @@ export function useVoiceSession(conversationId: number) {
         }
         const payload = JSON.parse(event.data as string) as VoiceServerEvent;
         if (payload.type === 'state') {
+          if (payload.value !== voiceStateRef.current && playbackContextRef.current) {
+            playStateTone(playbackContextRef.current, STATE_TONE_HZ[payload.value]);
+          }
+          voiceStateRef.current = payload.value;
           setVoiceState(payload.value);
         } else if (payload.type === 'transcript') {
           appendTranscript(payload.role, payload.text);
