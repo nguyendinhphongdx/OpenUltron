@@ -38,6 +38,7 @@ docs/
 | Domain model (Conversation/Message/ToolCall) | [docs/domain/](docs/domain/)                              |
 | Convention FastAPI (`apps/api`)        | [docs/conventions/01-backend-fastapi.md](docs/conventions/01-backend-fastapi.md) |
 | Convention Next.js (`apps/web`)        | [docs/conventions/02-frontend-nextjs.md](docs/conventions/02-frontend-nextjs.md) |
+| Convention Expo (`apps/mobile`)        | [docs/conventions/11-mobile-expo.md](docs/conventions/11-mobile-expo.md) |
 | Testing (`apps/api` + `apps/web`)      | [docs/conventions/03-testing.md](docs/conventions/03-testing.md) |
 | Error handling (code/exception)        | [docs/conventions/04-error-handling.md](docs/conventions/04-error-handling.md) |
 | Naming (casing, wire format, glossary) | [docs/conventions/05-naming.md](docs/conventions/05-naming.md) |
@@ -56,7 +57,8 @@ docs/
 - **`apps/api`**: `uv`, Pydantic v2 ([ADR-0004](docs/adr/0004-validation-pydantic.md)), SQLAlchemy + Alembic ([ADR-0002](docs/adr/0002-orm-sqlalchemy.md)), Postgres+pgvector ([ADR-0003](docs/adr/0003-db-postgres-pgvector.md)).
 - **`apps/web`/`mobile`/`desktop`**: pnpm, TypeScript. UI visual direction mặc định là
   [Soft Glass Workspace Console](docs/conventions/09-ui-visual-design.md) — chat-first AI workspace,
-  không generic admin dashboard.
+  không generic admin dashboard. `apps/mobile` dùng Expo/React Native theo
+  [docs/conventions/11-mobile-expo.md](docs/conventions/11-mobile-expo.md).
 - **Commit**: Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`, `test:`).
 
 ## Quy tắc cứng
