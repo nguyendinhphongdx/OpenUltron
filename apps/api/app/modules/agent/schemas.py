@@ -44,9 +44,43 @@ class AgentRead(BaseModel):
 
 class AgentDelegationCreate(BaseModel):
     sub_agent_id: int
+    task_description: str | None = None
+
+
+class AgentDelegationUpdate(BaseModel):
+    task_description: str | None = None
 
 
 class AgentDelegationRead(BaseModel):
     id: int
     orchestrator_agent_id: int
     sub_agent_id: int
+    task_description: str | None
+
+
+class AgentDelegationDetailRead(BaseModel):
+    """Edge + sub-agent lồng (dùng cho canvas hiển thị + `ChatService` resolve edge contract) —
+    khác `AgentDelegationRead` (chỉ id trần) vì cần cả `task_description` lẫn `AgentRead` đầy đủ
+    của sub-agent trong 1 lần gọi (tránh N+1 round-trip)."""
+
+    id: int
+    orchestrator_agent_id: int
+    sub_agent_id: int
+    task_description: str | None
+    sub_agent: AgentRead
+
+
+class AgentNodeReadiness(BaseModel):
+    """Kết quả readiness check cho 1 agent (node) trong graph — `docs/features/orchestrator-v2.md`
+    Phase B. `issues` rỗng khi `ready=True`."""
+
+    agent_id: int
+    ready: bool
+    issues: list[str]
+
+
+class AgentReadinessRead(BaseModel):
+    """Readiness toàn graph — 1 entry / agent unique (dedupe theo `agent_id`, xem
+    `AgentReadinessService.check`)."""
+
+    nodes: list[AgentNodeReadiness]

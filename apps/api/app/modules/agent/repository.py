@@ -40,10 +40,15 @@ class AgentRepository:
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def add_delegation(
-        self, orchestrator_agent_id: int, sub_agent_id: int
+        self,
+        orchestrator_agent_id: int,
+        sub_agent_id: int,
+        task_description: str | None = None,
     ) -> AgentDelegation:
         row = AgentDelegation(
-            orchestrator_agent_id=orchestrator_agent_id, sub_agent_id=sub_agent_id
+            orchestrator_agent_id=orchestrator_agent_id,
+            sub_agent_id=sub_agent_id,
+            task_description=task_description,
         )
         self.session.add(row)
         await self.session.flush()
@@ -56,6 +61,16 @@ class AgentRepository:
             .where(AgentDelegation.orchestrator_agent_id == orchestrator_agent_id)
         )
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def list_delegations_with_sub_agents(
+        self, orchestrator_agent_id: int
+    ) -> list[tuple[AgentDelegation, Agent]]:
+        stmt = (
+            select(AgentDelegation, Agent)
+            .join(Agent, Agent.id == AgentDelegation.sub_agent_id)
+            .where(AgentDelegation.orchestrator_agent_id == orchestrator_agent_id)
+        )
+        return [tuple(row) for row in (await self.session.execute(stmt)).all()]
 
     async def list_delegations(self, orchestrator_agent_id: int) -> list[AgentDelegation]:
         stmt = select(AgentDelegation).where(

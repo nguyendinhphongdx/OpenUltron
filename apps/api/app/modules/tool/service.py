@@ -11,16 +11,25 @@ from app.modules.tool.repository import ToolRepository
 from app.modules.tool.schemas import HttpToolConfig, ToolCreate, ToolRead, ToolUpdate
 
 
-def _validate_config_for_kind(kind: str, config: dict[str, Any] | None) -> None:
+def config_issue_for_kind(kind: str, config: dict[str, Any] | None) -> str | None:
     """`kind=http` có contract cố định (`HttpToolConfig`, ADR-0013) — validate ở tầng service vì
     `Tool.config` vẫn là cột JSONB tự do, Pydantic không tự chặn được ở request schema chung cho
-    mọi kind."""
+    mọi kind. Trả message lỗi (không raise) — dùng chung được cho `create`/`update` (wrap raise ở
+    `_validate_config_for_kind`) lẫn readiness check (`AgentReadinessService`, chỉ cần liệt kê vấn
+    đề, không chặn request)."""
     if kind != "http":
-        return
+        return None
     try:
         HttpToolConfig.model_validate(config or {})
     except ValidationError as exc:
-        raise ValidationFailedError(f"config không hợp lệ cho tool kind=http: {exc}") from exc
+        return f"config không hợp lệ cho tool kind=http: {exc}"
+    return None
+
+
+def _validate_config_for_kind(kind: str, config: dict[str, Any] | None) -> None:
+    issue = config_issue_for_kind(kind, config)
+    if issue is not None:
+        raise ValidationFailedError(issue)
 
 
 def tool_to_read(row: Tool) -> ToolRead:

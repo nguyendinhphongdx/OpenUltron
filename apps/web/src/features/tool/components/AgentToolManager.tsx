@@ -1,11 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-
 import { Wrench } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MultiSelectAssignDialog } from '@/components/shared/MultiSelectAssignDialog';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 
@@ -23,16 +21,12 @@ export function AgentToolManager({ agentId }: AgentToolManagerProps) {
   const { data: allTools } = useTools();
   const assignTool = useAssignTool(agentId);
   const unassignTool = useUnassignTool(agentId);
-  const [toolId, setToolId] = useState('');
 
   const assignedToolIds = new Set(agentTools?.map((t) => t.id));
-  const candidateTools = allTools?.filter((candidate) => !assignedToolIds.has(candidate.id));
+  const candidateTools = allTools?.filter((candidate) => !assignedToolIds.has(candidate.id)) ?? [];
 
-  const handleAdd = () => {
-    if (!toolId) return;
-    assignTool.mutate(Number(toolId), {
-      onSuccess: () => setToolId(''),
-    });
+  const handleAssign = async (ids: number[]) => {
+    await Promise.all(ids.map((id) => assignTool.mutateAsync(id)));
   };
 
   const handleRemove = (id: number) => {
@@ -67,32 +61,20 @@ export function AgentToolManager({ agentId }: AgentToolManagerProps) {
         <EmptyState icon={Wrench} title="Chưa có tool nào được gán" />
       )}
 
-      <div className="flex items-center gap-2">
-        <Select value={toolId || null} onValueChange={(v) => setToolId(v ?? '')}>
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="— Chọn tool —">
-              {(value: string | null) => {
-                const candidate = candidateTools?.find((c) => c.id.toString() === value);
-                return candidate ? `${candidate.name} (${candidate.slug})` : '— Chọn tool —';
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {candidateTools?.map((candidate) => (
-              <SelectItem key={candidate.id} value={candidate.id.toString()}>
-                {candidate.name} ({candidate.slug})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button size="sm" onClick={handleAdd} disabled={!toolId || assignTool.isPending}>
-          {assignTool.isPending ? 'Đang gán…' : '+ Gán tool'}
-        </Button>
+      <div>
+        <MultiSelectAssignDialog
+          triggerLabel="+ Gán tool"
+          dialogTitle="Gán tool cho agent"
+          items={candidateTools}
+          getId={(t) => t.id}
+          getLabel={(t) => `${t.name} (${t.slug})`}
+          onConfirm={handleAssign}
+          isPending={assignTool.isPending}
+          emptyMessage="Không còn tool nào để gán."
+          error={assignTool.isError ? getApiErrorMessage(assignTool.error) : undefined}
+        />
       </div>
 
-      {assignTool.isError && (
-        <p className="text-sm text-destructive">{getApiErrorMessage(assignTool.error)}</p>
-      )}
       {unassignTool.isError && (
         <p className="text-sm text-destructive">{getApiErrorMessage(unassignTool.error)}</p>
       )}

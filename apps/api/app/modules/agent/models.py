@@ -35,6 +35,11 @@ class AgentDelegation(Base):
     sub_agent_id: Mapped[int] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), index=True
     )
+    # Mô tả nhiệm vụ RIÊNG theo cạnh delegation này (khác `Agent.description` là mô tả CHUNG của
+    # agent) — dùng làm `description` của tool `delegate` khi orchestrator này gọi sub-agent này
+    # (docs/features/orchestrator-v2.md, Phase B). Nullable — fallback về `Agent.description` rồi
+    # default cứng ở `chat/graph.py` khi không set.
+    task_description: Mapped[str | None] = mapped_column(String(1000))
 
     orchestrator: Mapped[Agent] = relationship(foreign_keys=[orchestrator_agent_id])
     sub_agent: Mapped[Agent] = relationship(foreign_keys=[sub_agent_id])

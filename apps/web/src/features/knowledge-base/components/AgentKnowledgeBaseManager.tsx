@@ -1,11 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-
 import { BookOpen } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MultiSelectAssignDialog } from '@/components/shared/MultiSelectAssignDialog';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 
@@ -23,16 +21,13 @@ export function AgentKnowledgeBaseManager({ agentId }: AgentKnowledgeBaseManager
   const { data: allKnowledgeBases } = useKnowledgeBases();
   const assignKnowledgeBase = useAssignKnowledgeBase(agentId);
   const unassignKnowledgeBase = useUnassignKnowledgeBase(agentId);
-  const [kbId, setKbId] = useState('');
 
   const assignedKbIds = new Set(agentKnowledgeBases?.map((kb) => kb.id));
-  const candidateKnowledgeBases = allKnowledgeBases?.filter((candidate) => !assignedKbIds.has(candidate.id));
+  const candidateKnowledgeBases =
+    allKnowledgeBases?.filter((candidate) => !assignedKbIds.has(candidate.id)) ?? [];
 
-  const handleAdd = () => {
-    if (!kbId) return;
-    assignKnowledgeBase.mutate(Number(kbId), {
-      onSuccess: () => setKbId(''),
-    });
+  const handleAssign = async (ids: number[]) => {
+    await Promise.all(ids.map((id) => assignKnowledgeBase.mutateAsync(id)));
   };
 
   const handleRemove = (id: number) => {
@@ -69,32 +64,20 @@ export function AgentKnowledgeBaseManager({ agentId }: AgentKnowledgeBaseManager
         <EmptyState icon={BookOpen} title="Chưa có knowledge base nào được gán" />
       )}
 
-      <div className="flex items-center gap-2">
-        <Select value={kbId || null} onValueChange={(v) => setKbId(v ?? '')}>
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="— Chọn knowledge base —">
-              {(value: string | null) => {
-                const candidate = candidateKnowledgeBases?.find((c) => c.id.toString() === value);
-                return candidate ? `${candidate.name} (${candidate.slug})` : '— Chọn knowledge base —';
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {candidateKnowledgeBases?.map((candidate) => (
-              <SelectItem key={candidate.id} value={candidate.id.toString()}>
-                {candidate.name} ({candidate.slug})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button size="sm" onClick={handleAdd} disabled={!kbId || assignKnowledgeBase.isPending}>
-          {assignKnowledgeBase.isPending ? 'Đang gán…' : '+ Gán knowledge base'}
-        </Button>
+      <div>
+        <MultiSelectAssignDialog
+          triggerLabel="+ Gán knowledge base"
+          dialogTitle="Gán knowledge base cho agent"
+          items={candidateKnowledgeBases}
+          getId={(kb) => kb.id}
+          getLabel={(kb) => `${kb.name} (${kb.slug})`}
+          onConfirm={handleAssign}
+          isPending={assignKnowledgeBase.isPending}
+          emptyMessage="Không còn knowledge base nào để gán."
+          error={assignKnowledgeBase.isError ? getApiErrorMessage(assignKnowledgeBase.error) : undefined}
+        />
       </div>
 
-      {assignKnowledgeBase.isError && (
-        <p className="text-sm text-destructive">{getApiErrorMessage(assignKnowledgeBase.error)}</p>
-      )}
       {unassignKnowledgeBase.isError && (
         <p className="text-sm text-destructive">{getApiErrorMessage(unassignKnowledgeBase.error)}</p>
       )}

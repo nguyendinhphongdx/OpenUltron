@@ -110,11 +110,14 @@ Chi tiết câu hỏi gốc (giữ lại tham khảo ngữ cảnh quyết địn
 
 ## Acceptance criteria
 
-- [ ] Sửa được mô tả nhiệm vụ riêng cho 1 `AgentDelegation` (edge) qua canvas, và giá trị đó được
-      dùng làm `description` của tool `delegate` tương ứng khi orchestrator đó chạy thật (không
-      phải `agent.description` chung).
-- [ ] Canvas hiển thị badge/trạng thái readiness cho từng node (đủ cấu hình / thiếu gì cụ thể),
-      dựa trên kiểm tra transitive toàn graph.
+- [x] **Phase B backend xong (2026-08-30)**: Sửa được mô tả nhiệm vụ riêng cho 1 `AgentDelegation`
+      (edge) — `task_description` (migration mới, `PATCH /agents/{id}/delegations/{sub_agent_id}`),
+      giá trị đó được `ChatService._resolve_sub_agent_spec` dùng làm `description` của tool
+      `delegate` (ưu tiên `task_description`, fallback `agent.description`). **Canvas (FE) chưa
+      code** — API đã có (`GET /agents/{id}/delegations`), chỉ thiếu UI sửa/hiển thị.
+- [x] **Phase B backend xong (2026-08-30)**: `GET /agents/{id}/readiness` (`AgentReadinessService`,
+      `app/modules/agent/readiness.py`) — BFS đệ quy toàn graph, check model/credential/tool-config/
+      KB-rỗng, trả `issues` theo từng node. **Canvas (FE) chưa code** — chỉ thiếu badge hiển thị.
 - [ ] Kéo sắp xếp lại vị trí node, rời trang rồi quay lại vẫn giữ đúng vị trí đã kéo (persist, không
       chỉ session).
 - [ ] Chạy thử graph với 1 input mẫu ngay trong canvas, thấy được path/token stream đi qua node nào

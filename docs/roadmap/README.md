@@ -30,7 +30,7 @@ input/output adapter.
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
 | Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
-| Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A xong (nested approval fail-closed), Phase B/C/D chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
+| Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A+B backend xong, Phase B canvas (FE)/C/D chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
 | Agent creation wizard + Knowledge Base binding UI + nâng cấp trang chi tiết Agent | ✅ Đã có (2026-08-30) — chưa live-verify qua browser (thiếu Postgres/Ollama trong sandbox) | [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md), [research](../research/agent-creation-wizard.md), [mockup](../mockups/agent-creation-wizard.html) |
 | Unified agent runtime + chuẩn hoá stream/chat UI (wire contract FE↔BE) | ✅ Đã có (phần wire contract) | [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md), [ADR-0019](../adr/0019-ag-ui-assistant-ui-runtime.md) — chuẩn hoá text stream bằng AG-UI + assistant-ui; phần backend-internal interface (LangGraph leak vào `ChatService`) tách sang dòng "Agent runtime abstraction" dưới |
 | Agent runtime abstraction (`AgentRuntime`/`TurnRunner` — backend-internal interface, tách LangGraph khỏi `ChatService`) | ✅ Đã có (2026-08-30) | [`docs/features/agent-runtime-abstraction.md`](../features/agent-runtime-abstraction.md), [ADR-0020](../adr/0020-agent-runtime-interface.md) — KHÔNG tự động cover việc unify voice top-level turn (xem Non-goals trong spec) |
@@ -388,6 +388,43 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       - Nợ còn lại: `apps/web` chưa có Vitest — test tự động cho `AgentKnowledgeBaseManager`/
         `AgentCreationWizard` chưa viết (cần bootstrap tooling trước, xem plan `solution-architect`
         mục Risk).
+- [x] **Orchestrator v2 Phase B — backend xong** (2026-08-30,
+      [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md)) —
+      `solution-architect` lên plan 25 step (backend trước, FE canvas sau); `backend-engineer` code
+      xong phần backend (step 1-15), **FE canvas (step 16-24) chưa làm** — badge readiness/panel
+      sửa edge trên `OrchestratorCanvas.tsx` vẫn còn nợ.
+      - **Edge contract**: cột `task_description` mới trên `AgentDelegation` (mô tả nhiệm vụ RIÊNG
+        theo cạnh, migration `b7c9e1a4f2d8`), `PATCH`/`GET /agents/{id}/delegations` (route mới,
+        giữ nguyên `GET /agents/{id}/sub-agents` cũ không đổi). `ChatService._resolve_sub_agent_spec`
+        đổi nguồn dữ liệu từ `list_sub_agents` sang `list_delegation_details` — ưu tiên
+        `task_description` của cạnh, fallback `agent.description` chung, fallback cuối default cứng
+        ở `graph.py` (không đổi `graph.py`).
+      - **Readiness check**: file mới `app/modules/agent/readiness.py::AgentReadinessService` —
+        KHÔNG đặt tên `service.py` có chủ đích (compose 5 service khác module, giống pattern
+        `ChatService`, tự giải thích trong comment đầu file) — BFS đệ quy dedupe bằng `visited: set`
+        (không mượn `MAX_DELEGATION_DEPTH` từ `chat/graph.py`, tránh phụ thuộc ngược `agent`→`chat`),
+        check model/credential (`credential/service.py::find_by_provider` mới, không raise)/tool
+        `kind=http` config (`tool/service.py::config_issue_for_kind` mới, tách từ validate cũ,
+        không raise)/KB rỗng. `GET /agents/{id}/readiness` endpoint mới.
+      - **Migration CHƯA chạy** — sandbox code không kết nối được Postgres/Docker.
+        **User cần tự chạy** `cd apps/api && uv run alembic upgrade head` trước khi dùng field
+        `task_description`/endpoint mới.
+      - Test mới: `tests/unit/agent/test_delegation_task_description.py` (3 case, fallback chain),
+        `tests/unit/agent/test_readiness_check.py` (9 case, BFS/dedupe/từng loại issue) — pure logic
+        qua Fake service, KHÔNG có integration test chạm DB/HTTP thật (nợ đã biết, xem task riêng
+        "Bootstrap apps/api integration tests").
+      - `code-reviewer`: 0 blocker, 1 warning (thiếu integration test, đã ghi nhận là nợ có sẵn) +
+        điểm cần lưu ý riêng ở phần UI polish bên dưới.
+      - Verify: ruff/format/`check_module_boundaries.py`/pytest (103 passed) xanh.
+- [x] **UI polish theo feedback trực tiếp của user** (2026-08-30) — `AgentDetailView` đổi từ 4 Card
+      xếp dọc (scroll dài) sang `Tabs` (Thông tin/Knowledge Base/Tool/Sub-agent), giữ nguyên aside
+      readiness rail. Thêm `src/components/shared/MultiSelectAssignDialog.tsx` (generic, dùng
+      `Dialog`+`Checkbox` có sẵn) thay `<Select>` chọn-1 cũ trong `AgentToolManager`/
+      `AgentKnowledgeBaseManager` — giờ tích chọn nhiều Tool/KB rồi gán 1 lần
+      (`Promise.all` các `mutateAsync`). `code-reviewer` tìm 1 bug thật: `onConfirm` không có
+      try/catch → unhandled promise rejection + dialog có thể không đóng đúng khi 1 trong nhiều
+      request fail — đã fix (giữ dialog mở khi lỗi, không throw ra ngoài).
+      Verify: `apps/web` lint/typecheck/build xanh.
 
 ## Đang làm / tiếp theo
 

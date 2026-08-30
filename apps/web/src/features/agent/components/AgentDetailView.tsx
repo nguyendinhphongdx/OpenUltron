@@ -4,7 +4,7 @@ import { Bot, BookOpen, Settings, Users, Wrench } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
 import { AgentToolManager, useAgentTools } from '@/features/tool';
@@ -96,58 +96,55 @@ export function AgentDetailView({ id }: { id: number }) {
       </aside>
 
       <div className="flex flex-col gap-4">
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 border-b border-border bg-muted/30 py-3">
-            <Settings className="size-4 text-primary" />
-            <p className="text-sm font-medium text-foreground">Thông tin agent</p>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <AgentForm agent={agent} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 border-b border-border bg-muted/30 py-3">
-            <BookOpen className="size-4 text-primary" />
-            <p className="text-sm font-medium text-foreground">Knowledge Base</p>
-            <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-              {agentKnowledgeBases?.length ?? 0} đã gán
-            </span>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <AgentKnowledgeBaseManager agentId={agent.id} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 border-b border-border bg-muted/30 py-3">
-            <Wrench className="size-4 text-primary" />
-            <p className="text-sm font-medium text-foreground">Tool</p>
-            <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-              {agentTools?.length ?? 0} đã gán
-            </span>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <AgentToolManager agentId={agent.id} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex-row items-center gap-2 border-b border-border bg-muted/30 py-3">
-            <Users className="size-4 text-primary" />
-            <p className="text-sm font-medium text-foreground">Sub-agent</p>
-            {agent.is_orchestrator && (
-              <span className="ml-auto font-mono text-[11px] text-muted-foreground">
-                {subAgents?.length ?? 0} đã gán
+        <Tabs defaultValue="info" className="rounded-xl border border-border bg-card">
+          <TabsList className="w-full justify-start gap-1 rounded-t-xl rounded-b-none border-b border-border bg-muted/30 p-2">
+            <TabsTrigger value="info" className="gap-1.5">
+              <Settings className="size-4" />
+              Thông tin
+            </TabsTrigger>
+            <TabsTrigger value="kb" className="gap-1.5">
+              <BookOpen className="size-4" />
+              Knowledge Base
+              <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+                {agentKnowledgeBases?.length ?? 0}
               </span>
-            )}
-          </CardHeader>
-          <CardContent className="pt-4">
+            </TabsTrigger>
+            <TabsTrigger value="tools" className="gap-1.5">
+              <Wrench className="size-4" />
+              Tool
+              <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+                {agentTools?.length ?? 0}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="sub-agents" className="gap-1.5">
+              <Users className="size-4" />
+              Sub-agent
+              {agent.is_orchestrator && (
+                <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+                  {subAgents?.length ?? 0}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="info" className="p-4">
+            <AgentForm agent={agent} />
+          </TabsContent>
+
+          <TabsContent value="kb" className="p-4">
+            <AgentKnowledgeBaseManager agentId={agent.id} />
+          </TabsContent>
+
+          <TabsContent value="tools" className="p-4">
+            <AgentToolManager agentId={agent.id} />
+          </TabsContent>
+
+          <TabsContent value="sub-agents" className="p-4">
             {/* DelegationManager tự hiện hint "bật Là orchestrator" khi !is_orchestrator — không
-                ẩn hẳn Card này, giữ đúng hành vi cũ (regression phát hiện qua code-reviewer). */}
+                ẩn hẳn tab này, giữ đúng hành vi cũ (regression phát hiện qua code-reviewer). */}
             <DelegationManager agent={agent} />
-          </CardContent>
-        </Card>
+          </TabsContent>
+        </Tabs>
 
         <div className="border-t border-border pt-4">
           <Button

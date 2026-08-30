@@ -92,6 +92,12 @@ class CredentialService:
         )
         return _to_read(row)
 
+    async def find_by_provider(self, provider: str) -> CredentialRead | None:
+        """Existence check dùng bởi service module khác (readiness check, `AgentReadinessService`)
+        — KHÔNG raise 404, khác `_get_or_404` (dùng nội bộ cho upsert/remove/test_connection)."""
+        row = await self.repo.get_by_provider(provider)
+        return _to_read(row) if row is not None else None
+
     async def get_decrypted_key(self, provider: str) -> str | None:
         """Dùng nội bộ bởi `app/core/providers.py` — KHÔNG expose qua router."""
         row = await self.repo.get_by_provider(provider)
