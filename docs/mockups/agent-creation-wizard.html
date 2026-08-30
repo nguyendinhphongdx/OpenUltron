@@ -1,0 +1,323 @@
+<title>Agent Creation Wizard — mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #eef0f3;
+    --panel: #ffffff;
+    --panel-alt: #f4f5f8;
+    --border: #d7dae1;
+    --text: #14161a;
+    --text-dim: #5b5f6a;
+    --text-faint: #8b8f99;
+    --accent: #5b4bd6;
+    --accent-dim: #ece9fb;
+    --accent-line: #b9aef1;
+    --good: #1f9d5c;
+    --good-bg: #e3f6ec;
+    --warn: #b4780b;
+    --warn-bg: #fbf0dd;
+    --bad: #d43d5c;
+    --bad-bg: #fbe6ea;
+    --shadow: 0 1px 2px rgba(20,22,26,0.04), 0 8px 24px -12px rgba(20,22,26,0.12);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1180px; margin: 0 auto; padding: 40px 24px 96px; }
+  .masthead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .wordmark { font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 22px; letter-spacing: -0.01em; }
+  .wordmark span { color: var(--accent); }
+  .masthead-meta { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--text-faint); letter-spacing: 0.02em; }
+  .subhead { color: var(--text-dim); font-size: 14.5px; margin: 0 0 28px; max-width: 74ch; line-height: 1.55; }
+  .subhead b { color: var(--text-dim); }
+
+  h2.section-title {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-faint); margin: 40px 0 12px;
+  }
+
+  /* ============ PART A: wizard ============ */
+  .wizard {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .wizard-head { padding: 16px 22px; border-bottom: 1px solid var(--border); background: var(--panel-alt); }
+  .wizard-head h3 { margin: 0 0 4px; font-size: 15px; }
+  .wizard-head .sub { font-size: 12.5px; color: var(--text-faint); }
+
+  .steps {
+    display: flex; align-items: center; gap: 0; padding: 18px 22px 6px;
+  }
+  .step { display: flex; align-items: center; gap: 8px; }
+  .step-dot {
+    width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600;
+    border: 1.5px solid var(--border); color: var(--text-faint); background: var(--panel); flex-shrink: 0;
+  }
+  .step.done .step-dot { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step.active .step-dot { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .step-label { font-size: 12.5px; color: var(--text-faint); }
+  .step.active .step-label { color: var(--text); font-weight: 600; }
+  .step.done .step-label { color: var(--text-dim); }
+  .step-connector { width: 44px; height: 1.5px; background: var(--border); margin: 0 6px; }
+  .step.done + .step-connector, .step-connector.done { background: var(--accent-line); }
+
+  .wizard-body { padding: 24px 26px 8px; min-height: 300px; }
+  .step-heading { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .step-hint { font-size: 12.5px; color: var(--text-faint); margin: 0 0 20px; max-width: 60ch; line-height: 1.5; }
+
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; max-width: 720px; }
+  .field-grid .full { grid-column: 1 / -1; }
+  .field label {
+    display: block; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 5px;
+  }
+  .field .value {
+    font-size: 13px; border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+    background: var(--panel-alt); color: var(--text-dim);
+  }
+  .field .value.tall { min-height: 64px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-dim); }
+
+  /* resource picker (Tool / KB / Sub-agent step) shared look */
+  .picker-layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; max-width: 900px; }
+  .picker-assigned .empty {
+    border: 1px dashed var(--border); border-radius: 8px; padding: 18px; text-align: center;
+    font-size: 12.5px; color: var(--text-faint);
+  }
+  .resource-row {
+    display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; margin-bottom: 8px; background: var(--panel);
+  }
+  .resource-row .icon {
+    width: 26px; height: 26px; border-radius: 6px; background: var(--accent-dim); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0;
+  }
+  .resource-row .meta { flex: 1; min-width: 0; }
+  .resource-row .name { font-size: 12.5px; font-weight: 600; }
+  .resource-row .slug { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--text-faint); }
+  .resource-row .remove {
+    width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel);
+    color: var(--text-faint); font-size: 11px; cursor: pointer;
+  }
+
+  .picker-add { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--panel-alt); align-self: start; }
+  .picker-add .label { font-family: "IBM Plex Mono", monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 8px; }
+  .picker-add .candidate-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; max-height: 220px; overflow-y: auto; }
+  .candidate {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--panel);
+    font-size: 12px;
+  }
+  .candidate .add-btn {
+    font-family: "IBM Plex Mono", monospace; font-size: 15px; line-height: 1; color: var(--accent);
+    border: none; background: none; cursor: pointer;
+  }
+  .skip-hint { font-size: 11.5px; color: var(--text-faint); margin-top: 12px; }
+
+  .wizard-foot {
+    display: flex; align-items: center; justify-content: space-between; padding: 14px 22px;
+    border-top: 1px solid var(--border); background: var(--panel-alt);
+  }
+  .btn {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: 0.02em;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text-dim);
+    border-radius: 6px; padding: 7px 13px; cursor: pointer;
+  }
+  .btn:hover { border-color: var(--accent-line); color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover { opacity: .92; color: #fff; }
+  .btn.ghost { border-color: transparent; background: none; }
+
+  /* ============ PART B: agent detail redesign ============ */
+  .detail-shell { display: grid; grid-template-columns: 260px 1fr; gap: 20px; }
+  .detail-rail {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+    height: fit-content;
+  }
+  .agent-avatar {
+    width: 40px; height: 40px; border-radius: 10px; background: var(--accent-dim); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 10px;
+  }
+  .detail-rail h3 { margin: 0 0 2px; font-size: 15px; }
+  .detail-rail .slug { font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--text-faint); margin-bottom: 14px; }
+  .readiness-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+  .readiness-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+  .readiness-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .readiness-dot.ok { background: var(--good); }
+  .readiness-dot.empty { background: var(--text-faint); opacity: .5; }
+  .readiness-count { margin-left: auto; font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--text-faint); }
+
+  .detail-main { display: flex; flex-direction: column; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .panel-head { display: flex; align-items: center; gap: 8px; padding: 13px 18px; border-bottom: 1px solid var(--border); background: var(--panel-alt); }
+  .panel-head .icon { color: var(--accent); font-size: 14px; }
+  .panel-head h4 { margin: 0; font-size: 13px; }
+  .panel-head .count { margin-left: auto; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; color: var(--text-faint); }
+  .panel-body { padding: 14px 18px; }
+
+  footer.note { margin-top: 28px; font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--text-faint); line-height: 1.7; }
+  footer.note b { color: var(--text-dim); }
+
+  @media (max-width: 900px) {
+    .picker-layout { grid-template-columns: 1fr; }
+    .detail-shell { grid-template-columns: 1fr; }
+    .field-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="page">
+  <div class="masthead">
+    <div class="wordmark">ultron<span>::</span>agent-creation-wizard</div>
+    <div class="masthead-meta">docs/mockups — mockup, chưa code · để chốt hình dung</div>
+  </div>
+  <p class="subhead">
+    2 phần: <b>(A)</b> wizard tạo Agent mới — gán Tool/Knowledge Base/Sub-agent ngay lúc tạo, thay flow
+    form phẳng hiện tại. <b>(B)</b> trang chi tiết Agent nâng cấp — thêm section Knowledge Base (hiện
+    chưa có UI nào), cột trái tóm tắt "agent này đã sẵn sàng chưa". Xem
+    <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px">docs/features/agent-creation-wizard.md</span>.
+  </p>
+
+  <!-- ===================== PART A ===================== -->
+  <h2 class="section-title">A — Wizard tạo Agent mới (route /agents/new)</h2>
+
+  <div class="wizard">
+    <div class="wizard-head">
+      <h3>Tạo agent mới</h3>
+      <div class="sub">Bước 3/4 — bạn có thể bỏ qua bước này và gán sau ở trang chi tiết</div>
+    </div>
+
+    <div class="steps">
+      <div class="step done"><div class="step-dot">✓</div><div class="step-label">Định danh &amp; Model</div></div>
+      <div class="step-connector done"></div>
+      <div class="step done"><div class="step-dot">✓</div><div class="step-label">Tool</div></div>
+      <div class="step-connector done"></div>
+      <div class="step active"><div class="step-dot">3</div><div class="step-label">Knowledge Base</div></div>
+      <div class="step-connector"></div>
+      <div class="step"><div class="step-dot">4</div><div class="step-label">Sub-agent</div></div>
+    </div>
+
+    <div class="wizard-body">
+      <p class="step-heading">Gán Knowledge Base</p>
+      <p class="step-hint">
+        Chọn 1 hoặc nhiều Knowledge Base có sẵn để agent tự động dùng RAG khi trả lời — không cần tạo
+        Tool riêng, backend đã tự expose tool <code>search-knowledge-base-&lt;slug&gt;</code> cho mỗi KB
+        được gán.
+      </p>
+
+      <div class="picker-layout">
+        <div class="picker-assigned">
+          <div class="resource-row">
+            <div class="icon">📚</div>
+            <div class="meta">
+              <div class="name">Wiki nội bộ</div>
+              <div class="slug">wiki-noi-bo · 42 chunk</div>
+            </div>
+            <button class="remove">✕</button>
+          </div>
+          <div class="resource-row">
+            <div class="icon">📚</div>
+            <div class="meta">
+              <div class="name">Tài liệu vận hành</div>
+              <div class="slug">tai-lieu-van-hanh · 18 chunk</div>
+            </div>
+            <button class="remove">✕</button>
+          </div>
+        </div>
+
+        <div class="picker-add">
+          <div class="label">Knowledge base khác</div>
+          <div class="candidate-list">
+            <div class="candidate"><span>Ghi chú cá nhân</span><button class="add-btn">+</button></div>
+            <div class="candidate"><span>Research AI 2026</span><button class="add-btn">+</button></div>
+          </div>
+          <div class="skip-hint">Chưa có KB phù hợp? Có thể tạo mới ở trang Knowledge Base rồi quay lại gán sau.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wizard-foot">
+      <button class="btn ghost">← Quay lại</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn">Bỏ qua bước này</button>
+        <button class="btn primary">Tiếp tục →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PART B ===================== -->
+  <h2 class="section-title">B — Trang chi tiết Agent nâng cấp (route /agents/[id])</h2>
+
+  <div class="detail-shell">
+    <aside class="detail-rail">
+      <div class="agent-avatar">🤖</div>
+      <h3>Research Agent</h3>
+      <div class="slug">research-agent · orchestrator</div>
+
+      <div class="readiness-list">
+        <div class="readiness-item"><span class="readiness-dot ok"></span> Model đã gán<span class="readiness-count">gemini-3.7-flash</span></div>
+        <div class="readiness-item"><span class="readiness-dot ok"></span> Tool<span class="readiness-count">2</span></div>
+        <div class="readiness-item"><span class="readiness-dot ok"></span> Knowledge Base<span class="readiness-count">2</span></div>
+        <div class="readiness-item"><span class="readiness-dot empty"></span> Sub-agent<span class="readiness-count">0</span></div>
+      </div>
+    </aside>
+
+    <div class="detail-main">
+      <div class="panel">
+        <div class="panel-head"><span class="icon">⚙</span><h4>Thông tin agent</h4></div>
+        <div class="panel-body">
+          <div class="field-grid">
+            <div class="field"><label>Slug</label><div class="value">research-agent</div></div>
+            <div class="field"><label>Model</label><div class="value">gemini-3.7-flash</div></div>
+            <div class="field full"><label>System prompt</label><div class="value tall">Bạn là research agent, chuyên tổng hợp tài liệu nội bộ…</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><span class="icon">📚</span><h4>Knowledge Base</h4><span class="count">2 đã gán</span></div>
+        <div class="panel-body">
+          <div class="resource-row">
+            <div class="icon">📚</div>
+            <div class="meta"><div class="name">Wiki nội bộ</div><div class="slug">wiki-noi-bo</div></div>
+            <button class="remove">✕</button>
+          </div>
+          <div class="resource-row">
+            <div class="icon">📚</div>
+            <div class="meta"><div class="name">Tài liệu vận hành</div><div class="slug">tai-lieu-van-hanh</div></div>
+            <button class="remove">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><span class="icon">🔧</span><h4>Tool</h4><span class="count">2 đã gán</span></div>
+        <div class="panel-body">
+          <div class="resource-row">
+            <div class="icon">🔧</div>
+            <div class="meta"><div class="name">Tra cứu thời tiết</div><div class="slug">weather-lookup</div></div>
+            <button class="remove">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><span class="icon">🧬</span><h4>Sub-agent</h4><span class="count">0 đã gán</span></div>
+        <div class="panel-body">
+          <div class="picker-assigned"><div class="empty">Chưa có sub-agent nào</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="note">
+    <b>Đây là mockup, chưa phải implementation.</b> Số bước wizard (4), khả năng "Bỏ qua bước này", và
+    cột trái "readiness" ở trang chi tiết đều là đề xuất — còn là câu hỏi mở trong
+    <span style="font-family:'IBM Plex Mono',monospace">docs/features/agent-creation-wizard.md</span>.
+    Nút xoá (✕) trên Knowledge Base panel giả định đã có endpoint unassign — hiện backend
+    <b>chưa có</b> (gap đã ghi trong spec).
+  </footer>
+</div>

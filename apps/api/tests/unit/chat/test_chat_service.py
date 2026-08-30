@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.modules.chat.service as chat_service_module
+import app.core.agent_runtime as agent_runtime_module
 from app.core.provider_adapter import ProviderConfigError
 from app.modules.chat.graph import ModelConfig
 from app.modules.chat.schemas import AgUiRunRequest
@@ -113,7 +113,7 @@ async def test_send_streams_delta_and_tool_events_in_order(monkeypatch: pytest.M
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
         return FakeExecutor(events)
 
-    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
 
     message_service = FakeMessageService()
     service = _make_service(message_service)
@@ -138,7 +138,7 @@ async def test_send_yields_error_event_on_provider_config_error(
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
         raise ProviderConfigError("Chưa có credential Gemini — thêm qua PUT /credentials/gemini")
 
-    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
 
     message_service = FakeMessageService()
     service = _make_service(message_service)
@@ -168,7 +168,7 @@ async def test_send_yields_approval_required_when_graph_pauses(
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
         return FakeExecutor([], state=paused_state)
 
-    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
 
     message_service = FakeMessageService()
     service = _make_service(message_service)
@@ -197,7 +197,7 @@ async def test_approve_resumes_and_persists_assistant_message(
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
         return FakeExecutor(events)
 
-    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
 
     message_service = FakeMessageService()
     service = _make_service(message_service)
@@ -224,7 +224,7 @@ async def test_send_agui_maps_stream_to_ag_ui_events(monkeypatch: pytest.MonkeyP
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
         return FakeExecutor(events)
 
-    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
 
     message_service = FakeMessageService()
     service = _make_service(message_service)
@@ -270,7 +270,7 @@ async def test_send_agui_maps_approval_to_interrupt(monkeypatch: pytest.MonkeyPa
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
         return FakeExecutor([], state=paused_state)
 
-    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
 
     message_service = FakeMessageService()
     service = _make_service(message_service)
@@ -308,7 +308,7 @@ async def test_send_agui_resume_reject_calls_approve(monkeypatch: pytest.MonkeyP
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
         return FakeExecutor(events)
 
-    monkeypatch.setattr(chat_service_module, "build_agent_executor", fake_build_agent_executor)
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
 
     message_service = FakeMessageService()
     service = _make_service(message_service)

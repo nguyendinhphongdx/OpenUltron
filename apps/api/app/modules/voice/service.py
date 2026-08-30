@@ -4,9 +4,10 @@ from typing import Literal
 from fastapi import WebSocket
 from fastapi import status as ws_status
 
+from app.core.agent_runtime import LangGraphAgentRuntime
 from app.core.logging import logger
 from app.db.session import async_session_factory
-from app.modules.chat.graph import SubAgentSpec, run_sub_agent
+from app.modules.chat.graph import SubAgentSpec
 from app.modules.chat.service import ChatService
 from app.modules.conversation.message.deps import get_message_service
 from app.modules.conversation.message.schemas import MessageCreate
@@ -24,6 +25,11 @@ from app.modules.voice.events import (
 from app.modules.voice.provider_adapter import get_voice_provider
 
 VoiceState = Literal["listening", "thinking", "speaking", "using_tool"]
+
+# ADR-0020 — voice gọi sub-agent qua AgentRuntime.run_sync thay vì `run_sub_agent()` trực tiếp.
+# Không state, an toàn dùng chung 1 instance module-level (không cần registry/DI, chỉ 1
+# implementation).
+_agent_runtime = LangGraphAgentRuntime()
 
 # Chỉ áp cho voice (không sửa `agent.system_prompt` dùng chung với chat text — text chat vẫn
 # linh hoạt đa ngôn ngữ theo ngôn ngữ user gõ). Gemini native-audio models —
@@ -54,7 +60,8 @@ def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[VoiceToolDeclarat
     """Khai cho voice provider biết agent orchestrator có thể delegate sub-agent nào.
 
     Chỉ khai tool ở tầng ngoài (không đệ quy sub-agent của sub-agent) — đủ cho scope hiện tại; nếu
-    provider gọi 1 sub-agent orchestrator, `run_sub_agent` vẫn tự xử lý đệ quy nội bộ như chat text.
+    provider gọi 1 sub-agent orchestrator, `AgentRuntime.run_sync` (ADR-0020) vẫn tự xử lý đệ quy
+    nội bộ như chat text.
     """
     if not sub_agents:
         return []
@@ -170,7 +177,9 @@ class VoiceService:
                 # Session DB ngắn hạn riêng cho lần build chat model này (ADR-0010) — không giữ
                 # mở suốt lúc sub-agent LangGraph chạy (có thể vài giây).
                 async with async_session_factory() as session:
-                    result = await run_sub_agent(sub_agent, task_text, session=session)
+                    result = await _agent_runtime.run_sync(
+                        sub_agent=sub_agent, task=task_text, session=session
+                    )
                 await client.send_tool_result(event.call_id, {"result": result})
                 logger.info(
                     "voice.tool_call_completed",

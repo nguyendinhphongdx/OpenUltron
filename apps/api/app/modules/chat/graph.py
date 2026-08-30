@@ -72,12 +72,17 @@ async def run_sub_agent(
         if depth < MAX_DELEGATION_DEPTH
         else []
     )
-    own_tools = await build_tools(sub_agent.tools, session=session)
-    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in sub_agent.knowledge_bases]
     # KHÔNG gắn checkpointer/middleware approval gate (ADR-0014) ở đây có chủ đích — sub-agent
     # chạy đồng bộ bên trong 1 lần gọi tool của agent cha (`_build_sub_agent_tool`), pause lồng
     # trong lúc agent cha đang chạy là bài toán phức tạp hơn hẳn (nested interrupt), ngoài phạm vi
-    # spec `tool-approval-gate.md` — chỉ áp gate cho tool của agent top-level.
+    # spec `tool-approval-gate.md`. Vì không có gate ở tầng này, tool rủi ro cao KHÔNG được gán cho
+    # sub-agent luôn (fail-closed — addendum 2026-08-30, ADR-0014): loại tool trong
+    # `TOOLS_REQUIRING_APPROVAL`/`kind=mcp` trước khi build, thay vì gọi được nhưng không ai duyệt.
+    safe_tools = [
+        t for t in sub_agent.tools if t.slug not in TOOLS_REQUIRING_APPROVAL and t.kind != "mcp"
+    ]
+    own_tools = await build_tools(safe_tools, session=session)
+    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in sub_agent.knowledge_bases]
     executor = create_agent(
         chat_model,
         tools=[*own_tools, *nested_tools, *kb_tools],

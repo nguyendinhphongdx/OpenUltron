@@ -10,6 +10,12 @@ nhiều **KnowledgeBase**) → chat trực tiếp với 1 agent, hoặc cấp ca
 giới hạn 1 tầng như hiện tại) → thực thi bằng LangGraph, 1 số model chạy qua **SGLang** (tự host),
 có **streaming** khi chat/chạy graph.
 
+Đích sản phẩm không dừng ở web/mobile. Web là console cấu hình và debug; mobile là companion
+runtime; trải nghiệm chính dài hạn là **ambient AI interface**: người dùng nói/nghe với agent qua
+tai nghe, đồng hồ thông minh, kính đeo hoặc thiết bị luôn ở cạnh người dùng, không phải mở laptop
+hay gõ chữ. Mọi surface này phải dùng chung agent runtime/tool/KB/MCP/orchestrator — chỉ khác
+input/output adapter.
+
 | Feature | Trạng thái | Spec |
 |---|---|---|
 | Agent/Model/Tool/KnowledgeBase (CRUD + gắn nhau qua FK/join-table) | ✅ Đã có | ADR-0006, ADR-0007 |
@@ -24,9 +30,12 @@ có **streaming** khi chat/chạy graph.
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
 | Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
-| Orchestrator v2 — setup/run/debug đúng nghĩa | 🔜 Cần spec/ADR trước khi code | Tách rõ agent graph definition, edge/task contract, routing, run trace, readiness validation, nested approval/tool/KB/MCP |
-| Unified agent runtime + chuẩn hoá stream/chat UI | 🚧 Đang làm | [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md), [ADR-0019](../adr/0019-ag-ui-assistant-ui-runtime.md) — chuẩn hoá text stream bằng AG-UI + assistant-ui, chưa refactor voice |
-| Voice là input modality của agent thường | 🔜 Cần spec/ADR trước khi code | Voice session phải dùng chung agent runtime: tool, KB/RAG, MCP, sub-agent, approval; không tách thành flow voice riêng chỉ gọi provider realtime |
+| Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A xong (nested approval fail-closed), Phase B/C/D chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
+| Agent creation wizard + Knowledge Base binding UI + nâng cấp trang chi tiết Agent | 📐 Accepted, chưa code | [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md), [research](../research/agent-creation-wizard.md), [mockup](../mockups/agent-creation-wizard.html) |
+| Unified agent runtime + chuẩn hoá stream/chat UI (wire contract FE↔BE) | ✅ Đã có (phần wire contract) | [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md), [ADR-0019](../adr/0019-ag-ui-assistant-ui-runtime.md) — chuẩn hoá text stream bằng AG-UI + assistant-ui; phần backend-internal interface (LangGraph leak vào `ChatService`) tách sang dòng "Agent runtime abstraction" dưới |
+| Agent runtime abstraction (`AgentRuntime`/`TurnRunner` — backend-internal interface, tách LangGraph khỏi `ChatService`) | ✅ Đã có (2026-08-30) | [`docs/features/agent-runtime-abstraction.md`](../features/agent-runtime-abstraction.md), [ADR-0020](../adr/0020-agent-runtime-interface.md) — KHÔNG tự động cover việc unify voice top-level turn (xem Non-goals trong spec) |
+| Voice là input modality của agent thường | 🔜 Cần spec/ADR trước khi code | Voice session phải dùng chung agent runtime: tool, KB/RAG, MCP, sub-agent, approval; không tách thành flow voice riêng chỉ gọi provider realtime. Phụ thuộc kết quả của "Agent runtime abstraction" ở trên (interface phải có trước khi quyết voice có đi qua nó hay không) |
+| Ambient / wearable AI interface (tai nghe, smartwatch, smart glasses) | 🧭 Product direction, cần research/spec | Web/mobile không phải đích cuối; cần device adapter layer: audio I/O, wake/activation, interruption, short response mode, context capture từ camera/sensor khi có quyền, handoff sang web/mobile để xem trace dài. Phụ thuộc "Voice là input modality của agent thường" + runtime thống nhất. |
 
 Feature mới nào không nhỏ → viết `docs/features/<slug>.md` (skill `feature-spec` / `/spec`) trước,
 cập nhật link ở bảng trên, rồi mới code — xem `.claude/hooks/session-start.mjs`.
@@ -321,6 +330,40 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
         `apps/web` — lint/typecheck/build đều xanh; `code-reviewer` review độc lập toàn diff (2
         finding 🟡 tìm thấy, đã fix: presentational component vẫn lẫn trong file hook, 1 deep-import
         xuyên feature bỏ qua barrel).
+- [x] **`AgentRuntime` interface (ADR-0020) + fail-closed nested approval (addendum ADR-0014)**
+      (2026-08-30) — user muốn Agent runtime tách rõ khỏi LangGraph "kiểu microservice, chỉ cần
+      interface không đổi giữa 2 service" + muốn Orchestrator custom được qua ReactFlow; 3
+      `business-analyst` chạy song song research + viết spec/mockup cho `agent-runtime-abstraction`/
+      `orchestrator-v2`/`agent-creation-wizard` (cả 3 bị rate-limit đúng lúc cập nhật roadmap cuối
+      cùng — tự hoàn tất tay). User uỷ quyền tự quyết câu hỏi mở + bắt đầu code luôn.
+      - **`app/core/agent_runtime.py` mới** — `AgentRuntime` (`Protocol`, 2 method `run_streaming`/
+        `run_sync`, không lộ `CompiledStateGraph`/`Command`/`astream_events` ra chữ ký public) +
+        `LangGraphAgentRuntime` (implementation DUY NHẤT — không dựng registry vì chưa có
+        implementation thứ 2 thật, đúng ngưỡng convention). Gom `_extract_text`/
+        `_first_action_request`/logic `astream_events`+`aget_state` (trước ở `chat/service.py`)
+        vào đây.
+      - `chat/service.py::ChatService` đổi `send()`/`approve()` gọi qua `self.runtime` (mặc định
+        `LangGraphAgentRuntime()` nếu không truyền — không cần DI phức tạp cho 1 implementation),
+        thêm helper `_stream_and_persist` gom logic "chạy rồi lưu assistant message" dùng chung cho
+        2 method (trước lặp lại y hệt).
+      - `voice/service.py::handle_tool_call` đổi từ import `run_sub_agent` trực tiếp sang gọi
+        `AgentRuntime.run_sync` (instance module-level `_agent_runtime`) — external caller giờ
+        không biết `chat/graph.py` nội bộ làm gì; `chat/graph.py` tự nó vẫn gọi `run_sub_agent` nội
+        bộ khi build tool "delegate" (không đổi, không phải external caller).
+      - **Fail-closed nested approval** (Phase A của `orchestrator-v2.md`, addendum ADR-0014):
+        `run_sub_agent` (`chat/graph.py`) loại tool trong `TOOLS_REQUIRING_APPROVAL`/`kind=mcp` khỏi
+        tool list của sub-agent TRƯỚC khi build — trước đây sub-agent gọi được tool rủi ro cao (vd
+        `run-command`) mà không ai duyệt (lỗ hổng an toàn thật, không chỉ thiếu tính năng). Test mới
+        `tests/unit/chat/test_run_sub_agent_fail_closed.py`.
+      - Test cũ (`tests/unit/chat/test_chat_service.py`) đổi chỗ monkeypatch từ
+        `chat_service_module.build_agent_executor` sang `agent_runtime_module.build_agent_executor`
+        (theo đúng nơi gọi mới) — không đổi assertion hành vi.
+      - Verify: `ruff check`/`ruff format --check`/`check_module_boundaries.py` xanh, `pytest -q`
+        89 passed (thêm 1 test mới), app boot được (`from app.main import app`, không circular
+        import giữa `core/agent_runtime.py` ↔ `chat/graph.py` ↔ `chat/service.py`).
+      - **Orchestrator v2 (`docs/features/orchestrator-v2.md`) và Agent creation wizard
+        (`docs/features/agent-creation-wizard.md`) mới xong Phase A/chưa code** — xem "Đang làm"
+        bên dưới, không phải nợ ẩn.
 
 ## Đang làm / tiếp theo
 
@@ -331,23 +374,66 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       model/credential/tool/KB config thì báo ngay), saved layout, run simulator, trace inspector
       theo từng node/edge, persist `tool_calls`/delegation trace, và chiến lược nested approval khi
       sub-agent gọi tool rủi ro. Đây là epic riêng, không nên nhét lẫn vào chat UI.
-- [ ] **P0 — Chuẩn hoá agent runtime + stream contract + chat UI** — hiện text chat dùng SSE tự parse
-      chunk ở `apps/web`, voice dùng WebSocket riêng, approval/tool trace là event riêng lẻ; cần gom
-      lại thành 1 contract chuẩn cho frontend runtime đọc được: `message_delta`, `message_done`,
-      `tool_call_start/end`, `approval_required`, `state`, `error`, `done`, metadata trace ổn định.
-      Mục tiêu: UI chat không phụ thuộc implementation LangGraph/SSE nội bộ; sau này nếu dùng
-      `assistant-ui`, Vercel AI SDK, AG-UI, hoặc runtime tự viết thì chỉ đổi adapter, không đổi toàn bộ
-      màn chat. Cần spec trước, rồi ADR nếu chọn protocol/runtime chính.
-- [ ] **P0 — Hợp nhất Voice Agent vào agent runtime thường** — voice không được là flow riêng chỉ nối
-      Gemini Live; nó chỉ khác **input/output modality** (audio/text) còn execution phải dùng chung
-      Agent hiện có: Model/Provider, Tool HTTP/Builtin/MCP, KnowledgeBase/RAG, sub-agent delegation,
-      approval gate, transcript/message persistence và tool trace. Cần thiết kế `AgentRuntime`/
-      `TurnRunner` dùng chung cho text + voice, rồi để Gemini/OpenAI/self-host realtime provider chỉ là
-      adapter modality ở rìa hệ thống.
+      **2026-08-30**: user yêu cầu thêm — graph phải visualize + **user tự custom được** qua
+      ReactFlow (không chỉ xem/thêm/gỡ cạnh). `business-analyst` đã viết xong spec draft
+      ([`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md) +
+      [research](../research/orchestrator-v2.md) so sánh n8n/Dify/LangGraph Studio +
+      [mockup](../mockups/orchestrator-v2.html) mở rộng `ultron-orchestrator-canvas.html` cũ) —
+      xác nhận thêm qua đọc code thật: `run_sub_agent()` (sub-agent chạy lồng) **cố ý không gắn
+      checkpointer/approval-gate** (comment sẵn trong `chat/graph.py` giải thích "nested interrupt
+      phức tạp"), nghĩa là sub-agent gọi tool cần duyệt (vd `run-command`) hiện **âm thầm không có
+      gate nào chặn** — không chỉ thiếu tính năng, là khoảng trống an toàn thật. **Cần user trả lời
+      trước khi qua `solution-architect`** (đầy đủ ở "Câu hỏi mở" trong spec):
+      1. Run simulator trong canvas có persist `Conversation`/`Message` thật (tái dùng `ChatService`)
+         hay tách biệt hoàn toàn không lưu gì?
+      2. Trace inspector chỉ giữ "lần chạy gần nhất"/node/edge hay full history nhiều lần chạy?
+      3. Nested approval chọn hướng nào: chặn hẳn sub-agent dùng tool cần duyệt / pause cả turn cha /
+         hướng khác?
+      4. Làm 1 lần cả 6 mục (contract/readiness/layout/simulator/trace/nested-approval) hay chia
+         phase, thứ tự ưu tiên nào trước?
+      5. Edge contract cần structured input/output schema (giống `ai_params` tool `kind=http`) hay
+         mô tả tự do bằng văn bản?
+      6. Readiness check chạy on-demand (nút bấm) hay tự động mỗi khi mở canvas/sửa graph?
+- [x] ~~P0 — Chuẩn hoá agent runtime + stream contract + chat UI~~ — phần wire contract
+      FE↔BE **đã xong** (AG-UI, xem [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md)
+      Status: done, ADR-0019, mục "Harness-hoá convention" ở trên). Phần CÒN LẠI của bullet này —
+      backend internal interface tách LangGraph khỏi `ChatService` — tách thành mục riêng ngay dưới
+      (`agent-runtime-abstraction`), không còn là 1 bullet gộp chung nữa.
+- [x] ~~P0 — `AgentRuntime` interface~~ — **Đã xong (2026-08-30)**, xem mục "Đã xong" ở trên +
+      [ADR-0020](../adr/0020-agent-runtime-interface.md). Đã gộp bullet "Hợp nhất Voice Agent vào
+      agent runtime thường" cũ vào đây cho phần backend interface; phần unify voice TOP-LEVEL turn
+      (Gemini Live) vẫn CHƯA làm, xem bullet "Voice là input modality" bên dưới.
 - [ ] **P0 — Provider-neutral realtime voice** — hiện voice đã có provider adapter nhưng thực tế vẫn
       neo sâu vào Gemini Live protocol; cần mở đường cho OpenAI Realtime/GPT voice và self-host
       speech stack (STT/TTS + LLM) mà không sửa UI/agent capability. Nên tách rõ 3 lớp:
       transport/audio codec, realtime model provider, và agent runtime/tool execution.
+- [ ] **P1 — Agent creation wizard + Knowledge Base binding UI** — flow tạo Agent hiện chỉ có form
+      phẳng (name/slug/system_prompt/model), Tool/Sub-agent phải gán SAU ở trang chi tiết
+      (`AgentToolManager`/`DelegationManager`), **Knowledge Base hoàn toàn chưa có UI gán** dù
+      backend chạy được đầy đủ (`AgentKnowledgeBase`, `POST/GET /agents/{id}/knowledge-bases`, đã
+      verify agent chat tự gọi RAG tool đúng — chỉ thiếu 1 component kiểu `AgentKnowledgeBaseManager`
+      cùng pattern `AgentToolManager`). User muốn (2026-08-30): wizard nhiều bước, gán Model/Tool/KB/
+      Sub-agent ngay lúc tạo thay vì tạo trống rồi sửa sau, cộng nâng cấp visual trang chi tiết.
+      `business-analyst` đã viết xong spec draft
+      ([`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md) +
+      [research](../research/agent-creation-wizard.md) so sánh OpenAI GPT Builder/Dify +
+      [mockup](../mockups/agent-creation-wizard.html)) — phát hiện thêm 1 gap backend khi đọc code:
+      **thiếu hẳn `DELETE /agents/{agent_id}/knowledge-bases/{kb_id}`** (chỉ có `POST`/`GET`,
+      không unassign được — khác `Tool` đã có đủ 3 endpoint). **Cần user trả lời trước khi qua
+      `solution-architect`** (đầy đủ ở "Câu hỏi mở" trong spec):
+      1. Bao nhiêu bước wizard, mỗi bước gồm gì? (đề xuất: Định danh+Model → Tool → KB → Sub-agent,
+         bước cuối chỉ hiện nếu `is_orchestrator=true`)
+      2. Cho "tạo nhanh" bỏ qua Tool/KB/Sub-agent (gán sau) hay bắt buộc đi hết wizard? (research:
+         cả GPT Builder lẫn Dify đều không ép hoàn thành cấu hình phụ trước khi dùng được)
+      3. Cơ chế tạo: `POST /agents` persist thật ngay ở bước 1 rồi gán resource tuần tự (đơn giản,
+         khớp API hiện có), hay cần khái niệm "nháp" chưa persist gì cho tới khi xong wizard (phức
+         tạp hơn, cần transaction/draft state)?
+      4. Thêm luôn `DELETE .../knowledge-bases/{kb_id}` (gap phát hiện ở trên) vào scope feature này,
+         hay để `AgentKnowledgeBaseManager` v1 chỉ gán (không gỡ), làm endpoint đó riêng sau?
+      5. Mức độ "nâng cấp visual" trang chi tiết Agent — mockup đề xuất 1 hướng cụ thể, cần xem rồi
+         chốt có đúng hình dung không.
+      6. Sub-agent chỉ hiện trong wizard khi `is_orchestrator=true` (giữ đúng rule hiện có ở
+         `DelegationManager`) — xác nhận giữ nguyên, không đổi.
 - [ ] **P1 — Conversation UX v2** — ngoài visual refresh đã có, cần flow tạo hội thoại mới tốt hơn:
       chọn agent trước khi vào chat, empty state có starter prompts, pin/archive/search/filter, rename
       inline, grouping theo thời gian/agent, keyboard shortcuts, trạng thái stream/approval rõ ràng.

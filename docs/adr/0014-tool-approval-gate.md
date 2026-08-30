@@ -95,3 +95,24 @@ trước khi có builtin tool thật cần gate — không chờ tool nguy hiể
 - **Cho phép `edit` (sửa argument) ngoài approve/reject**: loại ở bản này — cần thêm UI form sửa
   argument theo đúng `args_schema` của tool đó (phức tạp hơn nhiều so với 2 nút), chưa có nhu cầu
   thật rõ ràng; approve/reject đã đủ cho mục tiêu an toàn cơ bản.
+
+## Addendum (2026-08-30) — Nested approval khi sub-agent gọi tool rủi ro
+
+`chat/graph.py::run_sub_agent` (chạy sub-agent lồng bên trong 1 lần gọi tool của agent cha) **cố ý
+không gắn checkpointer/`HumanInTheLoopMiddleware`** — comment sẵn trong code giải thích: pause lồng
+trong lúc agent cha đang chạy là nested interrupt, phức tạp hơn hẳn phạm vi ADR này. Hệ quả thật
+(phát hiện khi viết [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md)): sub-agent
+hiện **có thể gọi tool trong `TOOLS_REQUIRING_APPROVAL` (vd `run-command`) mà KHÔNG qua gate nào** —
+không phải giới hạn tính năng, là khoảng trống an toàn thật.
+
+**Quyết định (fail-closed, không nested pause)**: `run_sub_agent`/`_build_sub_agent_tool` loại bỏ
+khỏi danh sách tool truyền cho sub-agent bất kỳ tool nào nằm trong `TOOLS_REQUIRING_APPROVAL` hoặc
+có `kind == "mcp"` (cùng điều kiện gate ở `_human_in_the_loop_middleware` cho turn top-level) —
+sub-agent **không có khả năng gọi** tool rủi ro cao, thay vì gọi được nhưng không ai duyệt. Agent
+cha (turn top-level, có gate) vẫn gọi được các tool đó bình thường.
+
+Lý do chọn fail-closed thay vì "pause cả turn cha" (phương án phức tạp hơn — nested interrupt, cần
+thiết kế lại checkpoint đa tầng): đơn giản, an toàn hơn theo mặc định, và khớp quy mô hiện tại (1
+người dùng, chưa có nhu cầu thật cho sub-agent chạy lệnh máy/MCP rủi ro cao). Nếu sau này cần
+sub-agent gọi tool rủi ro cao thật, đó là quyết định mở rộng riêng (ADR mới), không mặc định cho
+phép như hiện tại.

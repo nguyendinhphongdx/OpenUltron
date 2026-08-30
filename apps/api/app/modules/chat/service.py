@@ -4,9 +4,9 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langgraph.types import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.agent_runtime import AgentRunConfig, AgentRuntime, LangGraphAgentRuntime
 from app.core.config import settings
 from app.core.provider_adapter import ProviderConfigError
 from app.modules.agent.schemas import AgentRead
@@ -16,7 +16,6 @@ from app.modules.chat.graph import (
     KnowledgeBaseSpec,
     ModelConfig,
     SubAgentSpec,
-    build_agent_executor,
 )
 from app.modules.chat.schemas import AgUiRunRequest
 from app.modules.conversation.message.schemas import MessageCreate
@@ -65,41 +64,6 @@ def _to_kb_spec(row: KnowledgeBaseRead) -> KnowledgeBaseSpec:
     return KnowledgeBaseSpec(id=row.id, slug=row.slug, name=row.name, description=row.description)
 
 
-def _extract_text(content: str | list) -> str:
-    """`AIMessageChunk.content` không phải luôn là `str` — model có "thinking"/tool-signature
-    (Gemini 2.5+, ADR-0009) trả content dạng list content-block (`[{"type": "text", "text":
-    "..."}, ...]`, có thể kèm block `thinking`/`extras.signature` không phải text hiển thị). Chỉ
-    nối các block `type == "text"`; không có block text nào (vd chunk chỉ mang metadata, list
-    rỗng) → trả rỗng — KHÔNG fallback `str(content)` như trước: đó chính là bug thật phát hiện qua
-    live-test streaming (2026-08-24) — chunk `content=[]` bị `str([])` thành literal `"[]"` lẫn
-    vào giữa text stream (khác lúc dùng cho message hoàn chỉnh trước đây, mỗi chunk streaming rất
-    hay có content rỗng/không-text nên fallback stringify sai hoàn toàn ở đây)."""
-    if isinstance(content, str):
-        return content
-    parts = [
-        block["text"]
-        for block in content
-        if isinstance(block, dict) and block.get("type") == "text"
-    ]
-    return "".join(parts)
-
-
-def _first_action_request(state: Any) -> dict[str, Any] | None:
-    """`HumanInTheLoopMiddleware` (ADR-0014) pause graph bằng LangGraph `interrupt()` nội bộ —
-    `astream_events` KHÔNG emit event tường minh cho việc này (xác nhận qua live-test thật,
-    2026-08-24: stream chỉ kết thúc lặng lẽ, không có event `__interrupt__` nào chảy qua
-    `astream_events`). Phải tự `aget_state()` sau khi stream xong để biết graph có pause không —
-    payload nằm ở `state.tasks[*].interrupts[*].value["action_requests"]`. Chỉ lấy request đầu
-    tiên (bản đầu chưa cần xử lý nhiều tool cần duyệt cùng lúc)."""
-    for task in state.tasks:
-        for interrupt in task.interrupts:
-            value = interrupt.value
-            requests = value.get("action_requests") if isinstance(value, dict) else None
-            if requests:
-                return requests[0]
-    return None
-
-
 def _to_langchain(row: Message) -> BaseMessage | None:
     if row.role == "system":
         return SystemMessage(content=row.content)
@@ -137,6 +101,7 @@ class ChatService:
         tool_service: ToolService,
         kb_service: KnowledgeBaseService,
         session: AsyncSession,
+        runtime: AgentRuntime | None = None,
     ) -> None:
         self.conversation_service = conversation_service
         self.agent_service = agent_service
@@ -146,6 +111,9 @@ class ChatService:
         self.tool_service = tool_service
         self.kb_service = kb_service
         self.session = session  # dùng để tra credential provider (ADR-0010) khi build chat model
+        # ADR-0020 — LangGraph không lộ ra ngoài `AgentRuntime`; mặc định `LangGraphAgentRuntime`
+        # (chỉ 1 implementation thật, không cần registry — xem "Modular/swappable component").
+        self.runtime: AgentRuntime = runtime or LangGraphAgentRuntime()
 
     async def _resolve_sub_agent_spec(self, agent: AgentRead, *, depth: int = 0) -> SubAgentSpec:
         model_row = await self.model_service.get_or_404(agent.model_id)
@@ -213,44 +181,40 @@ class ChatService:
             knowledge_bases=kb_specs,
         )
 
-    async def _run_turn(
-        self, conversation_id: int, executor: Any, config: dict[str, Any], input_data: Any
+    async def _stream_and_persist(
+        self, conversation_id: int, config: AgentRunConfig, **runtime_kwargs: Any
     ) -> AsyncIterator[dict]:
-        """Chạy graph tới khi xong turn HOẶC pause chờ duyệt (ADR-0014) — dùng chung cho `send()`
-        (turn mới) và `approve()` (resume turn đang chờ). Không persist gì nếu pause (chưa có gì
-        hoàn chỉnh để lưu — user message đã persist trước đó ở caller)."""
-        accumulated: list[str] = []
-        async for event in executor.astream_events(input_data, config=config, version="v2"):
-            kind = event["event"]
-            if kind == "on_chat_model_stream":
-                text = _extract_text(event["data"]["chunk"].content)
-                if text:
-                    accumulated.append(text)
-                    yield {"type": "delta", "text": text}
-            elif kind == "on_tool_start":
-                # Áp dụng cho tool "gọi sub-agent" (sub-agent tự chạy `ainvoke()` riêng, không
-                # lồng vào astream_events này — chỉ thấy lúc bắt đầu/kết thúc) và tool `kind=http`
-                # (ADR-0013, chạy trực tiếp trong graph này, bản chất chỉ 1 lần gọi/trả kết quả).
-                yield {"type": "tool_call_start", "name": event["name"]}
-            elif kind == "on_tool_end":
-                yield {"type": "tool_call_end", "name": event["name"]}
-
-        state = await executor.aget_state(config)
-        if state.next:
-            # Pause chờ duyệt (HumanInTheLoopMiddleware, ADR-0014) — KHÔNG persist assistant
-            # message (turn chưa hoàn chỉnh, chỉ có tool call chưa chạy).
-            request = _first_action_request(state)
-            yield {
-                "type": "approval_required",
-                "tool_name": request["name"] if request else "unknown",
-                "arguments": request.get("args", {}) if request else {},
-            }
-            return
-
-        assistant_message = await self.message_service.append(
-            conversation_id, MessageCreate(role="assistant", content="".join(accumulated))
-        )
-        yield {"type": "done", "message_id": assistant_message.id, "seq": assistant_message.seq}
+        """Gọi `AgentRuntime.run_streaming` (ADR-0020) rồi persist assistant message khi turn xong
+        (event `done` nội bộ chỉ có text, KHÔNG tự persist — `ChatService` mới biết `Message`
+        model). Dùng chung cho `send()`/`approve()` — 2 method đó chỉ khác input (turn mới vs
+        resume), phần "chạy rồi lưu" giống hệt nhau."""
+        try:
+            async for event in self.runtime.run_streaming(
+                config=config,
+                thread_id=str(conversation_id),
+                session=self.session,
+                **runtime_kwargs,
+            ):
+                if event["type"] == "done":
+                    assistant_message = await self.message_service.append(
+                        conversation_id, MessageCreate(role="assistant", content=event["text"])
+                    )
+                    yield {
+                        "type": "done",
+                        "message_id": assistant_message.id,
+                        "seq": assistant_message.seq,
+                    }
+                else:
+                    yield event
+        except ProviderConfigError as exc:
+            # Lỗi cấu hình (thiếu credential/base_url) — user có thể tự sửa ngay (thêm API key ở
+            # Settings). User message vẫn đã persist ở caller — không có assistant message vì chưa
+            # sinh được gì.
+            yield {"type": "error", "message": str(exc)}
+        except Exception as exc:
+            # Không catch cụ thể theo provider — lỗi có thể đến từ bất kỳ LangChain chat model nào
+            # (Ollama/Gemini/OpenAI).
+            yield {"type": "error", "message": f"Model không phản hồi được: {exc}"}
 
     async def send(self, conversation_id: int, user_text: str) -> AsyncIterator[dict]:
         """Stream 1 turn qua SSE (chat-streaming, docs/features/chat-streaming.md) — yield dict,
@@ -267,56 +231,35 @@ class ChatService:
             conversation_id, MessageCreate(role="user", content=user_text)
         )
 
-        config = {"configurable": {"thread_id": str(conversation_id)}}
-        try:
-            executor = await build_agent_executor(
-                system_prompt=ctx.system_prompt,
-                model=ctx.model,
-                sub_agents=ctx.sub_agents,
-                tools=ctx.tools,
-                knowledge_bases=ctx.knowledge_bases,
-                session=self.session,
-            )
-            async for event in self._run_turn(
-                conversation_id,
-                executor,
-                config,
-                {"messages": [*history, HumanMessage(content=user_text)]},
-            ):
-                yield event
-        except ProviderConfigError as exc:
-            # Lỗi cấu hình (thiếu credential/base_url) — user có thể tự sửa ngay (thêm API key ở
-            # Settings). User message vẫn đã persist ở trên (flush, commit khi request xong qua
-            # get_session) — không có assistant message vì chưa sinh được gì.
-            yield {"type": "error", "message": str(exc)}
-        except Exception as exc:
-            # Không catch cụ thể theo provider — lỗi có thể đến từ bất kỳ LangChain chat model nào
-            # (Ollama/Gemini/OpenAI).
-            yield {"type": "error", "message": f"Model không phản hồi được: {exc}"}
+        config = AgentRunConfig(
+            system_prompt=ctx.system_prompt,
+            model=ctx.model,
+            sub_agents=ctx.sub_agents,
+            tools=ctx.tools,
+            knowledge_bases=ctx.knowledge_bases,
+        )
+        async for event in self._stream_and_persist(
+            conversation_id, config, history=history, user_text=user_text
+        ):
+            yield event
 
     async def approve(self, conversation_id: int, decision: str) -> AsyncIterator[dict]:
         """Resume 1 turn đang chờ duyệt (approval gate, ADR-0014) — `decision` là
-        `"approve"`/`"reject"`. Build lại executor từ context hiện tại (giống `send()`) — graph là
-        stateless, state thật nằm ở checkpointer (`thread_id` = `conversation_id`), executor mới
-        build lại vẫn resume đúng miễn tools/model không đổi giữa lúc pause và lúc duyệt."""
+        `"approve"`/`"reject"`. Context được resolve lại (giống `send()`) — graph là stateless,
+        state thật nằm ở checkpointer (`thread_id` = `conversation_id`), executor mới build lại
+        vẫn resume đúng miễn tools/model không đổi giữa lúc pause và lúc duyệt."""
         ctx = await self.resolve_context(conversation_id)
-        config = {"configurable": {"thread_id": str(conversation_id)}}
-        try:
-            executor = await build_agent_executor(
-                system_prompt=ctx.system_prompt,
-                model=ctx.model,
-                sub_agents=ctx.sub_agents,
-                tools=ctx.tools,
-                knowledge_bases=ctx.knowledge_bases,
-                session=self.session,
-            )
-            resume_input = Command(resume={"decisions": [{"type": decision}]})
-            async for event in self._run_turn(conversation_id, executor, config, resume_input):
-                yield event
-        except ProviderConfigError as exc:
-            yield {"type": "error", "message": str(exc)}
-        except Exception as exc:
-            yield {"type": "error", "message": f"Model không phản hồi được: {exc}"}
+        config = AgentRunConfig(
+            system_prompt=ctx.system_prompt,
+            model=ctx.model,
+            sub_agents=ctx.sub_agents,
+            tools=ctx.tools,
+            knowledge_bases=ctx.knowledge_bases,
+        )
+        async for event in self._stream_and_persist(
+            conversation_id, config, resume_decision=decision
+        ):
+            yield event
 
     async def send_agui(
         self, conversation_id: int, request: AgUiRunRequest

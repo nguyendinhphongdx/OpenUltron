@@ -1,0 +1,373 @@
+<title>Orchestrator v2 — graph editor + run/debug</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #eef0f3; --panel: #ffffff; --panel-alt: #f4f5f8; --canvas: #e7e9ee; --border: #d7dae1;
+    --text: #14161a; --text-dim: #5b5f6a; --text-faint: #8b8f99;
+    --accent: #5b4bd6; --accent-dim: #ece9fb; --accent-line: #b9aef1;
+    --good: #1f9d5c; --good-bg: #e3f6ec;
+    --warn: #b4780b; --warn-bg: #fbf0dd;
+    --bad: #d43d5c; --bad-bg: #fbe6ea;
+    --dot: #c7cbd4;
+    --shadow: 0 1px 2px rgba(20,22,26,0.04), 0 8px 24px -12px rgba(20,22,26,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0b0c0e; --panel:#16181c; --panel-alt:#1c1e23; --canvas:#101114; --border:#2b2e33;
+      --text:#ecedee; --text-dim:#9a9da6; --text-faint:#6b6e77;
+      --accent:#8677f2; --accent-dim:#241f3d; --accent-line:#4a3f8c;
+      --good:#33d17a; --good-bg:#12291d; --warn:#e8a93b; --warn-bg:#2e2410; --bad:#f0576b; --bad-bg:#331419;
+      --dot:#2c2f36; --shadow:0 1px 2px rgba(0,0,0,0.3), 0 12px 32px -16px rgba(0,0,0,0.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:"IBM Plex Sans",system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  .page { max-width:1320px; margin:0 auto; padding:36px 24px 80px; }
+  .masthead { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:6px; flex-wrap:wrap; }
+  .wordmark { font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:22px; letter-spacing:-0.01em; }
+  .wordmark span { color:var(--accent); }
+  .masthead-meta { font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--text-faint); }
+  .subhead { color:var(--text-dim); font-size:14px; margin:0 0 20px; max-width:78ch; line-height:1.55; }
+  .subhead b { color:var(--text-dim); }
+
+  .tabs { display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border); }
+  .tab { font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:0.02em; color:var(--text-faint);
+    background:none; border:none; padding:9px 4px 11px; margin-right:22px; cursor:pointer; border-bottom:2px solid transparent; transform:translateY(1px); }
+  .tab.active { color:var(--text); border-bottom-color:var(--accent); }
+  .tab:not(.active):hover { color:var(--text-dim); }
+  .screen { display:none; }
+  .screen.active { display:block; }
+
+  .frame { background:var(--panel); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; }
+  .frame-bar { display:flex; align-items:center; gap:8px; padding:9px 14px; border-bottom:1px solid var(--border); background:var(--panel-alt); }
+  .frame-bar .dots { display:flex; gap:6px; }
+  .frame-bar .dots i { width:8px; height:8px; border-radius:50%; background:var(--border); display:block; }
+  .frame-bar .path { font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--text-faint); margin-left:6px; }
+  .frame-bar .badge { margin-left:auto; display:flex; align-items:center; gap:6px; font-family:"IBM Plex Mono",monospace; font-size:10.5px; border-radius:10px; padding:3px 9px; }
+  .frame-bar .badge.good { background:var(--good-bg); color:var(--good); }
+  .frame-bar .badge.warn { background:var(--warn-bg); color:var(--warn); }
+
+  .toolbar { display:flex; align-items:center; gap:6px; padding:8px 12px; border-bottom:1px solid var(--border); background:var(--panel); flex-wrap:wrap; }
+  .toolbar .grp { display:flex; gap:4px; padding-right:10px; margin-right:10px; border-right:1px solid var(--border); }
+  .toolbar .grp:last-child { border-right:none; }
+  .tbtn { font-family:"IBM Plex Mono",monospace; font-size:11.5px; background:none; border:1px solid transparent; border-radius:6px; padding:6px 10px; color:var(--text-dim); cursor:pointer; display:flex; align-items:center; gap:6px; }
+  .tbtn:hover { background:var(--panel-alt); border-color:var(--border); }
+  .tbtn.primary { background:var(--accent); color:#fff; }
+  .tbtn.primary:hover { opacity:0.92; }
+
+  .workspace { display:grid; grid-template-columns:1fr 300px; min-height:600px; }
+  .rail { padding:14px 12px; }
+  .rail-right { border-left:1px solid var(--border); background:var(--panel-alt); overflow-y:auto; }
+  .rail-title { font-family:"IBM Plex Mono",monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-faint); padding:4px 6px 10px; }
+
+  .canvas { position:relative; overflow:hidden; background-color:var(--canvas);
+    background-image:radial-gradient(circle, var(--dot) 1px, transparent 1px); background-size:22px 22px; min-height:560px; }
+  .canvas svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .edge { fill:none; stroke:var(--accent-line); stroke-width:1.8; cursor:pointer; pointer-events:stroke; }
+  .edge.selected { stroke:var(--accent); stroke-width:2.6; }
+  .edge-arrow { fill:var(--accent-line); }
+  .edge-label { font-family:"IBM Plex Mono",monospace; font-size:9.5px; fill:var(--text-faint); }
+
+  .node { position:absolute; width:188px; border-radius:10px; background:var(--panel); border:1px solid var(--border); box-shadow:var(--shadow); overflow:hidden; }
+  .node.supervisor { border-color:var(--accent); width:206px; }
+  .node.selected { outline:2px solid var(--accent); outline-offset:2px; }
+  .node-head { display:flex; align-items:center; gap:7px; padding:9px 10px; border-bottom:1px solid var(--border); }
+  .node.supervisor .node-head { background:var(--accent-dim); }
+  .node-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .node-dot.good { background:var(--good); }
+  .node-dot.warn { background:var(--warn); }
+  .node-title { font-size:12.5px; font-weight:600; }
+  .node.supervisor .node-title { color:var(--accent); }
+  .node-role { margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:8.5px; letter-spacing:0.05em; color:var(--text-faint); text-transform:uppercase; }
+  .node-body { padding:8px 10px 10px; display:flex; flex-direction:column; gap:6px; }
+  .node-tags { display:flex; flex-wrap:wrap; gap:4px; }
+  .node-tag { font-family:"IBM Plex Mono",monospace; font-size:9.5px; color:var(--text-dim); background:var(--panel-alt); border:1px solid var(--border); border-radius:5px; padding:2px 6px; }
+  .readiness { display:flex; align-items:center; gap:5px; font-family:"IBM Plex Mono",monospace; font-size:9.5px; border-radius:5px; padding:3px 6px; }
+  .readiness.good { background:var(--good-bg); color:var(--good); }
+  .readiness.warn { background:var(--warn-bg); color:var(--warn); }
+
+  .port { position:absolute; width:8px; height:8px; border-radius:50%; background:var(--panel); border:1.8px solid var(--accent); }
+
+  .inspector-card { border:1px solid var(--border); border-radius:8px; background:var(--panel); padding:12px; margin-bottom:12px; }
+  .inspector-card h3 { margin:0 0 3px; font-size:13px; }
+  .inspector-card .slug { font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--text-faint); margin-bottom:10px; }
+  .field { margin-bottom:10px; }
+  .field label { display:block; font-family:"IBM Plex Mono",monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); margin-bottom:4px; }
+  .field .value { font-size:12.5px; border:1px solid var(--border); border-radius:6px; padding:7px 9px; background:var(--panel-alt); color:var(--text-dim); }
+  .field textarea.value { width:100%; resize:vertical; min-height:56px; font-family:"IBM Plex Sans",sans-serif; }
+  .chip-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { font-family:"IBM Plex Mono",monospace; font-size:10px; border:1px solid var(--border); border-radius:12px; padding:3px 9px; color:var(--text-dim); background:var(--panel-alt); }
+  .chip.accent { border-color:var(--accent-line); color:var(--accent); background:var(--accent-dim); }
+  .chip.warn { border-color:var(--warn); color:var(--warn); background:var(--warn-bg); }
+
+  .callout { font-size:11.5px; line-height:1.55; border:1px dashed var(--border); border-radius:8px; padding:9px 10px; color:var(--text-dim); background:var(--panel); margin-bottom:12px; }
+  .callout b { color:var(--text); }
+  .callout.warn { border-color:var(--warn); color:var(--warn); background:var(--warn-bg); }
+
+  /* Run simulator */
+  .sim-layout { display:grid; grid-template-columns:1fr 340px; min-height:560px; }
+  .sim-input-row { display:flex; gap:8px; padding:14px; border-bottom:1px solid var(--border); }
+  .sim-input-row input { flex:1; font-family:"IBM Plex Sans",sans-serif; font-size:13px; border:1px solid var(--border); border-radius:6px; padding:8px 10px; background:var(--panel-alt); color:var(--text); }
+  .sim-stream { padding:14px; }
+  .stream-card { border:1px solid var(--border); border-radius:8px; background:var(--panel); padding:10px 12px; }
+  .stream-line { display:flex; gap:8px; font-family:"IBM Plex Mono",monospace; font-size:11px; padding:4px 0; align-items:flex-start; }
+  .stream-line .who { color:var(--accent); width:110px; flex-shrink:0; font-weight:600; }
+  .stream-line .txt { color:var(--text-dim); line-height:1.5; }
+  .stream-line .ts { color:var(--text-faint); margin-left:auto; flex-shrink:0; }
+  .cursor { display:inline-block; width:6px; height:11px; background:var(--accent); margin-left:2px; vertical-align:-1px; animation:caret 1s step-end infinite; }
+  @keyframes caret { 50% { opacity:0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation:none; } }
+
+  /* Trace inspector */
+  .trace-layout { display:grid; grid-template-columns:240px 1fr 300px; min-height:560px; }
+  .run-list { border-right:1px solid var(--border); padding:10px; }
+  .run-item { border:1px solid var(--border); border-radius:8px; padding:9px 10px; margin-bottom:8px; cursor:pointer; background:var(--panel); }
+  .run-item.active { border-color:var(--accent); background:var(--accent-dim); }
+  .run-item .rt { font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--text-faint); }
+  .run-item .rs { font-size:12px; margin-top:2px; }
+  .run-item .rd { display:flex; align-items:center; gap:5px; font-family:"IBM Plex Mono",monospace; font-size:9.5px; margin-top:4px; }
+  .run-item .rd.good { color:var(--good); } .run-item .rd.bad { color:var(--bad); }
+  .trace-detail { padding:16px; }
+  .trace-step { display:flex; gap:10px; margin-bottom:10px; }
+  .trace-step .idx { width:22px; height:22px; border-radius:50%; background:var(--accent-dim); color:var(--accent); font-family:"IBM Plex Mono",monospace; font-size:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .trace-step-body { flex:1; border:1px solid var(--border); border-radius:8px; padding:9px 11px; background:var(--panel); }
+  .trace-step-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .trace-step-head .name { font-weight:600; font-size:12.5px; }
+  .trace-step-head .dur { margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--text-faint); }
+  .io-block { font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--text-dim); background:var(--panel-alt); border:1px solid var(--border); border-radius:6px; padding:6px 8px; margin-top:4px; white-space:pre-wrap; }
+  .io-label { font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); margin-top:6px; }
+
+  footer.note { margin-top:22px; font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--text-faint); line-height:1.7; }
+  footer.note b { color:var(--text-dim); }
+  @media (max-width:900px) { .workspace, .sim-layout, .trace-layout { grid-template-columns:1fr; } .rail-right { display:none; } }
+</style>
+
+<div class="page">
+  <div class="masthead">
+    <div class="wordmark">ultron<span>::</span>orchestrator v2</div>
+    <div class="masthead-meta">apps/web — mockup, chưa code · để chốt hình dung trước docs/features/orchestrator-v2.md</div>
+  </div>
+  <p class="subhead">
+    Mở rộng <code>ultron-orchestrator-canvas.html</code> đã có (xem/thêm/gỡ cạnh) thêm 3 việc còn thiếu:
+    <b>edge contract</b> (mô tả nhiệm vụ riêng theo từng cạnh delegation), <b>readiness check</b> (badge lỗi cấu hình
+    ngay trên node), <b>run simulator</b> + <b>trace inspector</b> (chạy thử + xem lại lần chạy theo từng node/edge).
+  </p>
+
+  <div class="tabs">
+    <button class="tab active" data-target="canvas-screen">Canvas</button>
+    <button class="tab" data-target="sim-screen">Run simulator</button>
+    <button class="tab" data-target="trace-screen">Trace inspector</button>
+  </div>
+
+  <!-- CANVAS -->
+  <div class="screen active" id="canvas-screen">
+    <div class="frame">
+      <div class="frame-bar">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="path">ultron.local/orchestrators/research-desk</div>
+        <div class="badge warn">⚠ 1 agent thiếu cấu hình</div>
+      </div>
+      <div class="toolbar">
+        <div class="grp"><button class="tbtn">+ Node</button></div>
+        <div class="grp"><button class="tbtn">↶ Undo</button><button class="tbtn">↷ Redo</button></div>
+        <div class="grp"><button class="tbtn">Kiểm tra readiness</button></div>
+        <div class="grp"><button class="tbtn primary">▶ Run thử</button><button class="tbtn">Lưu layout</button></div>
+      </div>
+
+      <div class="workspace">
+        <div class="canvas" id="canvas">
+          <svg viewBox="0 0 720 420" preserveAspectRatio="none">
+            <defs>
+              <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path class="edge-arrow" d="M0,0 L6,3 L0,6 Z"/>
+              </marker>
+            </defs>
+            <path class="edge selected" data-edge="1" marker-end="url(#arrow)" d="M300,118 C 220,160 160,180 128,222"/>
+            <path class="edge" data-edge="2" marker-end="url(#arrow)" d="M370,130 C 372,165 370,195 368,222"/>
+            <path class="edge" data-edge="3" marker-end="url(#arrow)" d="M440,120 C 510,155 565,180 598,222"/>
+            <text class="edge-label" x="150" y="185">research task ▸</text>
+            <text class="edge-label" x="380" y="195">devops task ▸</text>
+            <text class="edge-label" x="500" y="185">comms task ▸</text>
+          </svg>
+
+          <div class="node supervisor" style="left:270px; top:60px;">
+            <div class="node-head"><span class="node-dot good"></span><span class="node-title">research-desk</span><span class="node-role">supervisor</span></div>
+            <div class="node-body">
+              <div class="node-tags"><span class="node-tag">sonnet-5</span><span class="node-tag">3 sub-agent</span></div>
+              <div class="readiness good">✓ sẵn sàng</div>
+            </div>
+          </div>
+
+          <div class="node selected" style="left:40px; top:222px;">
+            <div class="node-head"><span class="node-dot good"></span><span class="node-title">research</span><span class="node-role">agent</span></div>
+            <div class="node-body">
+              <div class="node-tags"><span class="node-tag">sonnet-5</span><span class="node-tag">2 tool</span><span class="node-tag">1 kb</span></div>
+              <div class="readiness good">✓ sẵn sàng</div>
+            </div>
+          </div>
+
+          <div class="node" style="left:282px; top:222px;">
+            <div class="node-head"><span class="node-dot warn"></span><span class="node-title">devops-runner</span><span class="node-role">agent</span></div>
+            <div class="node-body">
+              <div class="node-tags"><span class="node-tag">gemini-flash</span><span class="node-tag">1 tool</span></div>
+              <div class="readiness warn">⚠ thiếu credential gemini</div>
+            </div>
+          </div>
+
+          <div class="node" style="left:512px; top:222px;">
+            <div class="node-head"><span class="node-dot good"></span><span class="node-title">comms</span><span class="node-role">agent</span></div>
+            <div class="node-body">
+              <div class="node-tags"><span class="node-tag">haiku-4.5</span><span class="node-tag">1 tool</span></div>
+              <div class="readiness good">✓ sẵn sàng</div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="rail rail-right">
+          <div class="rail-title">Edge đang chọn</div>
+          <div class="inspector-card">
+            <h3>research-desk → research</h3>
+            <div class="slug">AgentDelegation #12</div>
+            <div class="field">
+              <label>Khi nào gọi (contract)</label>
+              <textarea class="value">Gọi khi user hỏi cần tra cứu tài liệu/paper học thuật. KHÔNG gọi cho câu hỏi lịch trình/vận hành.</textarea>
+            </div>
+            <div class="field">
+              <label>Input mong đợi</label>
+              <div class="value">1 câu hỏi/chủ đề nghiên cứu cụ thể (text tự do)</div>
+            </div>
+            <div class="field">
+              <label>Output mong đợi</label>
+              <div class="value">Tóm tắt + trích dẫn nguồn từ knowledge base papers-2026</div>
+            </div>
+            <button class="tbtn primary" style="width:100%; justify-content:center;">Lưu contract</button>
+          </div>
+
+          <div class="rail-title">Node đang chọn</div>
+          <div class="inspector-card">
+            <h3>research</h3>
+            <div class="slug">agent · research</div>
+            <div class="field"><label>Readiness</label>
+              <div class="chip-row"><span class="chip accent">model ok</span><span class="chip accent">credential ok</span><span class="chip accent">2 tool ok</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="callout warn" style="margin-top:14px;">
+      <b>devops-runner</b> thiếu credential provider <b>gemini</b> — readiness check quét đệ quy toàn bộ graph
+      (giống <code>AgentService._creates_cycle</code> BFS đã có), không chỉ agent gốc. Chat/run thử qua node này sẽ lỗi
+      giữa turn nếu không sửa trước.
+    </div>
+  </div>
+
+  <!-- RUN SIMULATOR -->
+  <div class="screen" id="sim-screen">
+    <div class="frame">
+      <div class="frame-bar"><div class="dots"><i></i><i></i><i></i></div><div class="path">ultron.local/orchestrators/research-desk/simulate</div>
+        <div class="badge good"><span style="width:6px;height:6px;border-radius:50%;background:var(--good);display:inline-block;"></span> streaming</div>
+      </div>
+      <div class="sim-layout">
+        <div>
+          <div class="sim-input-row">
+            <input type="text" value="Tìm paper nào giảm hallucination cho agent nhiều bước, tóm tắt và lên lịch review thứ 5." readonly>
+            <button class="tbtn primary">▶ Run</button>
+          </div>
+          <div class="sim-stream">
+            <div class="stream-card">
+              <div class="stream-line"><span class="who">research-desk</span><span class="txt">Phân tích yêu cầu → cần "research" (tra papers) rồi "devops-runner" (đặt lịch)</span></div>
+              <div class="stream-line"><span class="who">→ research</span><span class="txt">Đang tra papers-2026… tìm thấy 2 bài liên quan</span><span class="ts">1.2s</span></div>
+              <div class="stream-line"><span class="who">→ devops-runner</span><span class="txt">Đang tạo sự kiện lịch "Review paper" thứ 5<span class="cursor"></span></span></div>
+            </div>
+          </div>
+        </div>
+        <aside class="rail rail-right">
+          <div class="rail-title">Path đã đi qua</div>
+          <div class="inspector-card">
+            <div class="chip-row">
+              <span class="chip accent">research-desk</span>→<span class="chip accent">research</span>→<span class="chip">devops-runner</span>
+            </div>
+          </div>
+          <div class="rail-title">Ghi chú</div>
+          <div class="callout">Run thử — chưa quyết định persist thành Conversation/Message thật hay tách biệt hoàn toàn (xem Câu hỏi mở trong spec).</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRACE INSPECTOR -->
+  <div class="screen" id="trace-screen">
+    <div class="frame">
+      <div class="frame-bar"><div class="dots"><i></i><i></i><i></i></div><div class="path">ultron.local/orchestrators/research-desk/traces</div></div>
+      <div class="trace-layout">
+        <div class="run-list">
+          <div class="rail-title">Lịch sử chạy</div>
+          <div class="run-item active">
+            <div class="rt">2026-08-30 14:02</div>
+            <div class="rs">"Tìm paper giảm hallucination…"</div>
+            <div class="rd good">✓ hoàn tất · 4.1s</div>
+          </div>
+          <div class="run-item">
+            <div class="rt">2026-08-30 09:41</div>
+            <div class="rs">"Lên lịch họp team devops"</div>
+            <div class="rd bad">✗ lỗi ở devops-runner</div>
+          </div>
+          <div class="run-item">
+            <div class="rt">2026-08-29 22:10</div>
+            <div class="rs">"Tóm tắt paper mới nhất"</div>
+            <div class="rd good">✓ hoàn tất · 2.8s</div>
+          </div>
+        </div>
+        <div class="trace-detail">
+          <div class="trace-step">
+            <div class="idx">1</div>
+            <div class="trace-step-body">
+              <div class="trace-step-head"><span class="name">research-desk</span><span class="dur">0.3s</span></div>
+              <div class="io-label">Input</div><div class="io-block">"Tìm paper nào giảm hallucination cho agent nhiều bước, tóm tắt và lên lịch review thứ 5."</div>
+              <div class="io-label">Output (tool call)</div><div class="io-block">delegate → research(task="tìm paper giảm hallucination")</div>
+            </div>
+          </div>
+          <div class="trace-step">
+            <div class="idx">2</div>
+            <div class="trace-step-body">
+              <div class="trace-step-head"><span class="name">research</span><span class="dur">1.2s</span></div>
+              <div class="io-label">Input</div><div class="io-block">task="tìm paper giảm hallucination"</div>
+              <div class="io-label">Output</div><div class="io-block">2 kết quả từ KB papers-2026 (score 0.19, 0.34)</div>
+            </div>
+          </div>
+          <div class="trace-step">
+            <div class="idx">3</div>
+            <div class="trace-step-body">
+              <div class="trace-step-head"><span class="name">devops-runner</span><span class="dur">2.6s</span></div>
+              <div class="io-label">Input</div><div class="io-block">task="đặt lịch review thứ 5"</div>
+              <div class="io-label">Output</div><div class="io-block">Đã tạo sự kiện "Review paper" — thứ 5 10:00</div>
+            </div>
+          </div>
+        </div>
+        <aside class="rail rail-right">
+          <div class="rail-title">Ghi chú</div>
+          <div class="callout">Bản đầu có thể chỉ giữ <b>lần chạy gần nhất</b> mỗi node/edge (rẻ hơn) thay vì full history — xem Câu hỏi mở trong spec, chưa quyết.</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <footer class="note">
+    <b>Đây là mockup, chưa phải implementation.</b> Mục đích: chốt hình dung 4 mảnh còn thiếu của Orchestrator v2
+    (edge contract / readiness / run simulator / trace inspector) trước khi solution-architect lên plan kỹ thuật —
+    xem <code>docs/features/orchestrator-v2.md</code> mục "Câu hỏi mở" cho các quyết định chưa chốt (persist run
+    thử hay không, giữ bao nhiêu lịch sử trace, chiến lược nested approval).
+  </footer>
+</div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+      document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.target).classList.add('active');
+    });
+  });
+</script>
