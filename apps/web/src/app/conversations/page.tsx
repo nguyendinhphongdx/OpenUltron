@@ -1,5 +1,4 @@
-import { ConversationList } from '@/features/conversation/components/ConversationList';
-import { NewConversationButton } from '@/features/conversation/components/NewConversationButton';
+import { ConversationList, NewConversationButton } from '@/features/conversation';
 import { PageShell } from '@/components/layout/PageShell';
 
 export default function ConversationsPage() {

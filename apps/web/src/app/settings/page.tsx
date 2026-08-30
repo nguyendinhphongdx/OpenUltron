@@ -1,10 +1,10 @@
 import { SettingsForm } from '@/features/settings/components/SettingsForm';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function SettingsPage() {
   return (
-    <main className="mx-auto max-w-2xl p-4">
-      <h1 className="mb-4 text-lg font-semibold">Settings</h1>
+    <PageShell title="Settings">
       <SettingsForm />
-    </main>
+    </PageShell>
   );
 }

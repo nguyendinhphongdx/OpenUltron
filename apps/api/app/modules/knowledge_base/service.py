@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
-
+from app.core.errors import (
+    ConflictError,
+    ModelProviderError,
+    ResourceNotFoundError,
+    ValidationFailedError,
+)
 from app.core.providers import build_embeddings
 from app.modules.agent.service import AgentService
 from app.modules.knowledge_base.models import (
@@ -87,20 +91,13 @@ class KnowledgeBaseService:
 
     async def create(self, input: KnowledgeBaseCreate) -> KnowledgeBaseRead:
         if await self.repo.get_by_slug(input.slug) is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"KnowledgeBase slug '{input.slug}' đã tồn tại",
-            )
+            raise ConflictError(f"KnowledgeBase slug '{input.slug}' đã tồn tại")
         embedding_model = await self.model_service.find(input.embedding_model_id)
         if embedding_model is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model {input.embedding_model_id} không tồn tại",
-            )
+            raise ValidationFailedError(f"Model {input.embedding_model_id} không tồn tại")
         if not embedding_model.is_embedding:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model '{embedding_model.slug}' chưa đánh dấu is_embedding=true",
+            raise ValidationFailedError(
+                f"Model '{embedding_model.slug}' chưa đánh dấu is_embedding=true"
             )
         row = await self.repo.create(**input.model_dump())
         return kb_to_read(row)
@@ -111,9 +108,7 @@ class KnowledgeBaseService:
     async def get_or_404(self, kb_id: int) -> KnowledgeBase:
         row = await self.repo.get(kb_id)
         if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"KnowledgeBase {kb_id} không tồn tại"
-            )
+            raise ResourceNotFoundError("KnowledgeBase", kb_id)
         return row
 
     async def get(self, kb_id: int) -> KnowledgeBaseRead:
@@ -132,19 +127,13 @@ class KnowledgeBaseService:
     async def _get_folder_in_kb_or_404(self, kb_id: int, folder_id: int) -> KnowledgeFolder:
         folder = await self.repo.get_folder(folder_id)
         if folder is None or folder.kb_id != kb_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Folder {folder_id} không tồn tại trong KB {kb_id}",
-            )
+            raise ResourceNotFoundError("Folder", f"{folder_id} (kb_id={kb_id})")
         return folder
 
     async def _get_file_in_kb_or_404(self, kb_id: int, file_id: int) -> KnowledgeFile:
         file = await self.repo.get_file(file_id)
         if file is None or file.kb_id != kb_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File {file_id} không tồn tại trong KB {kb_id}",
-            )
+            raise ResourceNotFoundError("File", f"{file_id} (kb_id={kb_id})")
         return file
 
     async def create_folder(self, kb_id: int, input: FolderCreate) -> FolderRead:
@@ -155,10 +144,7 @@ class KnowledgeBaseService:
             await self.repo.get_folder_by_name(kb_id, input.parent_folder_id, input.name)
             is not None
         ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Folder '{input.name}' đã tồn tại trong thư mục này",
-            )
+            raise ConflictError(f"Folder '{input.name}' đã tồn tại trong thư mục này")
         row = await self.repo.create_folder(
             kb_id=kb_id, parent_folder_id=input.parent_folder_id, name=input.name
         )
@@ -240,9 +226,7 @@ class KnowledgeBaseService:
         except Exception as exc:
             file.status = "error"
             file.error_message = str(exc)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Embed thất bại: {exc}"
-            ) from exc
+            raise ModelProviderError(f"Embed thất bại: {exc}") from exc
         row = await self.repo.add_chunk(
             kb_id=kb_id,
             file_id=file_id,
@@ -282,10 +266,7 @@ class KnowledgeBaseService:
         await self.agent_service.get_or_404(agent_id)
         await self.get_or_404(kb_id)
         if await self.repo.get_agent_kb(agent_id, kb_id) is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Agent {agent_id} đã được gán KnowledgeBase {kb_id}",
-            )
+            raise ConflictError(f"Agent {agent_id} đã được gán KnowledgeBase {kb_id}")
         await self.repo.add_agent_kb(agent_id, kb_id)
 
     async def list_for_agent(self, agent_id: int) -> list[KnowledgeBaseRead]:

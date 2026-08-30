@@ -15,6 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { Input } from '@/components/ui/input';
+import { formatDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 import { NewConversationButton } from './NewConversationButton';
@@ -28,7 +29,7 @@ function formatRelativeDate(value: string) {
   if (diffMinutes < 60) return `${diffMinutes} phút trước`;
   const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) return `${diffHours} giờ trước`;
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit' }).format(date);
+  return formatDate(date, { day: '2-digit', month: '2-digit' });
 }
 
 export function ConversationList() {

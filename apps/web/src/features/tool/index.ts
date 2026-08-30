@@ -12,4 +12,5 @@ export {
   TOOLS_QUERY_KEY,
 } from './hooks';
 export { AgentToolManager } from './components/AgentToolManager';
+export { ToolDetailView } from './components/ToolDetailView';
 export type * from './types/tool.types';

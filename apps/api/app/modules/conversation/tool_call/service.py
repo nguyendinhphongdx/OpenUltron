@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import HTTPException, status
-
+from app.core.errors import ResourceNotFoundError
 from app.modules.conversation.models import ToolCall
 from app.modules.conversation.tool_call.repository import ToolCallRepository
 from app.modules.conversation.tool_call.schemas import (
@@ -42,10 +41,7 @@ class ToolCallService:
     async def complete(self, tool_call_id: int, input: ToolCallComplete) -> ToolCallRead:
         row = await self.repo.get(tool_call_id)
         if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"ToolCall {tool_call_id} không tồn tại",
-            )
+            raise ResourceNotFoundError("ToolCall", tool_call_id)
         row.status = input.status
         row.result = input.result
         row.error = input.error

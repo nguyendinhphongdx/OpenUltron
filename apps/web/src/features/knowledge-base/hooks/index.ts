@@ -15,3 +15,4 @@ export { useAddFileChunk } from './useAddFileChunk';
 export { useKnowledgeBaseStats, knowledgeBaseStatsQueryKey } from './useKnowledgeBaseStats';
 export { useFileChunks, fileChunksQueryKey } from './useFileChunks';
 export { useSearchFiles } from './useSearchFiles';
+export { useKnowledgeUpload } from './useKnowledgeUpload';

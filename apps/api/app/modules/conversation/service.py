@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
-
 from app.common.pagination import Paginated, paginate
+from app.core.errors import ResourceNotFoundError
 from app.modules.conversation.models import Conversation
 from app.modules.conversation.repository import ConversationRepository
 from app.modules.conversation.schemas import (
@@ -26,7 +25,7 @@ def _to_read(row: Conversation) -> ConversationRead:
 
 
 class ConversationService:
-    """Business logic — throw HTTPException, không trả raw ORM object."""
+    """Business logic — raise UltronError, không trả raw ORM object."""
 
     def __init__(self, repo: ConversationRepository) -> None:
         self.repo = repo
@@ -52,10 +51,7 @@ class ConversationService:
     async def get_or_404(self, conversation_id: int) -> Conversation:
         row = await self.repo.get(conversation_id)
         if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Conversation {conversation_id} không tồn tại",
-            )
+            raise ResourceNotFoundError("Conversation", conversation_id)
         return row
 
     async def get(self, conversation_id: int) -> ConversationRead:

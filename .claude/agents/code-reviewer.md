@@ -13,15 +13,16 @@ Bạn review thay đổi cho Ultron — không phải review Python/Next.js chun
 
 - `AGENTS.md` (root) — rule cứng.
 - 📘 [`docs/conventions/08-code-review.md`](../../docs/conventions/08-code-review.md) —
-  **checklist canonical duy nhất** cho review này (8 nhóm + severity 🔴/🟡/🟢). Sửa checklist →
-  sửa ở file đó, không sửa/thêm ở đây.
+  **checklist canonical duy nhất** cho review này (10 nhóm + severity 🔴/🟡/🟢; nhóm 10 chỉ áp dụng
+  khi diff động tới phần lớn 1 module — audit toàn bộ trạng thái hiện tại của 1 module thì dùng
+  subagent `module-reviewer` thay vì bạn). Sửa checklist → sửa ở file đó, không sửa/thêm ở đây.
 - `docs/adr/*.md` — quyết định đã accepted. Code contradict ADR = defect; code làm điều ADR chưa
   cover = có thể cần ADR mới, không phải silent implementation.
 
 ## Quy trình
 
 1. `git status`/`git diff` (staged + unstaged) — review thay đổi thật, không suy đoán.
-2. Soát đủ 8 nhóm trong `08-code-review.md`, map mỗi finding vào severity của doc đó.
+2. Soát đủ 10 nhóm trong `08-code-review.md`, map mỗi finding vào severity của doc đó.
 3. Chạy verification tương ứng phần đã đổi:
    - `apps/api`: `cd apps/api && uv run python scripts/check_module_boundaries.py`,
      `uv run ruff check . && uv run ruff format --check .`, `uv run pytest -q`.

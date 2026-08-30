@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
-
+from app.core.errors import ValidationFailedError
 from app.modules.agent.service import AgentService
 from app.modules.model.service import ModelService
 from app.modules.settings.models import AppSettings
@@ -33,18 +32,12 @@ class SettingsService:
             input.default_model_id is not None
             and await self.model_service.find(input.default_model_id) is None
         ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model {input.default_model_id} không tồn tại",
-            )
+            raise ValidationFailedError(f"Model {input.default_model_id} không tồn tại")
         if (
             input.default_agent_id is not None
             and await self.agent_service.find(input.default_agent_id) is None
         ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Agent {input.default_agent_id} không tồn tại",
-            )
+            raise ValidationFailedError(f"Agent {input.default_agent_id} không tồn tại")
         row = await self.repo.get_or_create()
         for field, value in input.model_dump(exclude_unset=True).items():
             setattr(row, field, value)

@@ -2,9 +2,9 @@ import json
 from collections.abc import AsyncIterator
 
 import httpx
-from fastapi import HTTPException, status
 
 from app.core.config import settings
+from app.core.errors import ModelProviderError
 from app.core.logging import logger
 from app.modules.ollama.catalog import CATALOG, OllamaCatalogEntry
 from app.modules.ollama.schemas import OllamaInstalledModel, OllamaPullEvent
@@ -23,12 +23,11 @@ class OllamaService:
                 response = await client.get(f"{settings.ollama_base_url}/api/tags")
                 response.raise_for_status()
         except httpx.HTTPError as exc:
-            # Không phải luồng SSE (khác `pull()`) — lỗi ở đây raise thẳng HTTPException là đúng,
-            # giống pattern `credential/service.py._verify` báo lỗi network rõ ràng, không bubble
-            # thành 500 mù mờ.
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Không gọi được Ollama tại {settings.ollama_base_url}: {exc}",
+            # Không phải luồng SSE (khác `pull()`, response JSON thường chưa gửi status cho
+            # client) — raise UltronError bình thường, exception handler map sang HTTP như mọi
+            # service khác (04-error-handling.md).
+            raise ModelProviderError(
+                f"Không gọi được Ollama tại {settings.ollama_base_url}: {exc}"
             ) from exc
         return [
             OllamaInstalledModel(name=m["name"], size_bytes=m.get("size"))

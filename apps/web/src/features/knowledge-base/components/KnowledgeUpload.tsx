@@ -1,8 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import type { DragEvent, ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import type { DragEvent } from 'react';
 import {
   CheckCircle2,
   File as FileIcon,
@@ -26,144 +25,16 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
-import { knowledgeBaseService } from '../services/knowledge-base.service';
-import { filesQueryKey } from '../hooks/useFiles';
-import { foldersQueryKey } from '../hooks/useFolders';
-import { knowledgeBaseStatsQueryKey } from '../hooks/useKnowledgeBaseStats';
+import {
+  ALLOWED_EXTENSIONS,
+  MAX_FILE_SIZE_BYTES,
+  entriesFromDataTransfer,
+  entriesFromFileList,
+  type TreeNode,
+  type UseKnowledgeUpload,
+} from '../hooks/useKnowledgeUpload';
 
-// Chỉ nhận file dạng text — KB chunk theo nội dung text, chưa có parser cho PDF/docx/ảnh...
-const ALLOWED_EXTENSIONS = [
-  'txt',
-  'md',
-  'markdown',
-  'csv',
-  'json',
-  'yml',
-  'yaml',
-  'log',
-  'xml',
-  'html',
-  'htm',
-];
-const ALLOWED_EXTENSIONS_SET = new Set(ALLOWED_EXTENSIONS);
-const MAX_FILE_SIZE_BYTES = 1_000_000; // 1MB — file lớn hơn bị loại khỏi preview, không upload.
-const MAX_CHUNK_CHARS = 4000; // Chunk thô theo số ký tự — chưa có chiến lược chunking ngữ nghĩa.
-
-interface PickedFile {
-  file: File;
-  relativePath: string;
-}
-
-interface FileEntry {
-  file: File;
-  excluded: boolean;
-  reason?: string;
-}
-
-interface TreeNode {
-  name: string;
-  folders: Map<string, TreeNode>;
-  files: FileEntry[];
-}
-
-function createNode(name: string): TreeNode {
-  return { name, folders: new Map(), files: [] };
-}
-
-function evaluateFile(file: File): FileEntry {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  if (!ALLOWED_EXTENSIONS_SET.has(ext)) {
-    return { file, excluded: true, reason: 'Định dạng chưa hỗ trợ' };
-  }
-  if (file.size > MAX_FILE_SIZE_BYTES) {
-    return { file, excluded: true, reason: `Vượt quá ${(MAX_FILE_SIZE_BYTES / 1_000_000).toFixed(0)}MB` };
-  }
-  return { file, excluded: false };
-}
-
-function buildTree(picked: PickedFile[]): TreeNode {
-  const root = createNode('');
-  for (const { file, relativePath } of picked) {
-    const parts = relativePath.split('/').filter(Boolean);
-    let node = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      let child = node.folders.get(part);
-      if (!child) {
-        child = createNode(part);
-        node.folders.set(part, child);
-      }
-      node = child;
-    }
-    node.files.push(evaluateFile(file));
-  }
-  return root;
-}
-
-function entriesFromFileList(fileList: FileList): PickedFile[] {
-  return Array.from(fileList).map((file) => ({
-    file,
-    relativePath: (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
-  }));
-}
-
-/** Đọc 1 `FileSystemEntry` (kéo-thả folder) đệ quy — API `webkitGetAsEntry()` chuẩn W3C, đã có
- * type trong lib.dom (`FileSystemEntry`/`FileSystemFileEntry`/`FileSystemDirectoryEntry`). */
-async function readEntryRecursive(entry: FileSystemEntry, path: string): Promise<PickedFile[]> {
-  if (entry.isFile) {
-    const fileEntry = entry as FileSystemFileEntry;
-    const file = await new Promise<File>((resolve, reject) => fileEntry.file(resolve, reject));
-    return [{ file, relativePath: path + entry.name }];
-  }
-  if (entry.isDirectory) {
-    const reader = (entry as FileSystemDirectoryEntry).createReader();
-    const children: FileSystemEntry[] = await new Promise((resolve, reject) => {
-      const all: FileSystemEntry[] = [];
-      const readBatch = () => {
-        reader.readEntries((batch) => {
-          if (batch.length === 0) resolve(all);
-          else {
-            all.push(...batch);
-            readBatch();
-          }
-        }, reject);
-      };
-      readBatch();
-    });
-    const nested = await Promise.all(children.map((child) => readEntryRecursive(child, `${path}${entry.name}/`)));
-    return nested.flat();
-  }
-  return [];
-}
-
-async function entriesFromDataTransfer(dt: DataTransfer): Promise<PickedFile[]> {
-  const items = Array.from(dt.items);
-  const fsEntries = items
-    .map((item) => item.webkitGetAsEntry?.())
-    .filter((e): e is FileSystemEntry => Boolean(e));
-  if (fsEntries.length === 0) {
-    // Trình duyệt không hỗ trợ webkitGetAsEntry — fallback: file phẳng, không giữ cấu trúc folder.
-    return entriesFromFileList(dt.files);
-  }
-  const nested = await Promise.all(fsEntries.map((entry) => readEntryRecursive(entry, '')));
-  return nested.flat();
-}
-
-function countFiles(node: TreeNode): { included: number; excluded: number } {
-  let included = 0;
-  let excluded = 0;
-  for (const f of node.files) {
-    if (f.excluded) excluded++;
-    else included++;
-  }
-  for (const child of node.folders.values()) {
-    const sub = countFiles(child);
-    included += sub.included;
-    excluded += sub.excluded;
-  }
-  return { included, excluded };
-}
-
+/** Presentational — nhận toàn bộ state/handler từ `useKnowledgeUpload`, không tự gọi service. */
 function TreePreview({ node, depth }: { node: TreeNode; depth: number }) {
   return (
     <>
@@ -206,17 +77,14 @@ function TreePreview({ node, depth }: { node: TreeNode; depth: number }) {
   );
 }
 
-function splitIntoChunks(text: string): string[] {
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += MAX_CHUNK_CHARS) {
-    const piece = text.slice(i, i + MAX_CHUNK_CHARS).trim();
-    if (piece) chunks.push(piece);
-  }
-  return chunks;
-}
-
 /** Bước 1: kéo-thả hoặc bấm để chọn — hiện rõ định dạng/size chấp nhận trước khi chọn. */
-function DropZone({ mode, onPicked }: { mode: 'file' | 'folder'; onPicked: (picked: PickedFile[]) => void }) {
+function DropZone({
+  mode,
+  onPicked,
+}: {
+  mode: 'file' | 'folder';
+  onPicked: (picked: Awaited<ReturnType<typeof entriesFromDataTransfer>>) => void;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -271,72 +139,28 @@ function DropZone({ mode, onPicked }: { mode: 'file' | 'folder'; onPicked: (pick
   );
 }
 
-/** Bước 2: preview cây + xác nhận tải lên. */
+/** Bước 2: preview cây + xác nhận tải lên — thuần presentational, upload thật do
+ * `useKnowledgeUpload.upload()` xử lý. */
 function UploadPreviewStep({
-  kbId,
-  folderId,
   tree,
+  counts,
+  uploading,
+  progress,
+  finished,
   onBack,
   onClose,
+  onUpload,
 }: {
-  kbId: number;
-  folderId: number | null;
   tree: TreeNode;
+  counts: { included: number; excluded: number };
+  uploading: boolean;
+  progress: { done: number; total: number; failed: number };
+  finished: boolean;
   onBack: () => void;
   onClose: () => void;
+  onUpload: () => void;
 }) {
-  const queryClient = useQueryClient();
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0, failed: 0 });
-  const [finished, setFinished] = useState(false);
-  const { included, excluded } = countFiles(tree);
-
-  const handleUpload = async () => {
-    setUploading(true);
-    setProgress({ done: 0, total: included, failed: 0 });
-    let failed = 0;
-
-    const uploadFolder = async (node: TreeNode, targetFolderId: number | null) => {
-      for (const entry of node.files) {
-        if (entry.excluded) continue;
-        try {
-          const created = await knowledgeBaseService.createFile(kbId, {
-            name: entry.file.name,
-            folder_id: targetFolderId,
-          });
-          const text = await entry.file.text();
-          const chunks = splitIntoChunks(text);
-          for (const chunk of chunks) {
-            await knowledgeBaseService.addFileChunk(kbId, created.id, { content: chunk });
-          }
-        } catch {
-          failed++;
-        }
-        setProgress((p) => ({ ...p, done: p.done + 1, failed }));
-      }
-      for (const child of node.folders.values()) {
-        try {
-          const createdFolder = await knowledgeBaseService.createFolder(kbId, {
-            name: child.name,
-            parent_folder_id: targetFolderId,
-          });
-          await uploadFolder(child, createdFolder.id);
-        } catch {
-          const { included: skipped } = countFiles(child);
-          failed += skipped;
-          setProgress((p) => ({ ...p, done: p.done + skipped, failed }));
-        }
-      }
-    };
-
-    await uploadFolder(tree, folderId);
-
-    queryClient.invalidateQueries({ queryKey: foldersQueryKey(kbId, folderId) });
-    queryClient.invalidateQueries({ queryKey: filesQueryKey(kbId, folderId) });
-    queryClient.invalidateQueries({ queryKey: knowledgeBaseStatsQueryKey(kbId) });
-    setUploading(false);
-    setFinished(true);
-  };
+  const { included, excluded } = counts;
 
   return (
     <>
@@ -375,7 +199,7 @@ function UploadPreviewStep({
             <Button size="sm" variant="outline" disabled={uploading} onClick={onClose}>
               Huỷ
             </Button>
-            <Button size="sm" disabled={uploading || included === 0} onClick={handleUpload}>
+            <Button size="sm" disabled={uploading || included === 0} onClick={onUpload}>
               {uploading ? 'Đang tải…' : `Tải lên (${included} file)`}
             </Button>
           </>
@@ -385,49 +209,45 @@ function UploadPreviewStep({
   );
 }
 
-/** Renderless controller — tải folder/file thật lên KB, client tự đọc nội dung text và gọi tuần tự
- * các endpoint sẵn có (createFolder/createFile/addFileChunk), KHÔNG cần đổi backend. Giới hạn: chỉ
- * nhận file text (chưa có parser PDF/docx/ảnh), tối đa 1MB/file.
- *
- * Dùng: `const upload = useKnowledgeUpload(kbId)`, gọi `upload.requestUpload(folderId, 'file'|'folder')`
- * từ menu item — mở dialog ngay (bước chọn file kéo-thả/click), và render `{upload.portal}` MỘT LẦN
- * ở gốc cây. */
-export function useKnowledgeUpload(kbId: number): {
-  requestUpload: (folderId: number | null, mode: 'file' | 'folder') => void;
-  portal: ReactNode;
-} {
-  const [picker, setPicker] = useState<{ folderId: number | null; mode: 'file' | 'folder' } | null>(null);
-  const [tree, setTree] = useState<TreeNode | null>(null);
+/** Dialog upload file/folder vào KB — render theo state của `useKnowledgeUpload(kbId)`. Dùng:
+ * `const upload = useKnowledgeUpload(kbId)` ở component cha, gọi `upload.requestUpload(...)` từ
+ * menu item, render `<KnowledgeUploadDialog {...upload} />` MỘT LẦN ở gốc cây. */
+export function KnowledgeUploadDialog({
+  picker,
+  tree,
+  uploading,
+  progress,
+  finished,
+  counts,
+  close,
+  back,
+  pickFiles,
+  upload,
+}: UseKnowledgeUpload) {
+  if (!picker) return null;
 
-  const requestUpload = (folderId: number | null, mode: 'file' | 'folder') => {
-    setTree(null);
-    setPicker({ folderId, mode });
-  };
-
-  const close = () => {
-    setPicker(null);
-    setTree(null);
-  };
-
-  const portal = picker && (
+  return (
     <Dialog open onOpenChange={(open) => !open && close()}>
       <DialogContent className="max-w-md sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{picker.mode === 'file' ? 'Tải file lên' : 'Tải folder lên'}</DialogTitle>
         </DialogHeader>
 
-        {tree ? (
+        {tree && counts ? (
           <UploadPreviewStep
-            kbId={kbId}
-            folderId={picker.folderId}
             tree={tree}
-            onBack={() => setTree(null)}
+            counts={counts}
+            uploading={uploading}
+            progress={progress}
+            finished={finished}
+            onBack={back}
             onClose={close}
+            onUpload={upload}
           />
         ) : (
           <>
             <DialogBody>
-              <DropZone mode={picker.mode} onPicked={(picked) => setTree(buildTree(picked))} />
+              <DropZone mode={picker.mode} onPicked={pickFiles} />
             </DialogBody>
             <DialogFooter>
               <Button size="sm" variant="outline" onClick={close}>
@@ -439,6 +259,4 @@ export function useKnowledgeUpload(kbId: number): {
       </DialogContent>
     </Dialog>
   );
-
-  return { requestUpload, portal };
 }

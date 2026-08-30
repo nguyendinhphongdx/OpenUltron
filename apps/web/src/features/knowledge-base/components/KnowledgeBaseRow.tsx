@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { TableCell, TableRow } from '@/components/ui/table';
+import { formatDate } from '@/lib/format';
 
 import type { KnowledgeBase } from '../types/knowledge-base.types';
 
@@ -23,9 +24,7 @@ export function KnowledgeBaseRow({ kb, embeddingModelName, onDelete, isDeleting 
         </Link>
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">{embeddingModelName}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">
-        {new Date(kb.updated_at).toLocaleDateString('vi-VN')}
-      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">{formatDate(kb.updated_at)}</TableCell>
       <TableCell className="text-right">
         <ConfirmDialog
           trigger={

@@ -33,6 +33,14 @@ class ValidationFailedError(UltronError):
     code = "validation.failed"
 
 
+class ConflictError(UltronError):
+    """Duplicate slug/name, hoặc quan hệ (assignment) đã tồn tại — vd tạo lại slug đã dùng, gán lại
+    KnowledgeBase/Tool đã gán cho Agent, delegate lại sub-agent đã delegate."""
+
+    status_code = 409
+    code = "resource.conflict"
+
+
 class DelegationCycleError(UltronError):
     """`AgentService._creates_cycle` phát hiện — tạo `AgentDelegation` sẽ tạo cycle."""
 

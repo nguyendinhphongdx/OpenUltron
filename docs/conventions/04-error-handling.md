@@ -45,6 +45,14 @@ class ValidationFailedError(UltronError):
     code = "validation.failed"
 
 
+class ConflictError(UltronError):
+    """Duplicate slug/name, hoặc quan hệ (assignment) đã tồn tại — vd tạo lại slug đã dùng, gán lại
+    KnowledgeBase/Tool đã gán cho Agent, delegate lại sub-agent đã delegate."""
+
+    status_code = 409
+    code = "resource.conflict"
+
+
 class DelegationCycleError(UltronError):
     """AgentService._creates_cycle phát hiện — tạo AgentDelegation sẽ tạo cycle."""
 
@@ -70,6 +78,7 @@ class ToolExecutionError(UltronError):
 |---|---|---|
 | `resource.not_found` | 404 | Get/update/delete entity không tồn tại (mọi module) |
 | `validation.failed` | 400 | Business validation (khác Pydantic schema validation — cái đó FastAPI tự trả 422) |
+| `resource.conflict` | 409 | Duplicate slug/name (model/agent/tool/knowledge_base/folder), hoặc quan hệ assignment đã tồn tại (agent-kb, agent-tool, agent delegation đã có) |
 | `agent.delegation_cycle` | 409 | `AgentService._creates_cycle` phát hiện cycle khi tạo `AgentDelegation` |
 | `agent.delegation_depth_exceeded` | 409 | Vượt `MAX_DELEGATION_DEPTH` khi orchestrator gọi sub-agent |
 | `model.provider_failed` | 502 | Gọi Gemini/OpenAI/Ollama/SGLang lỗi/timeout |
@@ -86,11 +95,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "error": {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "details": exc.details,
-                },
+                "status_code": exc.status_code,
+                "error": exc.code,
+                "message": exc.message,
+                "details": exc.details,
                 "timestamp": datetime.now(UTC).isoformat(),
                 "path": request.url.path,
             },
@@ -98,38 +106,48 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        # Giữ cho code cũ/3rd-party raise HTTPException trực tiếp vẫn có response nhất quán —
+        # Giữ cho code cũ/3rd-party raise HTTPException trực tiếp vẫn có response cùng shape —
         # code mới trong service PHẢI raise UltronError, không raise HTTPException.
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "error": {"code": "http.error", "message": exc.detail, "details": None},
+                "status_code": exc.status_code,
+                "error": exc.__class__.__name__,
+                "message": exc.detail,
                 "timestamp": datetime.now(UTC).isoformat(),
                 "path": request.url.path,
             },
         )
 ```
 
-Wire format JSON (đổi từ format cũ `{status_code, error, message, timestamp, path}` sang
-`{error: {code, message, details}, timestamp, path}` — nhất quán field `error.code` cho FE đọc):
+Wire format JSON — **shape thật đang chạy** (flat, `error` là string code/class name, không phải
+object lồng). Bản trước của tài liệu này mô tả shape lồng `{error: {code, message, details}}` như
+mục tiêu — đã KHÔNG implement đúng vậy có chủ đích: `apps/web/src/lib/api/errors.ts` đọc top-level
+`data.message`/status, đổi sang shape lồng ngay lúc thêm `UltronError` sẽ gãy FE đang chạy mà không
+sửa cùng lúc. Giữ nguyên flat shape này làm canonical — không tự đổi sang nested khi chưa có quyết
+định + sửa FE đồng bộ:
 
 ```json
 {
-  "error": {
-    "code": "agent.delegation_cycle",
-    "message": "Creating this delegation would create a cycle",
-    "details": { "agent_id": 3, "sub_agent_id": 1 }
-  },
+  "status_code": 409,
+  "error": "agent.delegation_cycle",
+  "message": "Creating this delegation would create a cycle",
+  "details": { "agent_id": 3, "sub_agent_id": 1 },
   "timestamp": "2026-08-23T10:00:00+00:00",
   "path": "/agents/3/delegations"
 }
 ```
 
+`error` là `exc.code` (`UltronError`) hoặc tên class HTTPException (`http.error`-style cũ) — FE có
+thể switch theo field này để phân biệt loại lỗi, `message` chỉ để hiển thị, có thể đổi câu chữ.
+
 ## `apps/web` đọc lỗi
 
-`src/lib/api/` có 1 hàm `parseApiError(response)` trả `{ code, message, details }` — service dùng
-hàm này thay vì tự parse `response.data` rời rạc mỗi service. Component/hook switch theo `code` khi
-cần UX khác nhau (ví dụ `validation.failed` → set lỗi lên field form; các code khác → toast chung).
+`src/lib/api/errors.ts` có `getApiErrorMessage(err)`/`getApiStatus(err)` đọc đúng shape flat ở trên
+(`data.message`, `response.status`) — service/hook dùng 2 hàm này thay vì tự parse `response.data`
+rời rạc. Cần phân biệt loại lỗi (vd `validation.failed` → set lỗi lên field form) → đọc thêm
+`data.error` (string code), không parse `data.message` (message có thể đổi câu chữ, `error` không
+đổi).
 
 ## Anti-pattern
 
@@ -148,5 +166,5 @@ cần UX khác nhau (ví dụ `validation.failed` → set lỗi lên field form;
       chưa migrate).
 - [ ] Code mới → đã thêm vào bảng "Bảng code hiện có" ở trên.
 - [ ] Response không leak traceback/internal path.
-- [ ] FE cần xử lý riêng theo lỗi → đọc `error.code`, không parse `error.message` (message có thể
-      đổi câu chữ, `code` không đổi).
+- [ ] FE cần xử lý riêng theo lỗi → đọc field `error` (code, top-level, không lồng), không parse
+      `message` (message có thể đổi câu chữ, `error` không đổi).

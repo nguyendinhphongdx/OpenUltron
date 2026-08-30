@@ -10,4 +10,5 @@ export {
 } from './hooks';
 export { ModelCatalogPanel } from './components/ModelCatalogPanel';
 export { NewModelView } from './components/NewModelView';
+export { ModelDetailView } from './components/ModelDetailView';
 export type * from './types/model.types';

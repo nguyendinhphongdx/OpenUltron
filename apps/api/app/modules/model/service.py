@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from fastapi import HTTPException, status
-
+from app.core.errors import ConflictError, ResourceNotFoundError
 from app.core.model_catalog import get_capabilities
 from app.modules.model.models import Model
 from app.modules.model.repository import ModelRepository
@@ -30,9 +29,7 @@ class ModelService:
 
     async def create(self, input: ModelCreate) -> ModelRead:
         if await self.repo.get_by_slug(input.slug) is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=f"Model slug '{input.slug}' đã tồn tại"
-            )
+            raise ConflictError(f"Model slug '{input.slug}' đã tồn tại")
         row = await self.repo.create(**input.model_dump())
         return model_to_read(row)
 
@@ -46,9 +43,7 @@ class ModelService:
     async def get_or_404(self, model_id: int) -> Model:
         row = await self.find(model_id)
         if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"Model {model_id} không tồn tại"
-            )
+            raise ResourceNotFoundError("Model", model_id)
         return row
 
     async def get(self, model_id: int) -> ModelRead:

@@ -1,16 +1,6 @@
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
-
-
-class ChatRequest(BaseModel):
-    content: str
-
-
-class ApprovalRequest(BaseModel):
-    """Duyệt/từ chối 1 tool call đang chờ (approval gate, ADR-0014)."""
-
-    decision: Literal["approve", "reject"]
 
 
 class AgUiRunRequest(BaseModel):

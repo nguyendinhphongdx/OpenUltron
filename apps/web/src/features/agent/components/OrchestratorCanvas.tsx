@@ -15,16 +15,17 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Workflow } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { useModels } from '@/features/model/hooks';
-import { agentService } from '../services/agent.service';
+import { useAddDelegation } from '../hooks/useAddDelegation';
 import { useAgents } from '../hooks/useAgents';
 import { orchestratorTreeQueryKey, useOrchestratorTree } from '../hooks/useOrchestratorTree';
+import { useRemoveDelegation } from '../hooks/useRemoveDelegation';
 import type { Agent, OrchestratorTreeNode } from '../types/agent.types';
 
 const COL_WIDTH = 200;
@@ -136,21 +137,11 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
   );
   const queryClient = useQueryClient();
 
-  const addDelegation = useMutation({
-    mutationFn: ({ orchestratorId, subAgentId }: { orchestratorId: number; subAgentId: number }) =>
-      agentService.addDelegation(orchestratorId, subAgentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: orchestratorTreeQueryKey(rootAgentId) });
-    },
-  });
-
-  const removeDelegation = useMutation({
-    mutationFn: ({ orchestratorId, subAgentId }: { orchestratorId: number; subAgentId: number }) =>
-      agentService.removeDelegation(orchestratorId, subAgentId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: orchestratorTreeQueryKey(rootAgentId) });
-    },
-  });
+  // `useAddDelegation` chỉ invalidate `subAgentsQueryKey` (đủ cho `DelegationManager`) — canvas
+  // cần thêm invalidate `orchestratorTreeQueryKey` để re-layout graph, làm ở `onSuccess` per-call
+  // bên dưới thay vì sửa hook dùng chung.
+  const addDelegation = useAddDelegation(selectedAgentId ?? -1);
+  const removeDelegation = useRemoveDelegation(rootAgentId);
 
   const modelLabel = (modelId: number) =>
     models?.find((m) => m.id === modelId)?.slug ?? `model #${modelId}`;
@@ -261,7 +252,13 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
                   onChange={(e) => {
                     const subAgentId = Number(e.target.value);
                     if (subAgentId && selectedAgentId) {
-                      addDelegation.mutate({ orchestratorId: selectedAgentId, subAgentId });
+                      addDelegation.mutate(subAgentId, {
+                        onSuccess: () => {
+                          queryClient.invalidateQueries({
+                            queryKey: orchestratorTreeQueryKey(rootAgentId),
+                          });
+                        },
+                      });
                     }
                     e.target.value = '';
                   }}

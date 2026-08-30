@@ -24,10 +24,12 @@ export {
   useFileChunks,
   fileChunksQueryKey,
   useSearchFiles,
+  useKnowledgeUpload,
 } from './hooks';
 export { useFile, fileQueryKey } from './hooks/useFile';
 export { useFolder, folderQueryKey } from './hooks/useFolder';
 export { KnowledgeBaseForm } from './components/KnowledgeBaseForm';
+export { NewKnowledgeBaseView } from './components/NewKnowledgeBaseView';
 export { KnowledgeBaseListView } from './components/KnowledgeBaseListView';
 export { KnowledgeBaseDetailShell } from './components/KnowledgeBaseDetailShell';
 export { KnowledgeBaseFilesView } from './components/KnowledgeBaseFilesView';
@@ -37,6 +39,7 @@ export { KnowledgeSearchView } from './components/KnowledgeSearchView';
 export { ChunkAdder } from './components/ChunkAdder';
 export { KnowledgeSearchPanel } from './components/KnowledgeSearchPanel';
 export { DriveList } from './components/DriveList';
+export { KnowledgeUploadDialog } from './components/KnowledgeUpload';
 export { FileStatusBadge } from './components/FileStatusBadge';
 export { KnowledgeMetrics } from './components/KnowledgeMetrics';
 export type * from './types/knowledge-base.types';

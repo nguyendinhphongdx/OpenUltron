@@ -9,7 +9,7 @@
 | Ngôn ngữ | Variable/function | Class/type | Constant | File |
 |---|---|---|---|---|
 | **Python** (`apps/api`) | `snake_case` | `PascalCase` | `UPPER_SNAKE_CASE` | `snake_case.py` |
-| **TypeScript** (`apps/web`) | `camelCase` | `PascalCase` | `UPPER_SNAKE_CASE` | `kebab-case.ts` (component `PascalCase.tsx` — exception) |
+| **TypeScript** (`apps/web`) | `camelCase` | `PascalCase` | `UPPER_SNAKE_CASE` | `kebab-case.ts` (component `PascalCase.tsx`, hook `camelCase.ts` — 2 exception) |
 | **SQL** (SQLAlchemy model/migration) | `snake_case` (column) | `PascalCase` (class) | — | `snake_case` (migration file do alembic tự đặt) |
 | **Env var** | `UPPER_SNAKE_CASE` | — | — | — |
 
@@ -66,8 +66,12 @@ type Provider = 'ollama' | 'gemini' | 'openai' | 'sglang';
 // Component — PascalCase, file PascalCase.tsx (exception duy nhất)
 function AgentCard({ agent }: Props) { ... }   // file: AgentCard.tsx
 
-// Hook/service/util — camelCase code, kebab-case file
-function useAgentList() { ... }        // file: use-agent-list.ts
+// Service/util — camelCase code, kebab-case file
+function fetchAgentList() { ... }      // file: agent.service.ts
+
+// Hook — camelCase code, camelCase file (exception — khớp code thật 100% file hook hiện có,
+// đổi hướng ngược lại so với bản convention gốc dự định kebab-case; rename hàng loạt không đáng)
+function useAgentList() { ... }        // file: useAgentList.ts
 ```
 
 ## Domain glossary
@@ -91,6 +95,14 @@ không đổi 1 chỗ rồi để lệch):
 > phía provider, ví dụ `"gpt-4o"`) — khác với khái niệm chung "`<entity>_id`" (khoá chính của bảng
 > `models` là `id`, không phải `model_id`). Không tự sửa field `model_id` thành `provider_model_id`
 > hay tương tự mà chưa hỏi — tên này đã cố định trong code + FE type hiện tại.
+
+## Ngoại lệ — field khớp external wire protocol
+
+`apps/api/app/modules/chat/schemas.py::AgUiRunRequest` giữ field `camelCase` (`threadId`, `runId`,
+`forwardedProps`) — KHÔNG phải lỗi mix casing. Field phải khớp nguyên văn shape `RunAgentInput` của
+`@ag-ui/client` (ADR-0019) — đổi sang `snake_case` sẽ gãy parse phía FE. Ngoại lệ chỉ áp dụng cho
+schema đọc thẳng payload 1 wire protocol ngoài do bên thứ 3 định nghĩa; KHÔNG áp dụng cho response
+Ultron tự định nghĩa (response vẫn `snake_case` như "Wire format" ở trên).
 
 ## Abbreviation
 

@@ -4,6 +4,7 @@ import { BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { formatDate } from '@/lib/format';
 
 import type { KnowledgeBase } from '../types/knowledge-base.types';
 
@@ -29,7 +30,7 @@ export function KnowledgeBaseCard({ kb, embeddingModelName, onDelete, isDeleting
         </p>
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span className="truncate">{embeddingModelName}</span>
-          <span>{new Date(kb.updated_at).toLocaleDateString('vi-VN')}</span>
+          <span>{formatDate(kb.updated_at)}</span>
         </div>
       </Link>
       <ConfirmDialog

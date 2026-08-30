@@ -24,7 +24,12 @@ voice agent không tách thành flow riêng.
 - Giữ `ChatService`/LangGraph hiện tại là internal execution trong giai đoạn đầu; thêm adapter
   endpoint `POST /conversations/{conversation_id}/chat/agui` để map event nội bộ sang AG-UI.
 - Không xoá endpoint SSE cũ ngay. `/chat` vẫn là compatibility path cho test/client cũ; UI chính
-  sẽ chuyển sang `/chat/agui`.
+  sẽ chuyển sang `/chat/agui`. **Cập nhật 2026-08-30**: `apps/web` đã migrate hoàn toàn sang
+  `/chat/agui` (xác nhận 0 call site còn gọi `/chat`/`/chat/approve`), route + schema
+  (`ChatRequest`/`ApprovalRequest`) tương ứng đã xoá khỏi `chat/router.py`/`chat/schemas.py` —
+  compatibility path coi như hết nhiệm vụ, không giữ vô thời hạn (đúng điều kiện xoá nêu ở
+  [10-module-completeness.md](../conventions/10-module-completeness.md)). `ChatService.send`/
+  `approve` (method Python) vẫn giữ nguyên, chỉ mất route HTTP thừa.
 - AG-UI event subset bắt buộc giai đoạn đầu:
   - `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`
   - `TEXT_MESSAGE_START`, `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`
@@ -41,7 +46,8 @@ voice agent không tách thành flow riêng.
 - ✅ Có đường thay LangGraph/assistant runtime sau này qua adapter, không đập toàn bộ UI.
 - ⚠️ Thêm dependency mới ở `apps/web`; cần theo dõi API vì `@assistant-ui/react-ag-ui` còn
   experimental.
-- ⚠️ Giai đoạn đầu tồn tại song song SSE cũ và AG-UI endpoint mới.
+- ⚠️ ~~Giai đoạn đầu tồn tại song song SSE cũ và AG-UI endpoint mới.~~ Đã hết, xem cập nhật
+  2026-08-30 ở mục Decision — chỉ còn `/chat/agui`.
 - ⚠️ Approval/tool trace mới chỉ map tối thiểu; trace persistence và orchestrator v2 vẫn là nợ lớn.
 
 ## Alternatives considered

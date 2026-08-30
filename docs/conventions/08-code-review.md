@@ -11,8 +11,10 @@ Khác với "Self-check trước khi xong" ở từng convention doc ([01](01-ba
 
 ## Cách dùng
 
-1. `git status`/`git diff` xem thay đổi thật.
-2. Soát đủ 9 nhóm dưới, map mỗi finding vào severity 🔴/🟡/🟢.
+1. `git status`/`git diff` xem thay đổi thật (review diff — `code-reviewer`) hoặc đọc toàn bộ
+   `apps/api/app/modules/<name>/**` + `apps/web/src/features/<name>/**` (audit toàn module — skill
+   `module-review`, xem nhóm 10).
+2. Soát đủ 10 nhóm dưới, map mỗi finding vào severity 🔴/🟡/🟢.
 3. Output: `file:line — issue — fix`, nhóm theo severity, nặng nhất trước.
 
 ## Checklist (9 nhóm)
@@ -84,10 +86,27 @@ Khác với "Self-check trước khi xong" ở từng convention doc ([01](01-ba
 - [ ] Conventional Commits, không dead code/block comment-out.
 - [ ] `import openjarvis` không tồn tại ở `apps/api/app` (rule 1).
 
+### 10. Module completeness & modularity
+
+> Dùng khi diff động tới phần lớn 1 module (không chỉ sửa nhỏ), hoặc khi audit toàn diện 1
+> feature/module hiện có (skill `module-review` — không chỉ diff mới). Rubric đầy đủ ở
+> [10-module-completeness.md](10-module-completeness.md), không lặp lại ở đây.
+
+- [ ] Flow end-to-end đúng — trace 1 request thật qua toàn bộ chain (router→service→...→response
+      BE; service→hook→component FE), không có đoạn gãy/mồ côi (hàm gọi sai tên, import thiếu).
+- [ ] Không còn route/endpoint/hook/component/schema của cách làm CŨ sau khi đã thay bằng cách làm
+      MỚI (dead code) — trừ khi có ghi rõ lý do + điều kiện xoá (compatibility layer chủ đích).
+- [ ] Có `docs/features/<slug>.md`/ADR/domain doc tương ứng, khớp trạng thái code thật.
+- [ ] Pattern nhất quán với module cùng loại đã có (không tự bịa cấu trúc khác cho cùng 1 loại vấn
+      đề); nếu có registry mới — đúng ngưỡng + shape ở mục "Modular/swappable component"
+      ([01-backend-fastapi.md](01-backend-fastapi.md)).
+- [ ] Mở rộng thêm 1 biến thể cùng loại (provider/tool kind/feature tương tự) chỉ cần 1
+      class/file mới + đăng ký, không phải sửa nhiều call site không liên quan.
+
 ## Severity
 
 | Mức | Gồm |
 |---|---|
 | 🔴 **Blocker** (phải sửa) | Security, error handling sai (raise HTTPException/leak trace), scope creep (multi-tenant/vượt scope), thiếu ADR cho quyết định kiến trúc thật |
-| 🟡 **Warning** (nên sửa) | Lệch convention layering/naming, thiếu test, thiếu log field |
+| 🟡 **Warning** (nên sửa) | Lệch convention layering/naming, thiếu test, thiếu log field, dead code không rõ lý do giữ lại (nhóm 10), tài liệu lệch code thật |
 | 🟢 **Nit** (tùy chọn) | Style/format (ruff/prettier lo), tên biến chưa tối ưu |

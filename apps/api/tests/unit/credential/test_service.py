@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 
 from app.core import crypto
+from app.core.errors import ResourceNotFoundError, ValidationFailedError
 from app.modules.credential.models import Credential
 from app.modules.credential.schemas import CredentialUpsert
 from app.modules.credential.service import CredentialService, _mask_key
@@ -80,7 +80,7 @@ async def test_upsert_invalid_key_sets_is_valid_false_not_raise(
 @pytest.mark.asyncio
 async def test_upsert_unsupported_provider_rejected() -> None:
     service = CredentialService(FakeRepository())
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationFailedError) as exc_info:
         await service.upsert("ollama", CredentialUpsert(api_key="irrelevant"))
     assert exc_info.value.status_code == 400
 
@@ -137,7 +137,7 @@ async def test_get_decrypted_key_returns_none_when_absent() -> None:
 @pytest.mark.asyncio
 async def test_remove_missing_provider_404() -> None:
     service = CredentialService(FakeRepository())
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ResourceNotFoundError) as exc_info:
         await service.remove("gemini")
     assert exc_info.value.status_code == 404
 

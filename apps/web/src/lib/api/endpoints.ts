@@ -9,7 +9,6 @@ export const endpoints = {
     create: '/conversations',
     byId: (id: number) => `/conversations/${id}`,
     messages: (id: number) => `/conversations/${id}/messages`,
-    chat: (id: number) => `/conversations/${id}/chat`,
     chatAgui: (id: number) => `/conversations/${id}/chat/agui`,
   },
   agents: {

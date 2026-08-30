@@ -1,6 +1,7 @@
 # Feature: Unified Agent Stream Runtime
 
-Status: in-progress
+Status: done (2026-08-30) — mọi acceptance criteria đã đạt, endpoint cũ đã xoá. Voice chưa refactor
+chung `AgentRuntime` (đúng Non-goals đã ghi) — theo dõi ở roadmap mục riêng.
 
 ## Vấn đề / động lực
 
@@ -25,7 +26,10 @@ stream chuẩn, tool trace rõ, approval first-class, voice chỉ là input moda
 
 - Chưa refactor voice chạy chung `AgentRuntime` trong feature này; roadmap đã có epic riêng.
 - Chưa thay orchestrator v2/routing policy/edge contract; roadmap đã có epic riêng.
-- Chưa xoá endpoint stream cũ; chỉ thêm endpoint AG-UI mới và chuyển UI chính sang dùng endpoint mới.
+- ~~Chưa xoá endpoint stream cũ; chỉ thêm endpoint AG-UI mới và chuyển UI chính sang dùng endpoint
+  mới.~~ **Cập nhật 2026-08-30**: `apps/web` đã migrate hoàn toàn sang `/chat/agui`, endpoint
+  `/chat`+`/chat/approve` cũ đã xoá khỏi `chat/router.py` (0 call site FE còn dùng) — trả lời luôn
+  câu hỏi mở bên dưới.
 - Chưa persist đầy đủ `tool_calls`/trace DB; chỉ chuẩn hoá event stream để UI hiển thị đúng hơn.
 
 ## Thiết kế
@@ -51,17 +55,19 @@ stream chuẩn, tool trace rõ, approval first-class, voice chỉ là input moda
 
 ## Câu hỏi mở
 
-- Có cần bỏ hoàn toàn endpoint SSE cũ sau khi AG-UI ổn định không?
+- ~~Có cần bỏ hoàn toàn endpoint SSE cũ sau khi AG-UI ổn định không?~~ **Trả lời 2026-08-30**: Có —
+  đã xoá (0 call site FE còn dùng, xem cập nhật ở Non-goals).
 - Nên expose approval qua projection tool approval mặc định của assistant-ui hay giữ UI interrupt
   riêng cho quyết định có argument dài?
 - Voice realtime nên phát AG-UI events trực tiếp qua WebSocket hay qua adapter bridge riêng?
 
 ## Acceptance criteria
 
-- [ ] `apps/web` gửi message qua assistant-ui runtime, không còn dùng hook tự parse SSE trong màn
+- [x] `apps/web` gửi message qua assistant-ui runtime, không còn dùng hook tự parse SSE trong màn
       chat chính.
-- [ ] Backend endpoint AG-UI phát event hợp lệ với `@ag-ui/core` parser (`HttpAgent` đọc được).
-- [ ] Token text vẫn stream tăng dần trong UI.
-- [ ] Tool start/end và approval gate vẫn hiển thị được trong UI.
-- [ ] Endpoint cũ `/chat` vẫn pass test hiện có trong giai đoạn migrate.
-- [ ] `pnpm --filter @ultron/web typecheck && pnpm --filter @ultron/web build` xanh.
+- [x] Backend endpoint AG-UI phát event hợp lệ với `@ag-ui/core` parser (`HttpAgent` đọc được).
+- [x] Token text vẫn stream tăng dần trong UI.
+- [x] Tool start/end và approval gate vẫn hiển thị được trong UI.
+- [x] ~~Endpoint cũ `/chat` vẫn pass test hiện có trong giai đoạn migrate.~~ Migrate xong, endpoint
+      cũ đã xoá thay vì giữ pass test song song (2026-08-30).
+- [x] `pnpm --filter @ultron/web typecheck && pnpm --filter @ultron/web build` xanh.

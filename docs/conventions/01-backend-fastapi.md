@@ -27,9 +27,9 @@
 - **Không tự thêm layer/indirection mới** (ví dụ 1 "manager" đứng giữa router và service, hoặc
   service gọi qua 1 interface trong khi chỉ có 1 implementation) — router → service → repository
   là đủ tầng cho quy mô này (xem "Folder layout" dưới), không thêm tầng thứ 4.
-- **Function/method nên đọc hiểu trong 1 lần đọc** — không có rule cứng đếm dòng, nhưng service
-  hiện tại dài nhất là 257 dòng (`knowledge_base/service.py`) và đa số 50-140 dòng; method dài hơn
-  ~40-50 dòng hoặc lồng `if` quá 3 cấp là dấu hiệu nên tách hàm con, không phải thêm class.
+- **Function/method nên đọc hiểu trong 1 lần đọc** — không có rule cứng đếm dòng (số dòng service
+  dài nhất thay đổi theo thời gian, không chốt con số cụ thể ở đây để tránh lại lỗi thời); method
+  dài hơn ~40-50 dòng hoặc lồng `if` quá 3 cấp là dấu hiệu nên tách hàm con, không phải thêm class.
 - **Không viết code "phòng hờ mở rộng"** (tham số chưa ai gọi, field chưa ai dùng, hook điểm mở rộng
   chưa có ca dùng thật) — AGENTS.md rule 2 (không vượt scope). Cần mở rộng thật thì sửa lúc đó,
   không trả giá phức tạp trước khi cần.
@@ -86,6 +86,16 @@ apps/api/
 đơn giản không có business rule gì thêm, `service.py` vẫn tồn tại (có thể "mỏng", chỉ gọi thẳng
 `repository`) để giữ layering nhất quán — không bỏ layer service "vì lúc này chưa cần gì", tránh
 phải đổi chữ ký gọi ở router khi sau này thêm logic thật.
+
+**Ngoại lệ đã biết** (không sở hữu bảng DB riêng → không cần `models.py`/`repository.py`, có ADR
+giải thích rõ — KHÔNG phải thiếu sót khi review):
+
+| Module | Thiếu | Lý do |
+|---|---|---|
+| `chat/` | `models.py`, `repository.py` | LangGraph thật, chạy trên `conversation`/`message` đã có sẵn — không có bảng riêng ([ADR-0005](../adr/0005-langgraph-agent-execution.md)) |
+| `ollama/` | `models.py`, `repository.py` | Chỉ proxy Ollama local (catalog + pull SSE), không có state DB riêng ([ADR-0011](../adr/0011-ollama-pull-sse-streaming.md)) |
+| `voice/` | `models.py`, `repository.py`, `schemas.py` (thay bằng `contracts.py`) | Relay WebSocket, không sở hữu bảng riêng (dùng `message` để lưu transcript); `contracts.py` chứa dataclass + `Protocol` giao thức, không phải Pydantic response schema thường ([ADR-0009](../adr/0009-live-voice-gemini-live-websocket-relay.md)) |
+| `connector/` | `models.py`, `repository.py`, `service.py`, `router.py` | Chỉ `adapter.py` + implementation (vd `github.py`) — mount qua `credential`/`tool`, không có route/CRUD riêng ([ADR-0015](../adr/0015-connector-adapter-abstraction.md)) |
 
 ## Router (~ Controller)
 
@@ -144,6 +154,27 @@ phải đổi chữ ký gọi ở router khi sau này thêm logic thật.
 - Migration: `uv run alembic revision --autogenerate -m "<desc>"`, `uv run alembic upgrade head`.
 - Cột JSON (`metadata`, `arguments`, `result`) dùng `JSONB` (Postgres native, KHÔNG cần tự `json.dumps`/`loads` như SQLite).
 - Cột embedding (RAG) dùng `Vector` (`pgvector.sqlalchemy.Vector`).
+
+## Modular/swappable component (Protocol + registry)
+
+Pattern chính thức khi 1 concern có nhiều biến thể cần thay/thêm được độc lập, không sửa call site
+cũ — đã áp dụng 3 lần trong code thật, formalize lại đây để module mới cùng dạng theo đúng khuôn,
+không tự nghĩ cách khác:
+
+- **Khi nào dùng**: đã đạt ngưỡng "≥2 cài đặt thật + if/elif lặp ở ≥2 call site" (xem "Nguyên tắc
+  thiết kế" ở đầu file) — KHÔNG dựng registry cho 1 implementation "phòng hờ sau có thêm".
+- **Cấu trúc chuẩn**: 1 `Protocol` định nghĩa method chung (`app/core/provider_adapter.py::ProviderAdapter`,
+  `app/modules/tool/builder.py::ToolBuilder`, `app/modules/connector/adapter.py::ConnectorAdapter`)
+  + 1 `dict` registry tĩnh module-level map key (string cố định, vd `provider`/`kind`/`slug`) →
+  implementation. KHÔNG dùng plugin discovery/DI container/entry_points.
+- **Thêm 1 implementation mới = 1 class implement `Protocol` + 1 dòng thêm vào registry dict** —
+  không sửa bất kỳ call site nào đang gọi qua registry (đây là điểm cốt lõi: "thay 1 linh kiện
+  không vỡ linh kiện khác").
+- **Call site luôn tra qua registry**, không if/elif rải rác so tên provider/kind ở nhiều nơi (đó là
+  chính lý do phải trừu tượng hoá — dồn hết logic chọn nhánh vào registry).
+- Ví dụ tham khảo khi thêm registry mới: đọc cả `provider_adapter.py` (ADR-0012) lẫn `tool/builder.py`
+  (ADR-0013) trước — 2 case có shape khác nhau (1 cái sync, 1 cái async nhận thêm `session`), chọn
+  shape khớp nhu cầu thật, không copy máy móc.
 
 ## Error handling
 

@@ -1,7 +1,7 @@
 import httpx
 import pytest
-from fastapi import HTTPException
 
+from app.core.errors import ModelProviderError
 from app.modules.ollama import service as service_module
 from app.modules.ollama.service import OllamaService
 
@@ -103,7 +103,7 @@ async def test_list_installed_network_error_raises_502(monkeypatch: pytest.Monke
     monkeypatch.setattr(service_module.httpx, "AsyncClient", _FakeAsyncClient)
     _FakeAsyncClient.connect_error = True
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ModelProviderError) as exc_info:
         await OllamaService().list_installed()
     assert exc_info.value.status_code == 502
 

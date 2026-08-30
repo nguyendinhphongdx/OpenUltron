@@ -76,12 +76,22 @@ tục copy-paste thêm route mới theo pattern cũ.
 
 ## Feature-folder layering (`src/features/<name>/`)
 
-`types/ → services/ → hooks/ → components/`, mỗi tầng chỉ import tầng dưới nó, có barrel
-`index.ts`. Xem `src/features/conversation/` làm mẫu.
+`types/ → services/ → hooks/ → components/`, mỗi tầng chỉ import tầng dưới nó. **Mỗi tầng có barrel
+`index.ts` riêng** (không chỉ 1 barrel gốc `features/<name>/index.ts`) — feature mới phải export đủ
+4 barrel (`types/index.ts`, `services/index.ts`, `hooks/index.ts`, `components/index.ts`), import từ
+ngoài feature luôn qua barrel, không import thẳng file lẻ xuyên tầng (`from '../services/x.service'`
+ở `components/`). Xem `src/features/conversation/` làm mẫu đầy đủ nhất hiện có.
 
 - `types/` — type request/response khớp `apps/api/app/modules/**/schemas.py` (field giữ
   `snake_case`, xem [`05-naming.md`](05-naming.md)). Đổi shape BE → sửa ở đây trước.
 - `services/` — gọi `apiClient` (từ `@/lib/api`), map response, **không import React, không hook**.
+  Đây là tầng **DUY NHẤT** biết chi tiết integration bên ngoài (REST thường/SSE/AG-UI, endpoint cụ
+  thể) — `hooks/`/`components/` không được biết transport bên dưới, chỉ gọi qua service/hook. Ví dụ
+  thật: `apps/api` giữ song song route `/chat` (cũ) + `/chat/agui` (mới, ADR-0019) trong lúc
+  migrate — `apps/web` swap được từ SSE tự parse sang AG-UI runtime chỉ bằng cách đổi
+  `services/conversation.service.ts`/`ConversationRuntime.tsx` (nơi duy nhất biết endpoint), không
+  phải sửa `MessageThread.tsx`/`ChatMessage.tsx` hay bất kỳ component hiển thị nào — đúng tinh thần
+  "đổi 1 linh kiện không vỡ linh kiện khác".
 - `hooks/` — `useQuery`/`useMutation` wrap service. 1 hook = 1 trách nhiệm (`useAgent`,
   `useDeleteAgent`) — không gộp nhiều action không liên quan vào 1 hook lớn.
 - `components/` — chia 2 loại, đừng trộn:
@@ -160,8 +170,8 @@ Không liệt kê lại ở đây.
       ở `app/`?
 - [ ] View/component mới đặt đúng `features/<name>/components/`, đúng suffix `View` nếu là
       route-level?
-- [ ] Feature-folder layering đúng thứ tự import (`types → services → hooks → components`), có
-      barrel `index.ts`?
+- [ ] Feature-folder layering đúng thứ tự import (`types → services → hooks → components`), mỗi
+      tầng có barrel `index.ts` riêng, import từ ngoài feature qua barrel (không xuyên tầng)?
 - [ ] Type trong `types/` khớp `apps/api/app/modules/**/schemas.py` thật (không đoán/nhớ nhầm)?
 - [ ] Không có business logic/fetch trực tiếp trong `components/`/`hooks/` (nằm ở `services/`)?
 - [ ] Primitive UI mới dùng shadcn (generate qua `pnpm dlx shadcn@latest add`), không tự viết tay?

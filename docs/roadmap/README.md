@@ -268,6 +268,59 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
   - **Verify thật (không mock)**: tạo Model (ollama qwen3.5:4b + nomic-embed-text) → tạo Agent tham chiếu model_id → set `AppSettings.default_model_id` → chat qua conversation không gán agent (fallback settings) trả đúng response → tạo KB + 2 chunk thật (embedding qua Ollama) → search phân biệt đúng theo semantic (chunk liên quan score 0.22, chunk không liên quan score 0.60) → gán Tool + KB vào 1 agent cụ thể qua API
   - **Đã verify trước đó**: orchestrator (`boss-agent`) + sub-agent (`echo-agent`) qua `AgentDelegation`, orchestrator gọi đúng sub-agent qua LangGraph tool (không ổn định 100% — model nhỏ đôi khi không gọi tool dù system prompt yêu cầu, ghi nhận là giới hạn thật)
 - [x] `apps/web` — Next.js 15 + React 19 + Tailwind v4, theo convention [`docs/conventions/02-frontend-nextjs.md`](../conventions/02-frontend-nextjs.md). Feature `conversation`/`agent`/`model`/`tool`/`knowledge-base`/`settings` (UI CRUD phẳng: list/form), layering `types→services→hooks→components`, gọi thẳng `apps/api`. `pnpm build`/`typecheck`/`dev` đã verify chạy được (chưa nối `apps/api` thật lúc dev — cần `uv run fastapi dev` song song)
+- [x] **Harness-hoá convention** (2026-08-30) — user phát hiện code bắt đầu chắp vá dù convention đã
+      viết đầy đủ; audit thực tế (2 agent song song `apps/web`/`apps/api` + đọc trực tiếp toàn bộ
+      pipeline chat/AG-UI) xác nhận root cause: **enforcement viết ra nhưng không chạy thật**
+      (`.pre-commit-config.yaml` có sẵn nhưng `.git/hooks/pre-commit` chưa từng cài — bằng chứng cụ
+      thể: bug gãy `pnpm typecheck` ở `ConversationRuntime.tsx` — `toThreadMessage` gọi sai tên hàm
+      thật `toThreadMessageLike` — lọt qua không ai biết, đã fix). Đã làm:
+      - Viết `.git/hooks/pre-commit` (bash tay, thay thế CLI `pre-commit` — máy dev không cài được
+        qua `uv tool`/`pip` do lỗi SSL cert với PyPI) chạy đúng check trong
+        `.pre-commit-config.yaml`. **Còn 1 bước tay user cần làm**: `chmod +x .git/hooks/pre-commit`
+        (macOS sandbox chặn `chmod` từ phiên Claude Code, không tự làm được).
+      - Quyết định thiết kế harness (ghi ở `AGENTS.md` mục Harness): check tự động (script/CI) chỉ
+        cho invariant cấu trúc/topology ổn định (như `check_module_boundaries.py`) — KHÔNG viết
+        script riêng cho từng rule pattern cụ thể (không scale). Rule pattern/judgment (naming, doc
+        completeness, modularity...) → skill mới **`module-review`** (`/module-review <module>`,
+        subagent `module-reviewer`) audit toàn diện 1 feature/module FE→BE theo rubric mới
+        [`docs/conventions/10-module-completeness.md`](../conventions/10-module-completeness.md) —
+        khác `code-reviewer` (chỉ review diff). Smoke-test trên module `conversation` đã bắt được
+        3 finding thật (doc-drift ADR-0019, barrel thiếu, bug pagination message — xem dưới).
+      - Convention doc sửa lệch thực tế: `05-naming.md` (hook file `camelCase.ts` — sửa khớp code
+        thật thay vì rename 52 file), `01-backend-fastapi.md` (bảng ngoại lệ module không đủ 4 file
+        chuẩn — `chat`/`ollama`/`voice`/`connector`; mục mới "Modular/swappable component" formalize
+        pattern Protocol+registry), `02-frontend-nextjs.md` (barrel `index.ts` riêng mỗi tầng; mục
+        "services/ là tầng duy nhất biết chi tiết integration"), `04-error-handling.md` (sửa "Wire
+        format JSON" khớp shape flat thật đang chạy, không phải shape lồng aspirational cũ).
+      - Migrate 43 điểm `raise HTTPException` → `UltronError`/subclass ở 9 module `apps/api` (thêm
+        class `ConflictError` mới, 409, dùng chung mọi case duplicate/conflict thay vì 1 class/domain).
+      - Xoá route `/chat` + `/chat/approve` cũ (`apps/api/app/modules/chat/router.py`) — FE đã
+        migrate hoàn toàn sang `/chat/agui` (ADR-0019), cập nhật lại ADR-0019 +
+        [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md)
+        (status → done) cho khớp thực tế (trước đó doc ghi "chưa xoá" trong khi code đã xoá).
+      - `apps/web`: fix 5 `page.tsx` vi phạm rule "chỉ render View" (`models/[id]`, `tools/[id]`,
+        `orchestrators`, `agents/new`, `knowledge-bases/new`), thêm barrel `index.ts` thiếu ở nhiều
+        feature (`agent`/`credential`/`knowledge-base`/`model`/`ollama`/`settings`/`tool`/`voice`/
+        `conversation`), tách `KnowledgeUpload` (component JSX lẫn trong file "hook") thành
+        `hooks/useKnowledgeUpload.ts` (state/mutation thuần) + `components/KnowledgeUpload.tsx`
+        (presentational), bỏ `useMutation` viết tay trùng logic ở `OrchestratorCanvas.tsx` (dùng lại
+        `useAddDelegation`/`useRemoveDelegation`), gom helper `src/lib/format.ts`.
+      - **Bug pagination phát hiện qua smoke-test, đã fix cùng ngày**: `useMessages` không truyền
+        `page_size` → hội thoại > 50 tin nhắn mất tin nhắn gần nhất khi tải lại trang (LLM context
+        vẫn đúng vì `ChatService.send` dùng `list_all()` không giới hạn — chỉ UI hiển thị thiếu).
+        Sửa: `useMessages.ts` fetch `page_size=200` (trần tối đa backend cho phép), tự phát hiện
+        `total_pages > 1` rồi refetch đúng trang CUỐI (tin nhắn gần nhất) thay vì luôn trang 1. Vẫn
+        còn giới hạn lý thuyết ở hội thoại > 200×200 tin nhắn (chưa cần infinite-scroll/cursor cho
+        quy mô 1 user hiện tại) — ghi rõ trong comment code, không phải fix triệt để bằng thiết kế
+        phân trang mới.
+      - **Nợ khác, chưa fix** (không thuộc phạm vi đợt này): thiếu integration test
+        `conversation`/`message`/`tool_call` (đã biết từ trước, xem mục dưới "testcontainers...
+        chưa làm"). `tool_call` router hiện không caller nào gọi (đúng scope hiện tại — persist
+        trace vẫn là nợ đã ghi ở ADR-0019 Consequences).
+      - Verify: `apps/api` — ruff/format/`check_module_boundaries.py`/pytest (88 passed) đều xanh;
+        `apps/web` — lint/typecheck/build đều xanh; `code-reviewer` review độc lập toàn diff (2
+        finding 🟡 tìm thấy, đã fix: presentational component vẫn lẫn trong file hook, 1 deep-import
+        xuyên feature bỏ qua barrel).
 
 ## Đang làm / tiếp theo
 

@@ -264,9 +264,7 @@ async def test_send_agui_maps_stream_to_ag_ui_events(monkeypatch: pytest.MonkeyP
 async def test_send_agui_maps_approval_to_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
     paused_state = FakeState(
         next_nodes=("HumanInTheLoopMiddleware.after_model",),
-        interrupt_value={
-            "action_requests": [{"name": "run-command", "args": {"command": "ls"}}]
-        },
+        interrupt_value={"action_requests": [{"name": "run-command", "args": {"command": "ls"}}]},
     )
 
     async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:

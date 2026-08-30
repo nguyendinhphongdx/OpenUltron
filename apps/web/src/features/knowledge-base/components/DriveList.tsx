@@ -34,9 +34,10 @@ import { useDeleteFile } from '../hooks/useDeleteFile';
 import { useDeleteFolder } from '../hooks/useDeleteFolder';
 import { useFiles } from '../hooks/useFiles';
 import { useFolders } from '../hooks/useFolders';
+import { useKnowledgeUpload } from '../hooks/useKnowledgeUpload';
 import type { KnowledgeFile, KnowledgeFolder } from '../types/knowledge-base.types';
 import { FileStatusBadge } from './FileStatusBadge';
-import { useKnowledgeUpload } from './KnowledgeUpload';
+import { KnowledgeUploadDialog } from './KnowledgeUpload';
 
 type UploadMode = 'file' | 'folder';
 
@@ -423,7 +424,7 @@ export function DriveList({ kbId }: { kbId: number }) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {upload.portal}
+      <KnowledgeUploadDialog {...upload} />
 
       {isEmpty && !creating ? (
         <EmptyState

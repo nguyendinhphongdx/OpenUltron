@@ -45,6 +45,7 @@ docs/
 | Logging/Observability (`apps/api`)     | [docs/conventions/07-logging-observability.md](docs/conventions/07-logging-observability.md) |
 | Review checklist (severity 🔴🟡🟢)     | [docs/conventions/08-code-review.md](docs/conventions/08-code-review.md) |
 | UI visual design (`apps/web`)          | [docs/conventions/09-ui-visual-design.md](docs/conventions/09-ui-visual-design.md) |
+| 1 feature/module đã "xong" thật chưa (audit toàn diện, không chỉ diff) | [docs/conventions/10-module-completeness.md](docs/conventions/10-module-completeness.md), skill `module-review` |
 | Quyết định kiến trúc / "tại sao chọn X"| [docs/adr/](docs/adr/)                                          |
 | Thiết kế tính năng mới / chốt scope trước khi code | [docs/features/](docs/features/) — viết bằng skill `feature-spec` / `/spec`, xem [docs/roadmap/README.md](docs/roadmap/README.md) mục "Tầm nhìn sản phẩm" trước |
 
@@ -71,6 +72,16 @@ docs/
    mình. Sửa 1 rule → sửa đúng 1 chỗ trong `docs/`, không phải lục từng file `.claude/agents/*.md`.
 5. **Không bao giờ commit secret** — `.env` đã gitignore, double-check staged.
 6. **Ultron là công cụ 1 người dùng** — không thêm multi-tenant/workspace/RBAC nếu chưa có ADR quyết định khác.
+
+## Setup (1 lần sau clone/checkout máy mới)
+
+```bash
+pre-commit install   # bắt buộc — thiếu bước này thì .pre-commit-config.yaml chỉ nằm chết trong repo,
+                      # không hook nào chạy (bug thật đã xảy ra: 1 commit gãy typecheck lọt qua vì
+                      # bước này chưa từng chạy). Nếu máy không cài được `pre-commit` CLI (lỗi mạng/SSL
+                      # với PyPI), fallback: copy logic check trong .pre-commit-config.yaml thành
+                      # .git/hooks/pre-commit (bash, +x) chạy trực tiếp — không phụ thuộc CLI ngoài.
+```
 
 ## Commands
 
@@ -100,8 +111,14 @@ session nào đang code:
   định kiến trúc → ADR trước. Soft nudge (không block), nhưng khiến rule 2/3 "dính" thay vì chỉ nằm
   trong file này chờ model tự nhớ.
 
-Thêm rule cứng mới → ưu tiên viết thành 1 check tự động (script/lint rule/CI job) thay vì chỉ thêm
-dòng vào file này.
+Thêm rule cứng mới → phân biệt 2 loại:
+- **Invariant cấu trúc/topology** (đúng/sai rõ ràng bằng máy, không cần ngữ cảnh — vd "service
+  không import repository module khác") → viết 1 script mới kiểu `check_module_boundaries.py`,
+  wire vào pre-commit + CI.
+- **Rule mang tính pattern/judgment** (naming, đã có doc chưa, pattern nhất quán chưa, code cũ đã
+  dọn chưa...) → **không** viết script riêng cho từng rule (dễ phình, không scale) — thêm vào
+  checklist skill `module-review`/`code-reviewer` ([08-code-review.md](docs/conventions/08-code-review.md)/
+  [10-module-completeness.md](docs/conventions/10-module-completeness.md)) thay vì code mới.
 
 ## Claude Code trong repo này (`.claude/`)
 
@@ -134,14 +151,20 @@ dòng vào file này.
   | `frontend-engineer` | Code `apps/web` (Next.js/React/shadcn) đúng [02-frontend-nextjs.md](docs/conventions/02-frontend-nextjs.md) | Same rule; không tự viết test suite (đó là `qa-engineer`) |
   | `qa-engineer` | Viết + **chạy thật** test theo Acceptance Criteria của spec (pytest backend, Vitest+Testing Library frontend) | Không sửa code sản phẩm ngoài phạm vi test, không tự relax AC |
   | `code-reviewer` | Review độc lập diff `apps/api`/`apps/web` sau khi engineer code xong (tự phân loại file, áp đúng checklist convention của app đó) | Review only, không tự sửa code |
+  | `module-reviewer` | Audit toàn diện 1 feature/module hiện có (FE→BE, không chỉ diff mới) theo rubric [10-module-completeness.md](docs/conventions/10-module-completeness.md) — flow đúng chưa, code cũ còn sót không, tài liệu khớp code chưa, pattern nhất quán chưa, dễ mở rộng không | Review only, không tự sửa code; khác `code-reviewer` ở chỗ audit toàn bộ trạng thái hiện tại, không cần có diff mới |
   | `adr-writer` | Soạn ADR đúng format khi có quyết định kiến trúc (rule 3) | Chỉ viết ADR, không quyết kiến trúc thay user |
 
-  Reviewer (`code-reviewer`) và implementer (`backend-engineer`/`frontend-engineer`) là 2 vai khác
-  nhau — implementer không tự review sâu, reviewer không tự sửa code. `qa-engineer` đảm bảo có
-  test/test xanh, khác việc reviewer kiểm convention — không thay thế nhau.
+  Reviewer (`code-reviewer`/`module-reviewer`) và implementer (`backend-engineer`/`frontend-engineer`)
+  là 2 vai khác nhau — implementer không tự review sâu, reviewer không tự sửa code. `qa-engineer`
+  đảm bảo có test/test xanh, khác việc reviewer kiểm convention — không thay thế nhau.
 - **Skill `feature-spec`** — scaffold `docs/features/<slug>.md` từ `docs/features/_template.md`
   trước khi code 1 feature không nhỏ (UI surface mới, đổi kiến trúc/lưu trữ) — đúng workflow
   "spec trước, code sau". `business-analyst` dùng skill này khi viết draft.
+- **Skill `module-review`** (`/module-review <tên feature/module>`) — giao `module-reviewer` audit
+  toàn diện 1 feature/module hiện có theo [10-module-completeness.md](docs/conventions/10-module-completeness.md).
+  Dùng khi: nghi ngờ 1 module cũ có code chết/lệch convention, trước khi mở rộng thêm 1 module đã
+  tồn tại lâu, hoặc định kỳ audit sức khoẻ codebase — khác `/dev` (build feature mới từ đầu) và
+  `code-reviewer` (chỉ review diff mới).
 - **Slash command `/dev <mô tả task>`** — chạy full flow business-analyst → solution-architect →
   backend/frontend-engineer → qa-engineer → `code-reviewer`, có APPROVE gate giữa mỗi bước. Task
   nhỏ thì tự bỏ qua flow này (xem nội dung command).

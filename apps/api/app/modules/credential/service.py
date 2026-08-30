@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import HTTPException, status
-
 from app.core import crypto
+from app.core.errors import ResourceNotFoundError, ValidationFailedError
 from app.core.logging import logger
 from app.core.provider_adapter import CREDENTIAL_PROVIDERS, get_provider
 from app.modules.connector.adapter import CREDENTIAL_CONNECTORS, get_connector
@@ -36,13 +35,10 @@ class CredentialService:
 
     def _ensure_supported(self, provider: str) -> None:
         if provider not in CREDENTIAL_PROVIDERS and provider not in CREDENTIAL_CONNECTORS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Provider '{provider}' không được hỗ trợ credential — chỉ nhận "
-                    f"{sorted(CREDENTIAL_PROVIDERS | CREDENTIAL_CONNECTORS)} "
-                    "(ollama/sglang self-host, không cần key)"
-                ),
+            raise ValidationFailedError(
+                f"Provider '{provider}' không được hỗ trợ credential — chỉ nhận "
+                f"{sorted(CREDENTIAL_PROVIDERS | CREDENTIAL_CONNECTORS)} "
+                "(ollama/sglang self-host, không cần key)"
             )
 
     async def _verify(self, provider: str, api_key: str) -> bool:
@@ -60,10 +56,7 @@ class CredentialService:
     async def _get_or_404(self, provider: str) -> Credential:
         row = await self.repo.get_by_provider(provider)
         if row is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Chưa có credential cho provider '{provider}'",
-            )
+            raise ResourceNotFoundError("Credential", provider)
         return row
 
     async def upsert(self, provider: CredentialProvider, input: CredentialUpsert) -> CredentialRead:

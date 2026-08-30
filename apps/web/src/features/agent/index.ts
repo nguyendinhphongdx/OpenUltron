@@ -16,7 +16,9 @@ export {
 } from './hooks';
 export { AgentList } from './components/AgentList';
 export { AgentForm } from './components/AgentForm';
+export { NewAgentView } from './components/NewAgentView';
 export { AgentDetailView } from './components/AgentDetailView';
 export { DelegationManager } from './components/DelegationManager';
 export { OrchestratorCanvas } from './components/OrchestratorCanvas';
+export { OrchestratorListView } from './components/OrchestratorListView';
 export type * from './types/agent.types';

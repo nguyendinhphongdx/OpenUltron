@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { ENV } from '@/constants/env';
+import { conversationMessagesQueryKey } from '@/features/conversation';
 
 import type { VoiceServerEvent, VoiceSessionStatus, VoiceState, VoiceTranscriptLine } from '../types/voice.types';
 
@@ -158,7 +159,7 @@ export function useVoiceSession(conversationId: number) {
         } else if (payload.type === 'turn_complete') {
           // Transcript thật đã persist vào Message ở BE (flush lúc turn_complete) — invalidate
           // để MessageThread hiện đúng, rồi clear panel live (tránh hiện trùng 2 nơi).
-          queryClient.invalidateQueries({ queryKey: ['conversations', conversationId, 'messages'] });
+          queryClient.invalidateQueries({ queryKey: conversationMessagesQueryKey(conversationId) });
           setTranscript([]);
         }
       };

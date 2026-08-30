@@ -2,6 +2,7 @@
 
 import { Mic, MicOff } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import { useVoiceSession } from '../hooks/useVoiceSession';
@@ -49,21 +50,21 @@ export function VoicePanel({ conversationId }: { conversationId: number }) {
       )}
       {error && <p className="mx-auto max-w-3xl px-4 pt-3 text-sm text-destructive sm:px-6">{error}</p>}
       <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3 sm:px-6">
-        <button
+        <Button
           type="button"
           onClick={isActive ? stop : start}
           disabled={status === 'connecting'}
           aria-label={isActive ? 'Kết thúc voice session' : 'Bắt đầu voice session'}
+          variant={isActive ? 'destructive' : 'outline'}
+          size="lg"
           className={cn(
-            'flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm transition-colors',
-            isActive
-              ? 'border-destructive/15 bg-destructive/10 text-destructive hover:bg-destructive/15'
-              : 'border-border bg-white/72 text-muted-foreground hover:bg-white hover:text-foreground',
+            'rounded-full text-xs',
+            !isActive && 'bg-white/72 text-muted-foreground hover:bg-white hover:text-foreground',
           )}
         >
           {isActive ? <MicOff className="size-3.5" /> : <Mic className="size-3.5" />}
           {status === 'connecting' ? 'Đang kết nối…' : isActive ? 'Kết thúc voice' : 'Bắt đầu voice'}
-        </button>
+        </Button>
       </div>
     </div>
   );
