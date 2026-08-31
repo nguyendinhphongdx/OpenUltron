@@ -327,7 +327,9 @@ async def _execute_sandboxed_command(command: str, cwd: str | None) -> str:
 
 
 def _build_execute_code_tool(spec: ToolSpec) -> BaseTool:
-    async def _execute_code(code: str, language: str, cwd: str | None = None) -> str:
+    async def _execute_code(
+        code: str, language: Literal["python", "javascript"], cwd: str | None = None
+    ) -> str:
         return await _execute_sandboxed_code(code, language, cwd)
 
     return StructuredTool.from_function(
@@ -339,15 +341,15 @@ def _build_execute_code_tool(spec: ToolSpec) -> BaseTool:
     )
 
 
-async def _execute_sandboxed_code(code: str, language: str, cwd: str | None) -> str:
+async def _execute_sandboxed_code(
+    code: str, language: Literal["python", "javascript"], cwd: str | None
+) -> str:
     """Khác `_execute_sandboxed_command` — code ghi ra file tạm rồi chạy qua
     `create_subprocess_exec` (không qua shell) thay vì nhét thẳng vào 1 chuỗi lệnh shell, tránh
-    ký tự đặc biệt trong code (quote/backtick/$...) bị shell diễn giải sai."""
-    interpreter = _EXECUTE_CODE_INTERPRETERS.get(language)
-    if interpreter is None:
-        supported = ", ".join(_EXECUTE_CODE_INTERPRETERS)
-        return f"Ngôn ngữ '{language}' chưa được hỗ trợ — chỉ hỗ trợ: {supported}."
-    command, extension = interpreter
+    ký tự đặc biệt trong code (quote/backtick/$...) bị shell diễn giải sai. `language` đã được
+    `_ExecuteCodeArgs` (Pydantic `Literal`) validate trước khi tới đây — không cần tự check lại
+    giá trị lạ, mọi lời gọi qua tool thật đều đảm bảo có mặt trong `_EXECUTE_CODE_INTERPRETERS`."""
+    command, extension = _EXECUTE_CODE_INTERPRETERS[language]
 
     try:
         working_dir = resolve_safe_path(cwd or "")

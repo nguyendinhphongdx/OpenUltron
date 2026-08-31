@@ -115,21 +115,6 @@ async def test_execute_code_tool_runs_javascript(
 
 
 @pytest.mark.asyncio
-async def test_execute_sandboxed_code_rejects_unsupported_language(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Đi thẳng vào helper (không qua `tool.ainvoke`) — args_schema đã ràng buộc
-    # `Literal["python", "javascript"]` nên LangChain chặn "ruby" từ tầng validate trước khi tới
-    # được nhánh này; check này là lưới an toàn phòng `_EXECUTE_CODE_INTERPRETERS` lệch khỏi
-    # `_ExecuteCodeArgs.language` trong tương lai.
-    monkeypatch.setattr(builder_module, "resolve_safe_path", lambda p: tmp_path)
-
-    result = await builder_module._execute_sandboxed_code("puts 'hi'", "ruby", None)
-
-    assert "chưa được hỗ trợ" in result
-
-
-@pytest.mark.asyncio
 async def test_execute_code_tool_kills_process_on_timeout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

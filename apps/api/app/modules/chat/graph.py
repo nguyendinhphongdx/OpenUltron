@@ -87,12 +87,9 @@ async def run_sub_agent(
         t for t in sub_agent.tools if t.slug not in TOOLS_REQUIRING_APPROVAL and t.kind != "mcp"
     ]
     own_tools = await build_tools(safe_tools, session=session)
-    # Sub-agent KHÔNG surface citation (Non-goal v1, docs/features/kb-citation.md) — `sources` ở
-    # đây chỉ để khớp chữ ký `_build_kb_search_tool`, không có ai đọc lại list này sau khi
-    # `run_sub_agent` trả về text.
-    kb_tools = [
-        _build_kb_search_tool(kb, session=session, sources=[]) for kb in sub_agent.knowledge_bases
-    ]
+    # Sub-agent KHÔNG surface citation (Non-goal v1, docs/features/kb-citation.md) — `sources`
+    # mặc định `None`, tool trả text chunk trơn, không bọc `<source id="N">`.
+    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in sub_agent.knowledge_bases]
     executor = create_agent(
         chat_model,
         tools=[*own_tools, *nested_tools, *kb_tools],
@@ -112,7 +109,9 @@ def _truncate_snippet(content: str, max_len: int = _CITATION_SNIPPET_MAX_LEN) ->
     return content[: max_len - 1].rstrip() + "…"
 
 
-def _build_kb_search_tool(kb: KnowledgeBaseSpec, *, session: AsyncSession, sources: list[dict]):
+def _build_kb_search_tool(
+    kb: KnowledgeBaseSpec, *, session: AsyncSession, sources: list[dict] | None = None
+):
     """Tool RAG tự động cho 1 `KnowledgeBase` đã gán agent
     (docs/features/knowledge-base-chat-wiring.md) — không đi qua `Tool`/`ToolBuilder` registry
     (ADR-0013), KB gán qua `AgentKnowledgeBase`, khác cơ chế `Tool` do user tự tạo. Build
@@ -123,7 +122,10 @@ def _build_kb_search_tool(kb: KnowledgeBaseSpec, *, session: AsyncSession, sourc
     được append vào đây với id = thứ tự xuất hiện xuyên suốt turn (không reset theo từng lần gọi
     tool, để model cite `[cite:N]` không đụng số dù gọi KB nhiều lần). Chunk đồng thời được bọc
     `<source id="N">` trong text trả cho model — model soi id đó để cite, KHÔNG dùng chunk id thật
-    trong DB (khó nhớ/dễ bịa hơn số thứ tự nhỏ, theo kinh nghiệm Open WebUI)."""
+    trong DB (khó nhớ/dễ bịa hơn số thứ tự nhỏ, theo kinh nghiệm Open WebUI). `None` (mặc định,
+    dùng ở `run_sub_agent` — Non-goal v1, sub-agent không surface citation) = không track/bọc tag,
+    trả text chunk trơn — sub-agent không có `_KB_CITATION_INSTRUCTION` trong system prompt nên
+    tag `<source id="N">` với nó chỉ là nhiễu vô nghĩa, không phải chỗ dự phòng cho tương lai."""
 
     @tool(
         f"search-knowledge-base-{kb.slug}",
@@ -148,6 +150,9 @@ def _build_kb_search_tool(kb: KnowledgeBaseSpec, *, session: AsyncSession, sourc
         results = await kb_service.search(kb.id, query, top_k=_KB_SEARCH_TOP_K)
         if not results:
             return "Không tìm thấy thông tin liên quan trong knowledge base."
+
+        if sources is None:
+            return "\n\n---\n\n".join(r.chunk.content for r in results)
 
         blocks: list[str] = []
         for r in results:
@@ -251,14 +256,14 @@ async def build_agent_executor(
 
     `citation_sources` (docs/features/kb-citation.md) — list dùng chung cho cả turn, caller
     (`LangGraphAgentRuntime.run_streaming`) tạo mới mỗi turn rồi đọc lại sau khi turn xong để trả
-    cho FE. `None` (mặc định, dùng ở `run_sub_agent`) = không track citation."""
+    cho FE. `None` (mặc định) = không track/bọc tag citation, xem `_build_kb_search_tool`."""
     chat_model = await build_chat_model(
         provider=model.provider, model_id=model.model_id, base_url=model.base_url, session=session
     )
     sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
-    sources = citation_sources if citation_sources is not None else []
     kb_tools = [
-        _build_kb_search_tool(kb, session=session, sources=sources) for kb in knowledge_bases
+        _build_kb_search_tool(kb, session=session, sources=citation_sources)
+        for kb in knowledge_bases
     ]
     all_tools = [*(await build_tools(tools, session=session)), *sub_agent_tools, *kb_tools]
     return create_agent(
