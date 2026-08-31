@@ -398,6 +398,13 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
         (`bg-emerald-500`/`bg-orange-500` + issue đầu tiên) qua `useReadiness` mới
         (`staleTime: 0`, tự refetch khi mount); `useAddDelegation`/`useRemoveDelegation` thêm
         invalidate `readinessQueryKey`. Panel node chọn hiện đủ list issues khi `!ready`.
+- [x] **`OrchestratorCanvas` nhúng vào tab Sub-agent của `AgentDetailView`** (2026-08-31) — feedback
+      user (2 lần, xác nhận lại): khi `agent.is_orchestrator`, tab Sub-agent hiện canvas trực quan
+      thay vì list add/remove phẳng của `DelegationManager` (agent không phải orchestrator vẫn dùng
+      `DelegationManager` — tự hiện hint "bật Là orchestrator"). Cần thêm prop
+      `heightClassName` cho `OrchestratorCanvas` (mặc định `h-[calc(100vh-3.5rem)]` cho trang
+      `/orchestrators/[id]` full màn hình, `h-full` khi nhúng trong khối `h-[560px]` cố định ở tab)
+      — không đổi hành vi trang orchestrator gốc. Verify: `apps/web` lint/typecheck/build xanh.
       - **Edge contract**: cột `task_description` mới trên `AgentDelegation` (mô tả nhiệm vụ RIÊNG
         theo cạnh, migration `b7c9e1a4f2d8`), `PATCH`/`GET /agents/{id}/delegations` (route mới,
         giữ nguyên `GET /agents/{id}/sub-agents` cũ không đổi). `ChatService._resolve_sub_agent_spec`

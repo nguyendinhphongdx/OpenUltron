@@ -217,7 +217,18 @@ function EdgeContractPanel({
   );
 }
 
-export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
+interface OrchestratorCanvasProps {
+  rootAgentId: number;
+  /** Chiều cao container ngoài cùng — mặc định gần full viewport (dùng khi canvas là 1 trang riêng
+   * `/orchestrators/[id]`). Truyền `h-full` khi nhúng trong 1 khối có chiều cao cố định sẵn (vd tab
+   * Sub-agent của `AgentDetailView`) — không đổi mặc định để không phá trang orchestrator hiện có. */
+  heightClassName?: string;
+}
+
+export function OrchestratorCanvas({
+  rootAgentId,
+  heightClassName = 'h-[calc(100vh-3.5rem)]',
+}: OrchestratorCanvasProps) {
   const { data: tree, isPending, isError } = useOrchestratorTree(rootAgentId);
   const { data: allAgents } = useAgents();
   const { data: models } = useModels();
@@ -316,7 +327,7 @@ export function OrchestratorCanvas({ rootAgentId }: { rootAgentId: number }) {
   );
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)]">
+    <div className={cn('flex', heightClassName)}>
       <div className="min-h-0 min-w-0 flex-1">
         <ReactFlow
           nodes={nodes}

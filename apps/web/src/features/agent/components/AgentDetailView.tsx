@@ -16,6 +16,7 @@ import { useDeleteAgent } from '../hooks/useDeleteAgent';
 import { useSubAgents } from '../hooks/useSubAgents';
 import { AgentForm } from './AgentForm';
 import { DelegationManager } from './DelegationManager';
+import { OrchestratorCanvas } from './OrchestratorCanvas';
 
 type AgentDetailTab = 'info' | 'kb' | 'tools' | 'sub-agents';
 
@@ -155,15 +156,18 @@ export function AgentDetailView({ id }: { id: number }) {
             {activeTab === 'info' && <AgentForm agent={agent} />}
             {activeTab === 'kb' && <AgentKnowledgeBaseManager agentId={agent.id} />}
             {activeTab === 'tools' && <AgentToolManager agentId={agent.id} />}
-            {activeTab === 'sub-agents' && (
-              // TODO(2026-08-30): feedback user — nên hiện OrchestratorCanvas thay list phẳng
-              // này khi agent.is_orchestrator. Chưa làm ngay: OrchestratorCanvas.tsx tự set
-              // `h-[calc(100vh-3.5rem)]` (giả định trang toàn màn hình) + đang được sửa dở (edge
-              // contract/readiness, Orchestrator v2 Phase B) — cần thêm prop height linh hoạt
-              // trước khi nhúng vào đây, làm ở đợt riêng ngay sau khi Phase B xong để tránh đụng
-              // độ file đang sửa.
-              <DelegationManager agent={agent} />
-            )}
+            {activeTab === 'sub-agents' &&
+              (agent.is_orchestrator ? (
+                // Canvas thay list add/remove phẳng khi agent thật sự là orchestrator — feedback
+                // user: xem/sửa cây sub-agent trực quan hợp lý hơn. `-m-4` bù lại padding của
+                // wrapper cha (canvas tự có layout/border riêng, không cần thêm padding lồng).
+                <div className="-m-4 h-[560px] overflow-hidden rounded-b-xl">
+                  <OrchestratorCanvas rootAgentId={agent.id} heightClassName="h-full" />
+                </div>
+              ) : (
+                // Không phải orchestrator: DelegationManager tự hiện hint "bật Là orchestrator".
+                <DelegationManager agent={agent} />
+              ))}
           </div>
         </div>
 
