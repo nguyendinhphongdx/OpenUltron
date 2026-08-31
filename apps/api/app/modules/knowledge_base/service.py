@@ -260,7 +260,10 @@ class KnowledgeBaseService:
         kb = await self.get_or_404(kb_id)
         query_embedding = await self._embed(kb, query)
         results = await self.repo.search(kb_id, query_embedding, top_k)
-        return [SearchResult(chunk=chunk_to_read(c), score=score) for c, score in results]
+        return [
+            SearchResult(chunk=chunk_to_read(c), score=score, file_name=file_name)
+            for c, score, file_name in results
+        ]
 
     async def assign_to_agent(self, agent_id: int, kb_id: int) -> None:
         await self.agent_service.get_or_404(agent_id)

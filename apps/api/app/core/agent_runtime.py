@@ -54,8 +54,10 @@ class AgentRuntime(Protocol):
         `{"type": "delta"|"tool_call_start"|"tool_call_end"|"approval_required"|"done"|"error",
         ...}`. Truyền `(history, user_text)` để bắt đầu turn MỚI, HOẶC `resume_decision`
         (`"approve"`/`"reject"`) để resume turn đang chờ duyệt — đúng 1 trong 2, không cả hai.
-        Event `"done"` chỉ có `{"text": <accumulated>}` — KHÔNG tự persist Message gì, caller
-        (`ChatService`) tự quyết lưu gì dựa trên event nhận được."""
+        Event `"done"` có `{"text": <accumulated>, "sources": [...]}` — `sources` là danh sách
+        chunk KB đã retrieve trong turn (docs/features/kb-citation.md, rỗng nếu turn không gọi tool
+        KB nào) — KHÔNG tự persist Message gì, caller (`ChatService`) tự quyết lưu gì dựa trên
+        event nhận được."""
         ...
 
     async def run_sync(
@@ -140,6 +142,7 @@ class LangGraphAgentRuntime:
         user_text: str | None = None,
         resume_decision: str | None = None,
     ) -> AsyncIterator[dict]:
+        citation_sources: list[dict[str, Any]] = []
         executor = await build_agent_executor(
             system_prompt=config.system_prompt,
             model=config.model,
@@ -147,6 +150,7 @@ class LangGraphAgentRuntime:
             tools=config.tools,
             knowledge_bases=config.knowledge_bases,
             session=session,
+            citation_sources=citation_sources,
         )
         graph_config = {"configurable": {"thread_id": thread_id}}
         input_data: Any
@@ -156,7 +160,10 @@ class LangGraphAgentRuntime:
             input_data = {"messages": [*(history or []), HumanMessage(content=user_text or "")]}
 
         async for event in _stream_turn(executor, graph_config, input_data):
-            yield event
+            if event["type"] == "done":
+                yield {**event, "sources": citation_sources}
+            else:
+                yield event
 
     async def run_sync(
         self, *, sub_agent: SubAgentSpec, task: str, session: AsyncSession, depth: int = 0

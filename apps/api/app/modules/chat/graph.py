@@ -82,7 +82,12 @@ async def run_sub_agent(
         t for t in sub_agent.tools if t.slug not in TOOLS_REQUIRING_APPROVAL and t.kind != "mcp"
     ]
     own_tools = await build_tools(safe_tools, session=session)
-    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in sub_agent.knowledge_bases]
+    # Sub-agent KHÔNG surface citation (Non-goal v1, docs/features/kb-citation.md) — `sources` ở
+    # đây chỉ để khớp chữ ký `_build_kb_search_tool`, không có ai đọc lại list này sau khi
+    # `run_sub_agent` trả về text.
+    kb_tools = [
+        _build_kb_search_tool(kb, session=session, sources=[]) for kb in sub_agent.knowledge_bases
+    ]
     executor = create_agent(
         chat_model,
         tools=[*own_tools, *nested_tools, *kb_tools],
@@ -93,14 +98,27 @@ async def run_sub_agent(
 
 
 _KB_SEARCH_TOP_K = 3
+_CITATION_SNIPPET_MAX_LEN = 400
 
 
-def _build_kb_search_tool(kb: KnowledgeBaseSpec, *, session: AsyncSession):
+def _truncate_snippet(content: str, max_len: int = _CITATION_SNIPPET_MAX_LEN) -> str:
+    if len(content) <= max_len:
+        return content
+    return content[: max_len - 1].rstrip() + "…"
+
+
+def _build_kb_search_tool(kb: KnowledgeBaseSpec, *, session: AsyncSession, sources: list[dict]):
     """Tool RAG tự động cho 1 `KnowledgeBase` đã gán agent
     (docs/features/knowledge-base-chat-wiring.md) — không đi qua `Tool`/`ToolBuilder` registry
     (ADR-0013), KB gán qua `AgentKnowledgeBase`, khác cơ chế `Tool` do user tự tạo. Build
     `KnowledgeBaseService` inline từ `session` (cùng pattern
-    `app/core/providers.py::get_provider_api_key` — lazy import tránh vòng import module)."""
+    `app/core/providers.py::get_provider_api_key` — lazy import tránh vòng import module).
+
+    `sources` là list dùng chung cho CẢ TURN (docs/features/kb-citation.md) — mỗi chunk trả về
+    được append vào đây với id = thứ tự xuất hiện xuyên suốt turn (không reset theo từng lần gọi
+    tool, để model cite `[cite:N]` không đụng số dù gọi KB nhiều lần). Chunk đồng thời được bọc
+    `<source id="N">` trong text trả cho model — model soi id đó để cite, KHÔNG dùng chunk id thật
+    trong DB (khó nhớ/dễ bịa hơn số thứ tự nhỏ, theo kinh nghiệm Open WebUI)."""
 
     @tool(
         f"search-knowledge-base-{kb.slug}",
@@ -125,7 +143,24 @@ def _build_kb_search_tool(kb: KnowledgeBaseSpec, *, session: AsyncSession):
         results = await kb_service.search(kb.id, query, top_k=_KB_SEARCH_TOP_K)
         if not results:
             return "Không tìm thấy thông tin liên quan trong knowledge base."
-        return "\n\n---\n\n".join(r.chunk.content for r in results)
+
+        blocks: list[str] = []
+        for r in results:
+            n = len(sources) + 1
+            sources.append(
+                {
+                    "id": n,
+                    "kb_id": kb.id,
+                    "kb_name": kb.name,
+                    "file_id": r.chunk.file_id,
+                    "file_name": r.file_name,
+                    "chunk_id": r.chunk.id,
+                    "snippet": _truncate_snippet(r.chunk.content),
+                    "score": r.score,
+                }
+            )
+            blocks.append(f'<source id="{n}">\n{r.chunk.content}\n</source>')
+        return "\n\n".join(blocks)
 
     return _search
 
@@ -167,18 +202,26 @@ async def build_agent_executor(
     tools: list[ToolSpec],
     knowledge_bases: list[KnowledgeBaseSpec],
     session: AsyncSession,
+    citation_sources: list[dict] | None = None,
 ) -> CompiledStateGraph:
     """Graph cho 1 turn — orchestrator có thêm tool gọi sub-agent (ADR-0006) + tool thật gán trực
     tiếp cho agent top-level (`tools`, ADR-0013) + tool RAG tự động cho KB đã gán
     (`knowledge_bases`, docs/features/knowledge-base-chat-wiring.md). `session` dùng để tra
     credential provider (ADR-0010) khi build chat model chính + mọi sub-agent lồng bên dưới.
     `checkpointer` (ADR-0014) luôn gắn — rẻ, không ảnh hưởng turn không có tool cần duyệt; chỉ tool
-    trong `TOOLS_REQUIRING_APPROVAL` mới thực sự pause."""
+    trong `TOOLS_REQUIRING_APPROVAL` mới thực sự pause.
+
+    `citation_sources` (docs/features/kb-citation.md) — list dùng chung cho cả turn, caller
+    (`LangGraphAgentRuntime.run_streaming`) tạo mới mỗi turn rồi đọc lại sau khi turn xong để trả
+    cho FE. `None` (mặc định, dùng ở `run_sub_agent`) = không track citation."""
     chat_model = await build_chat_model(
         provider=model.provider, model_id=model.model_id, base_url=model.base_url, session=session
     )
     sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
-    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in knowledge_bases]
+    sources = citation_sources if citation_sources is not None else []
+    kb_tools = [
+        _build_kb_search_tool(kb, session=session, sources=sources) for kb in knowledge_bases
+    ]
     all_tools = [*(await build_tools(tools, session=session)), *sub_agent_tools, *kb_tools]
     return create_agent(
         chat_model,

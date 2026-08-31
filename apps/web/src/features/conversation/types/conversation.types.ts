@@ -41,3 +41,21 @@ export interface Message {
   metadata: Record<string, unknown> | null;
   created_at: string;
 }
+
+/**
+ * 1 chunk KB đã được agent retrieve trong turn sinh ra message này — nằm ở
+ * `Message.metadata.sources` (docs/features/kb-citation.md). `id` là số thứ tự trong TURN đó
+ * (không phải id thật trong DB), khớp tag `<source id="N">` model thấy trong context và cú pháp
+ * cite `[cite:N]` model chèn vào text trả lời — không đảm bảo tồn tại nếu model tự bịa số ngoài
+ * range, nơi dùng phải tự kiểm tra trước khi index vào mảng này.
+ */
+export interface CitationSource {
+  id: number;
+  kb_id: number;
+  kb_name: string;
+  file_id: number | null;
+  file_name: string | null;
+  chunk_id: number;
+  snippet: string;
+  score: number;
+}

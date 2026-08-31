@@ -143,16 +143,19 @@ class KnowledgeBaseRepository:
 
     async def search(
         self, kb_id: int, query_embedding: list[float], top_k: int
-    ) -> list[tuple[KnowledgeChunk, float]]:
+    ) -> list[tuple[KnowledgeChunk, float, str | None]]:
+        # Outer join `KnowledgeFile` — citation (docs/features/kb-citation.md) cần tên file để
+        # hiện nguồn; LEFT JOIN vì chunk cũ tạo trước khi có Folder/File có `file_id=None`.
         distance = KnowledgeChunk.embedding.cosine_distance(query_embedding).label("distance")
         stmt = (
-            select(KnowledgeChunk, distance)
+            select(KnowledgeChunk, distance, KnowledgeFile.name)
+            .outerjoin(KnowledgeFile, KnowledgeChunk.file_id == KnowledgeFile.id)
             .where(KnowledgeChunk.kb_id == kb_id)
             .order_by(distance.asc())
             .limit(top_k)
         )
         rows = (await self.session.execute(stmt)).all()
-        return [(chunk, float(dist)) for chunk, dist in rows]
+        return [(chunk, float(dist), file_name) for chunk, dist, file_name in rows]
 
     async def get_agent_kb(self, agent_id: int, kb_id: int) -> AgentKnowledgeBase | None:
         stmt = select(AgentKnowledgeBase).where(

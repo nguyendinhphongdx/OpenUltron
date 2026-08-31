@@ -80,6 +80,7 @@ class SearchRequest(BaseModel):
 class SearchResult(BaseModel):
     chunk: ChunkRead
     score: float  # cosine distance — càng nhỏ càng giống (pgvector <=> operator)
+    file_name: str | None = None  # join tại search-time, không phải property của chunk
 
 
 class AgentKnowledgeBaseCreate(BaseModel):

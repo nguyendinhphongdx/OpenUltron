@@ -20,11 +20,16 @@ import { ConversationShell } from './ConversationShell';
 import { MessageComposer } from './MessageComposer';
 import { MessageThread } from './MessageThread';
 import { PendingFirstMessageSender } from './PendingFirstMessageSender';
-import type { Message } from '../types/conversation.types';
+import type { CitationSource, Message } from '../types/conversation.types';
 
 interface ConversationRuntimeProps {
   conversationId: number;
   persistedMessages: Message[];
+}
+
+function citationSourcesFromMetadata(metadata: Message['metadata']): CitationSource[] {
+  const sources = metadata?.sources;
+  return Array.isArray(sources) ? (sources as CitationSource[]) : [];
 }
 
 function toThreadMessageLike(message: Message): ThreadMessageLike | null {
@@ -32,12 +37,23 @@ function toThreadMessageLike(message: Message): ThreadMessageLike | null {
     return null;
   }
 
+  const sources = citationSourcesFromMetadata(message.metadata);
+  // Khôi phục lại đúng `data` part `"kb-sources"` mà lúc stream live AG-UI `CUSTOM` event tạo ra
+  // (docs/features/kb-citation.md, `useCitationSources.ts`) — để lịch sử reload sau F5 vẫn hiện
+  // citation giống hệt lúc vừa stream xong, cùng 1 chỗ đọc (`useCitationSources`), không phải 2
+  // đường dữ liệu khác nhau.
+  const content = sources.length > 0
+    ? [
+        { type: 'text' as const, text: message.content ?? '' },
+        { type: 'data' as const, name: 'kb-sources', data: sources },
+      ]
+    : (message.content ?? '');
+
   return {
     id: String(message.id),
     role: message.role,
-    content: message.content ?? '',
+    content,
     createdAt: new Date(message.created_at),
-    metadata: { custom: {} },
     ...(message.role === 'assistant' ? { status: { type: 'complete', reason: 'stop' } as const } : {}),
   };
 }

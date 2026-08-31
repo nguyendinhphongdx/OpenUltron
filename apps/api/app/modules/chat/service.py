@@ -33,6 +33,16 @@ from app.modules.tool.service import ToolService
 
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 
+# Chỉ nối vào system_prompt khi agent có KB gán (docs/features/kb-citation.md) — agent không dùng
+# KB thì prompt giữ nguyên, không thêm hướng dẫn thừa. `<source id="N">` do `_build_kb_search_tool`
+# tự bọc quanh mỗi chunk trả về; model chỉ cần lặp lại đúng id đã thấy, không tự bịa.
+_KB_CITATION_INSTRUCTION = (
+    "\n\nKhi trả lời dựa trên thông tin lấy từ knowledge base, mỗi đoạn tool trả về sẽ được bọc "
+    'trong tag <source id="N">...</source>. Ngay sau câu bạn dùng thông tin từ 1 nguồn, chèn '
+    "[cite:N] với N đúng bằng id của source đó. Chỉ cite khi thật sự dùng thông tin từ nguồn đó — "
+    "không cite bừa, không tự bịa id không tồn tại."
+)
+
 
 def _bootstrap_model() -> ModelConfig:
     """Fallback cuối cùng khi chưa có Model nào trong DB và AppSettings.default_model_id cũng
@@ -175,6 +185,8 @@ class ChatService:
             tool_specs = [_to_tool_spec(t) for t in tool_reads]
             kb_reads = await self.kb_service.list_for_agent(agent.id)
             kb_specs = [_to_kb_spec(kb) for kb in kb_reads]
+            if kb_specs:
+                system_prompt += _KB_CITATION_INSTRUCTION
             if agent.is_orchestrator:
                 sub_agent_specs = [
                     await self._resolve_sub_agent_spec(detail.sub_agent, detail.task_description)
@@ -205,8 +217,11 @@ class ChatService:
                 **runtime_kwargs,
             ):
                 if event["type"] == "done":
+                    sources = event.get("sources")
+                    metadata = {"sources": sources} if sources else None
                     assistant_message = await self.message_service.append(
-                        conversation_id, MessageCreate(role="assistant", content=event["text"])
+                        conversation_id,
+                        MessageCreate(role="assistant", content=event["text"], metadata=metadata),
                     )
                     yield {
                         "type": "done",
@@ -387,6 +402,14 @@ class ChatService:
             elif event_type == "done":
                 if text_started:
                     yield {"type": "TEXT_MESSAGE_END", "messageId": message_id}
+                # Gắn nguồn KB vào message NGAY trong lúc stream (docs/features/kb-citation.md) —
+                # AG-UI `CUSTOM` event dựng thành 1 `data` part trên message hiện tại
+                # (`@assistant-ui/react-ag-ui` run-aggregator.ts), FE đọc lại qua
+                # `useCitationSources()`. Không đợi refetch REST sau `RUN_FINISHED` vì
+                # `ThreadHistoryAdapter.load()` chỉ chạy lúc mount, không tự re-sync live turn.
+                sources = event.get("sources")
+                if sources:
+                    yield {"type": "CUSTOM", "name": "kb-sources", "value": sources}
                 yield {
                     "type": "RUN_FINISHED",
                     "threadId": thread_id,

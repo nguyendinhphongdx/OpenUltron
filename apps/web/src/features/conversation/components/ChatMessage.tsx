@@ -4,6 +4,7 @@ import { Bot, User } from 'lucide-react';
 import { MessagePartPrimitive, MessagePrimitive } from '@assistant-ui/react';
 
 import { cn } from '@/lib/utils';
+import { CitationSources } from './CitationSources';
 import { MarkdownTextPart } from './MarkdownTextPart';
 
 function ChatTextParts({ markdown = false }: { markdown?: boolean }) {
@@ -49,6 +50,7 @@ export function AssistantChatMessage() {
         )}
       >
         <ChatTextParts markdown />
+        <CitationSources />
         <MessagePrimitive.Error>
           <p className="text-sm text-destructive">Không chạy được phản hồi này.</p>
         </MessagePrimitive.Error>
