@@ -1,8 +1,8 @@
 # Feature: Orchestrator v2 — graph editor + run/debug đúng nghĩa
 
-Status: accepted (2026-08-30) — chia phase, xem "Câu hỏi mở — đã trả lời" dưới. Nested-approval
+Status: done (2026-08-31) — chia phase, xem "Câu hỏi mở — đã trả lời" dưới. Nested-approval
 fail-closed đã ghi thành ADR ([addendum ADR-0014](../adr/0014-tool-approval-gate.md)). Phase
-A/B/C xong (2026-08-31), chỉ còn Phase D (run simulator).
+A/B/C/D đều đã xong.
 
 ## Vấn đề / động lực
 
@@ -131,8 +131,14 @@ Chi tiết câu hỏi gốc (giữ lại tham khảo ngữ cảnh quyết địn
       con, theo edge — vì 1 sub-agent có thể ở nhiều canvas khác nhau tại vị trí khác nhau, mở rộng
       `PATCH /agents/{id}/delegations/{sub_agent_id}` có sẵn với `exclude_unset`). Canvas lưu lúc
       thả chuột (`onNodesChange` phát hiện `dragging: false`), không lưu mỗi frame lúc đang kéo.
-- [ ] Chạy thử graph với 1 input mẫu ngay trong canvas, thấy được path/token stream đi qua node nào
-      theo thời gian thực. (Phase D — chưa làm)
+- [x] **Phase D xong (2026-08-31)**: Chạy thử graph với 1 input mẫu ngay trong canvas — panel
+      "Chạy thử" tạo 1 `Conversation` thật (`channel: "orchestrator-simulator"`, `agent_id`
+      = root) rồi tái dùng NGUYÊN `MessageThread`/`MessageComposer` (kèm citation/tool-step trace
+      đã có sẵn) qua hook dùng chung `useAgentChatRuntime` (tách từ `ConversationRuntime.tsx`) —
+      không tự viết SSE parser tay theo góp ý user (tận dụng `assistant-ui` tối đa, ít code mới
+      hơn hẳn so với thiết kế ban đầu). Cạnh vừa được gọi trong lần chạy thử tô màu `--accent` trên
+      canvas — suy ra bằng so `last_run_at` (Phase C) với mốc bắt đầu chạy, không cần
+      field/endpoint mới. Không đổi backend gì cả.
 - [x] **Phase C xong (2026-08-31)**: Xem lại được lần chạy gần nhất của MỖI EDGE (task đã gửi ngầm
       định qua `task_description`, kết quả/lỗi, thời gian, duration) — `AgentDelegation.last_run_*`
       ghi bởi `chat/graph.py::_build_sub_agent_tool` mỗi lần orchestrator thật sự gọi sub-agent đó

@@ -18,7 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { UserPlus, Workflow, X } from 'lucide-react';
+import { Play, UserPlus, Workflow, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -31,6 +31,7 @@ import { useReadiness } from '../hooks/useReadiness';
 import { useRemoveDelegation } from '../hooks/useRemoveDelegation';
 import { useUpdateAgent } from '../hooks/useUpdateAgent';
 import { useUpdateDelegation } from '../hooks/useUpdateDelegation';
+import { RunSimulatorPanel } from './RunSimulatorPanel';
 import type { Agent, AgentNodeReadiness, OrchestratorTreeNode } from '../types/agent.types';
 
 const COL_WIDTH = 200;
@@ -267,6 +268,12 @@ export function OrchestratorCanvas({
   const { data: readiness } = useReadiness(rootAgentId);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  // Panel "Chạy thử" (Phase D) — mutual-exclusive với 2 state trên, cùng khu vực `<aside>`.
+  const [simulatorOpen, setSimulatorOpen] = useState(false);
+  // Mốc thời gian lần chạy thử gần nhất bắt đầu — cạnh có `lastRunAt` mới hơn mốc này được tô màu
+  // "vừa traverse trong lần chạy này" (so sánh với `last_run_at` per edge, Phase C — không cần
+  // field/endpoint mới riêng cho việc đánh dấu run simulator).
+  const [lastRunStartedAt, setLastRunStartedAt] = useState<number | null>(null);
   // Vị trí node user tự kéo TRONG session này — auto-layout (`layout()`)/vị trí đã lưu ở BE
   // (`p.savedX/savedY`, Phase C) chỉ dùng làm vị trí KHỞI TẠO; không lưu đè lên đây thì mọi
   // re-render (vd đổi `selectedAgentId` lúc click chọn node) sẽ tính lại `nodes` từ đầu và snap
@@ -322,27 +329,36 @@ export function OrchestratorCanvas({
 
     const edges: Edge[] = out
       .filter((p) => p.parentKey !== null && p.parentAgentId !== null && p.delegationId !== null)
-      .map((p) => ({
-        id: `delegation-${p.delegationId}`,
-        source: p.parentKey as string,
-        target: p.key,
-        label: 'delegate',
-        selected: `delegation-${p.delegationId}` === selectedEdgeId,
-        data: {
-          orchestratorAgentId: p.parentAgentId as number,
-          subAgentId: p.agent.id,
-          delegationId: p.delegationId as number,
-          taskDescription: p.taskDescription,
-          lastRunAt: p.lastRunAt,
-          lastRunOutput: p.lastRunOutput,
-          lastRunError: p.lastRunError,
-          lastRunDurationMs: p.lastRunDurationMs,
-        } satisfies EdgeData,
-      }));
+      .map((p) => {
+        // Cạnh vừa được orchestrator gọi trong lần "Chạy thử" gần nhất (Phase D) — so `last_run_at`
+        // (Phase C) với mốc `lastRunStartedAt` thay vì cần đánh dấu riêng cho run simulator.
+        const traversed =
+          lastRunStartedAt !== null &&
+          p.lastRunAt !== null &&
+          new Date(p.lastRunAt).getTime() >= lastRunStartedAt;
+        return {
+          id: `delegation-${p.delegationId}`,
+          source: p.parentKey as string,
+          target: p.key,
+          label: 'delegate',
+          selected: `delegation-${p.delegationId}` === selectedEdgeId,
+          style: traversed ? { stroke: 'var(--accent)', strokeWidth: 2.5 } : undefined,
+          data: {
+            orchestratorAgentId: p.parentAgentId as number,
+            subAgentId: p.agent.id,
+            delegationId: p.delegationId as number,
+            taskDescription: p.taskDescription,
+            lastRunAt: p.lastRunAt,
+            lastRunOutput: p.lastRunOutput,
+            lastRunError: p.lastRunError,
+            lastRunDurationMs: p.lastRunDurationMs,
+          } satisfies EdgeData,
+        };
+      });
 
     return { nodes, edges, positions: out };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tree, models, selectedAgentId, selectedEdgeId, manualPositions, readinessMap]);
+  }, [tree, models, selectedAgentId, selectedEdgeId, manualPositions, readinessMap, lastRunStartedAt]);
 
   const handleNodesChange = (changes: NodeChange[]) => {
     const updated = applyNodeChanges(changes, nodes);
@@ -398,10 +414,12 @@ export function OrchestratorCanvas({
             const pos = positions.find((p) => p.key === node.id);
             setSelectedAgentId(pos?.agent.id ?? null);
             setSelectedEdgeId(null);
+            setSimulatorOpen(false);
           }}
           onEdgeClick={(_, edge) => {
             setSelectedEdgeId(edge.id);
             setSelectedAgentId(null);
+            setSimulatorOpen(false);
           }}
           onEdgesDelete={(deleted: Edge[]) => {
             deleted.forEach((edge) => {
@@ -423,7 +441,7 @@ export function OrchestratorCanvas({
               cũng bị ẩn theo, không còn cách nào thêm sub-agent cho agent gốc mà không phải tìm
               đúng node gốc để click trước. Nút riêng này luôn hiện, bấm vào tự chọn agent gốc —
               mở đúng panel đó ngay, không cần dò node. */}
-          <Panel position="top-left">
+          <Panel position="top-left" className="flex gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -431,29 +449,49 @@ export function OrchestratorCanvas({
               onClick={() => {
                 setSelectedAgentId(rootAgentId);
                 setSelectedEdgeId(null);
+                setSimulatorOpen(false);
               }}
             >
               <UserPlus className="size-4" />
               Thêm sub-agent
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-background/90 shadow-sm backdrop-blur"
+              onClick={() => {
+                setSelectedAgentId(null);
+                setSelectedEdgeId(null);
+                setSimulatorOpen(true);
+              }}
+            >
+              <Play className="size-4" />
+              Chạy thử
+            </Button>
           </Panel>
         </ReactFlow>
       </div>
 
-      {(selectedEdge || selectedPos) && (
+      {(selectedEdge || selectedPos || simulatorOpen) && (
       <aside className="w-72 shrink-0 overflow-y-auto border-l border-border p-4">
         <button
           type="button"
           onClick={() => {
             setSelectedAgentId(null);
             setSelectedEdgeId(null);
+            setSimulatorOpen(false);
           }}
           aria-label="Đóng panel chi tiết"
           className="mb-2 ml-auto flex size-6 items-center justify-center rounded-md text-foreground/50 hover:bg-muted hover:text-foreground"
         >
           <X className="size-4" />
         </button>
-        {selectedEdge ? (
+        {simulatorOpen ? (
+          <RunSimulatorPanel
+            rootAgentId={rootAgentId}
+            onRunStarted={() => setLastRunStartedAt(Date.now())}
+          />
+        ) : selectedEdge ? (
           <EdgeContractPanel
             key={selectedEdge.id}
             edge={selectedEdge}
