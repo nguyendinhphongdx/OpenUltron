@@ -4,6 +4,7 @@ import pytest
 
 import app.modules.tool.builder as builder_module
 from app.modules.tool.builder import (
+    EXECUTE_CODE_SLUG,
     RUN_COMMAND_SLUG,
     TOOLS_REQUIRING_APPROVAL,
     WRITE_FILE_SLUG,
@@ -16,9 +17,10 @@ def _make_spec(slug: str) -> ToolSpec:
     return ToolSpec(id=1, slug=slug, name=slug, description=None, kind="builtin", config=None)
 
 
-def test_write_file_and_run_command_require_approval() -> None:
+def test_write_file_run_command_and_execute_code_require_approval() -> None:
     assert WRITE_FILE_SLUG in TOOLS_REQUIRING_APPROVAL
     assert RUN_COMMAND_SLUG in TOOLS_REQUIRING_APPROVAL
+    assert EXECUTE_CODE_SLUG in TOOLS_REQUIRING_APPROVAL
 
 
 @pytest.mark.asyncio
@@ -78,5 +80,65 @@ async def test_run_command_tool_kills_process_on_timeout(
     assert tool is not None
 
     result = await tool.ainvoke({"command": "sleep 5"})
+
+    assert "quá thời gian" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_code_tool_runs_python(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(builder_module, "resolve_safe_path", lambda p: tmp_path)
+
+    tool = await BuiltinToolBuilder().build(_make_spec(EXECUTE_CODE_SLUG), session=None)  # type: ignore[arg-type]
+    assert tool is not None
+
+    result = await tool.ainvoke({"code": "print('hello-from-python')", "language": "python"})
+
+    assert "Exit code: 0" in result
+    assert "hello-from-python" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_code_tool_runs_javascript(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(builder_module, "resolve_safe_path", lambda p: tmp_path)
+
+    tool = await BuiltinToolBuilder().build(_make_spec(EXECUTE_CODE_SLUG), session=None)  # type: ignore[arg-type]
+    assert tool is not None
+
+    result = await tool.ainvoke({"code": "console.log('hello-from-js')", "language": "javascript"})
+
+    assert "Exit code: 0" in result
+    assert "hello-from-js" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_sandboxed_code_rejects_unsupported_language(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Đi thẳng vào helper (không qua `tool.ainvoke`) — args_schema đã ràng buộc
+    # `Literal["python", "javascript"]` nên LangChain chặn "ruby" từ tầng validate trước khi tới
+    # được nhánh này; check này là lưới an toàn phòng `_EXECUTE_CODE_INTERPRETERS` lệch khỏi
+    # `_ExecuteCodeArgs.language` trong tương lai.
+    monkeypatch.setattr(builder_module, "resolve_safe_path", lambda p: tmp_path)
+
+    result = await builder_module._execute_sandboxed_code("puts 'hi'", "ruby", None)
+
+    assert "chưa được hỗ trợ" in result
+
+
+@pytest.mark.asyncio
+async def test_execute_code_tool_kills_process_on_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(builder_module, "resolve_safe_path", lambda p: tmp_path)
+    monkeypatch.setattr(builder_module, "_RUN_COMMAND_TIMEOUT_SECONDS", 0.05)
+
+    tool = await BuiltinToolBuilder().build(_make_spec(EXECUTE_CODE_SLUG), session=None)  # type: ignore[arg-type]
+    assert tool is not None
+
+    result = await tool.ainvoke({"code": "import time\ntime.sleep(5)", "language": "python"})
 
     assert "quá thời gian" in result

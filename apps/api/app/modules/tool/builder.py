@@ -7,8 +7,10 @@ KHÔNG dynamic plugin discovery. Thêm implementation cho 1 kind = viết/sửa 
 from __future__ import annotations
 
 import asyncio
+import tempfile
 from dataclasses import dataclass
-from typing import Any, Protocol
+from pathlib import Path
+from typing import Any, Literal, Protocol
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
@@ -103,15 +105,16 @@ class HttpToolBuilder:
 
 
 # Slug tool cần approval gate (ADR-0014). GitHub search/read chỉ đọc, không có side-effect nên
-# KHÔNG cần approval. `write-file`/`run-command` (ADR-0016) có side-effect thật trên máy — BẮT
-# BUỘC nằm trong tập này, không có cách nào tắt approval cho 2 slug đó.
+# KHÔNG cần approval. `write-file`/`run-command`/`execute-code` (ADR-0016) có side-effect thật
+# trên máy — BẮT BUỘC nằm trong tập này, không có cách nào tắt approval cho các slug đó.
 APPROVAL_TEST_TOOL_SLUG = "approval-test-echo"
 GITHUB_SEARCH_CODE_SLUG = "github-search-code"
 GITHUB_READ_FILE_SLUG = "github-read-file"
 WRITE_FILE_SLUG = "write-file"
 RUN_COMMAND_SLUG = "run-command"
+EXECUTE_CODE_SLUG = "execute-code"
 TOOLS_REQUIRING_APPROVAL: frozenset[str] = frozenset(
-    {APPROVAL_TEST_TOOL_SLUG, WRITE_FILE_SLUG, RUN_COMMAND_SLUG}
+    {APPROVAL_TEST_TOOL_SLUG, WRITE_FILE_SLUG, RUN_COMMAND_SLUG, EXECUTE_CODE_SLUG}
 )
 
 # Catalog builtin tool có sẵn — nguồn cho endpoint `GET /tools/builtin-catalog` (fix UX: form tạo
@@ -133,6 +136,17 @@ BUILTIN_TOOL_CATALOG: dict[str, str] = {
     RUN_COMMAND_SLUG: (
         "Chạy 1 lệnh shell trong workspace sandbox (ADR-0016) — cần duyệt trước khi chạy."
     ),
+    EXECUTE_CODE_SLUG: (
+        "Chạy source code Python hoặc JavaScript trong workspace sandbox (ADR-0016) — khác "
+        "'run-command' ở chỗ agent tự viết code thay vì gõ 1 lệnh có sẵn. Cần duyệt trước khi chạy."
+    ),
+}
+
+# Interpreter + phần mở rộng file tạm cho từng ngôn ngữ hỗ trợ — thêm ngôn ngữ mới = thêm 1 dòng ở
+# đây, không sửa gì khác trong `_execute_sandboxed_code`.
+_EXECUTE_CODE_INTERPRETERS: dict[str, tuple[str, str]] = {
+    "python": ("python3", ".py"),
+    "javascript": ("node", ".js"),
 }
 
 
@@ -167,6 +181,17 @@ class _RunCommandArgs(BaseModel):
     )
 
 
+class _ExecuteCodeArgs(BaseModel):
+    code: str = Field(description="Source code cần chạy")
+    language: Literal["python", "javascript"] = Field(
+        description="Ngôn ngữ của source code — 'python' hoặc 'javascript'"
+    )
+    cwd: str | None = Field(
+        default=None,
+        description="Subdirectory tương đối trong sandbox để chạy code — bỏ trống dùng gốc sandbox",
+    )
+
+
 async def _github_token(session: AsyncSession, tool_slug: str) -> str | None:
     from app.core.providers import get_provider_api_key
 
@@ -193,6 +218,8 @@ class BuiltinToolBuilder:
             return _build_write_file_tool(spec)
         if spec.slug == RUN_COMMAND_SLUG:
             return _build_run_command_tool(spec)
+        if spec.slug == EXECUTE_CODE_SLUG:
+            return _build_execute_code_tool(spec)
         return None
 
 
@@ -293,6 +320,64 @@ async def _execute_sandboxed_command(command: str, cwd: str | None) -> str:
         process.kill()
         await process.wait()
         return f"Lệnh quá thời gian cho phép ({_RUN_COMMAND_TIMEOUT_SECONDS}s), đã bị hủy."
+
+    output = stdout.decode("utf-8", errors="replace")
+    result = f"Exit code: {process.returncode}\n{output}"
+    return result[:_MAX_RESPONSE_CHARS]
+
+
+def _build_execute_code_tool(spec: ToolSpec) -> BaseTool:
+    async def _execute_code(code: str, language: str, cwd: str | None = None) -> str:
+        return await _execute_sandboxed_code(code, language, cwd)
+
+    return StructuredTool.from_function(
+        coroutine=_execute_code,
+        name=spec.slug,
+        description=spec.description or BUILTIN_TOOL_CATALOG[EXECUTE_CODE_SLUG],
+        args_schema=_ExecuteCodeArgs,
+        handle_tool_error=True,
+    )
+
+
+async def _execute_sandboxed_code(code: str, language: str, cwd: str | None) -> str:
+    """Khác `_execute_sandboxed_command` — code ghi ra file tạm rồi chạy qua
+    `create_subprocess_exec` (không qua shell) thay vì nhét thẳng vào 1 chuỗi lệnh shell, tránh
+    ký tự đặc biệt trong code (quote/backtick/$...) bị shell diễn giải sai."""
+    interpreter = _EXECUTE_CODE_INTERPRETERS.get(language)
+    if interpreter is None:
+        supported = ", ".join(_EXECUTE_CODE_INTERPRETERS)
+        return f"Ngôn ngữ '{language}' chưa được hỗ trợ — chỉ hỗ trợ: {supported}."
+    command, extension = interpreter
+
+    try:
+        working_dir = resolve_safe_path(cwd or "")
+    except ValueError as exc:
+        return str(exc)
+
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=extension, dir=working_dir, delete=False, encoding="utf-8"
+    ) as script_file:
+        script_file.write(code)
+        script_path = Path(script_file.name)
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            command,
+            str(script_path),
+            cwd=working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(
+                process.communicate(), timeout=_RUN_COMMAND_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            return f"Code chạy quá thời gian cho phép ({_RUN_COMMAND_TIMEOUT_SECONDS}s), đã bị hủy."
+    finally:
+        script_path.unlink(missing_ok=True)
 
     output = stdout.decode("utf-8", errors="replace")
     result = f"Exit code: {process.returncode}\n{output}"
