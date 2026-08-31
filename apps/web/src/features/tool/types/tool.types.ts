@@ -45,6 +45,29 @@ export interface HttpToolConfig {
   ai_params: HttpToolAiParam[];
 }
 
+/**
+ * Shape của `Tool.config` khi `kind === 'mcp'` — khớp `McpToolConfig`
+ * (`apps/api/app/modules/tool/schemas.py`, ADR-0017). `server` là discriminated union theo
+ * `transport`: `stdio` (chạy process local qua `command`+`args`) hoặc `http` (gọi thẳng `url`).
+ */
+export interface McpStdioServerConfig {
+  transport: 'stdio';
+  command: string;
+  args: string[];
+}
+
+export interface McpHttpServerConfig {
+  transport: 'http';
+  url: string;
+}
+
+export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
+
+export interface McpToolConfig {
+  server: McpServerConfig;
+  remote_tool_name: string;
+}
+
 export interface ToolCreateInput {
   slug: string;
   name: string;
