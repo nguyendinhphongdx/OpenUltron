@@ -19,6 +19,7 @@ import { ConversationRuntimeSync } from './ConversationRuntimeSync';
 import { ConversationShell } from './ConversationShell';
 import { MessageComposer } from './MessageComposer';
 import { MessageThread } from './MessageThread';
+import { PendingFirstMessageSender } from './PendingFirstMessageSender';
 import type { Message } from '../types/conversation.types';
 
 interface ConversationRuntimeProps {
@@ -88,6 +89,7 @@ export function ConversationRuntime({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ConversationRuntimeSync conversationId={conversationId} />
+      <PendingFirstMessageSender conversationId={conversationId} />
       <ConversationShell conversationId={conversationId}>
         <MessageThread />
         <VoicePanel conversationId={conversationId} />

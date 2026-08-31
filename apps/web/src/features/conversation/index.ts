@@ -11,4 +11,5 @@ export {
 export { ConversationView } from './components/ConversationView';
 export { ConversationList } from './components/ConversationList';
 export { NewConversationButton } from './components/NewConversationButton';
+export { NewConversationView } from './components/NewConversationView';
 export type * from './types/conversation.types';

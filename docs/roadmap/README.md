@@ -456,6 +456,32 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
         thành hàng riêng `flex-wrap` luôn hiện thay vì ẩn theo breakpoint.
       - Verify: `apps/web` lint/typecheck/build xanh (build lại từ `.next` sạch 2 lần do cache cũ
         gây lỗi `PageNotFoundError` không liên quan code — dọn `.next` là đủ).
+- [x] **Redesign flow "hội thoại mới"** (2026-08-31, feedback trực tiếp user: "không ai điền tên
+      hội thoại tay cả") — bỏ hẳn dialog cũ (điền tên + chọn agent), thay bằng route mới
+      `/conversations/new`:
+      - `NewConversationView.tsx` — chọn agent trước (khung chat disable tới khi chọn, kiểu
+        ChatGPT/Claude "new chat"), gửi tin nhắn đầu tiên = tạo `Conversation` (title tự set từ
+        chính tin nhắn đó qua `deriveTitle`, KHÔNG có ô nhập tên riêng) rồi điều hướng sang
+        `/conversations/{id}`.
+      - `PendingFirstMessageSender.tsx` (renderless, trong `AssistantRuntimeProvider` ở
+        `ConversationRuntime.tsx`) — lưu tin nhắn nháp qua `sessionStorage`
+        (`services/pending-first-message.ts`) trước khi điều hướng (chưa có conversation id để
+        gửi thẳng lúc gõ), đọc lại đúng 1 lần lúc mount trang conversation, tự điền vào composer
+        qua `unstable_useComposerInput()` (API chính thức của assistant-ui cho composer tự chế,
+        còn prefix `unstable_`, cần re-verify khi bump version) rồi `send()` khi `canSend` — user
+        không gõ lại lần 2.
+      - `NewConversationButton.tsx` đơn giản hoá — chỉ `router.push('/conversations/new')`, bỏ
+        hẳn Dialog + state tên/agent cũ.
+      - `code-reviewer` tìm 4 finding, đã fix 3: (1) 🟡 race condition thật — StrictMode double-
+        invoke effect gửi trùng 2 message cho 1 tin nhắn nháp (`armed` đổi từ `useState` sang
+        `useRef`, mutate đồng bộ chặn invocation thứ 2); (2) 🟡 composer tự chế dùng
+        `<textarea>`/`<button>` thường thay vì `Textarea`/`Button` shadcn có sẵn — đổi lại đúng
+        convention "mọi primitive UI qua shadcn"; (3) 🟡 `deriveTitle` cắt title theo UTF-16 code
+        unit, có thể vỡ ký tự nếu ký tự thứ 80 là emoji — đổi sang cắt theo `Array.from` (code
+        point); (4) thông tin — `@assistant-ui/react` đã pin version chính xác sẵn trong
+        `package.json`, không cần sửa thêm.
+      - Verify: `apps/web` lint/typecheck/build xanh; build output xác nhận `/conversations/new`
+        là route tĩnh riêng, không bị Next.js App Router nuốt vào `[id]`.
 
 ## Đang làm / tiếp theo
 
