@@ -437,6 +437,25 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       try/catch → unhandled promise rejection + dialog có thể không đóng đúng khi 1 trong nhiều
       request fail — đã fix (giữ dialog mở khi lỗi, không throw ra ngoài).
       Verify: `apps/web` lint/typecheck/build xanh.
+- [x] **UI polish tiếp theo, `OrchestratorCanvas`/`AgentDetailView`** (2026-08-31, feedback trực
+      tiếp của user qua nhiều bước) —
+      - Panel chi tiết node/edge (`OrchestratorCanvas` aside) giờ chỉ hiện khi có node/edge được
+        chọn (trước đó luôn hiện, chiếm diện tích), có nút đóng (X).
+      - Thêm nút "Thêm sub-agent" cố định (`Panel` của `@xyflow/react`, góc trên-trái canvas) — bù
+        lại việc panel chi tiết (chứa dropdown add-sub-agent scope theo node đang chọn) giờ ẩn mặc
+        định.
+      - `AgentDetailView`: bỏ cột trái "readiness" (lặp lại ở mọi tab) — gộp avatar/tên/slug/
+        readiness lên 1 header đầu trang, thêm nút back + chuyển nút xoá agent lên header. Route
+        `app/agents/[id]/page.tsx` bỏ `PageShell` (View tự dựng layout, giống
+        `KnowledgeBaseDetailShell`).
+      - Readiness row: đổi từ chấm màu + số trần (ít thông tin, feedback user) sang icon
+        (`Cpu`/`Wrench`/`BookOpen`/`Users`) + text rõ nghĩa (vd "6 tool", "Chưa gán model").
+      - `code-reviewer` tìm 2 finding 🟡, đã fix: (1) early-return loading/error mất padding
+        (`PageShell` bỏ nhưng không bọc lại) — thêm hằng `PAGE_CONTAINER_CLASS` dùng chung; (2)
+        readiness row `hidden ... xl:flex` biến mất hoàn toàn dưới 1280px (laptop/tablet) — tách
+        thành hàng riêng `flex-wrap` luôn hiện thay vì ẩn theo breakpoint.
+      - Verify: `apps/web` lint/typecheck/build xanh (build lại từ `.next` sạch 2 lần do cache cũ
+        gây lỗi `PageNotFoundError` không liên quan code — dọn `.next` là đủ).
 
 ## Đang làm / tiếp theo
 

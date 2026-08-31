@@ -6,6 +6,7 @@ import {
   Controls,
   Handle,
   MiniMap,
+  Panel,
   Position,
   ReactFlow,
   type Edge,
@@ -17,7 +18,7 @@ import '@xyflow/react/dist/style.css';
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { Workflow } from 'lucide-react';
+import { UserPlus, Workflow, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -358,10 +359,41 @@ export function OrchestratorCanvas({
           <Background />
           <Controls />
           <MiniMap pannable zoomable />
+          {/* Panel chi tiết node giờ chỉ hiện khi click (feedback user: mặc định ẩn cho đỡ tốn
+              diện tích) — nghĩa là "Thêm sub-agent" (nằm trong panel, scope theo node đang chọn)
+              cũng bị ẩn theo, không còn cách nào thêm sub-agent cho agent gốc mà không phải tìm
+              đúng node gốc để click trước. Nút riêng này luôn hiện, bấm vào tự chọn agent gốc —
+              mở đúng panel đó ngay, không cần dò node. */}
+          <Panel position="top-left">
+            <Button
+              size="sm"
+              variant="outline"
+              className="bg-background/90 shadow-sm backdrop-blur"
+              onClick={() => {
+                setSelectedAgentId(rootAgentId);
+                setSelectedEdgeId(null);
+              }}
+            >
+              <UserPlus className="size-4" />
+              Thêm sub-agent
+            </Button>
+          </Panel>
         </ReactFlow>
       </div>
 
+      {(selectedEdge || selectedPos) && (
       <aside className="w-72 shrink-0 overflow-y-auto border-l border-border p-4">
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedAgentId(null);
+            setSelectedEdgeId(null);
+          }}
+          aria-label="Đóng panel chi tiết"
+          className="mb-2 ml-auto flex size-6 items-center justify-center rounded-md text-foreground/50 hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-4" />
+        </button>
         {selectedEdge ? (
           <EdgeContractPanel
             key={selectedEdge.id}
@@ -383,9 +415,7 @@ export function OrchestratorCanvas({
               });
             }}
           />
-        ) : !selectedPos ? (
-          <p className="text-sm text-foreground/60">Chọn 1 node hoặc 1 cạnh để xem chi tiết.</p>
-        ) : (
+        ) : selectedPos ? (
           <div className="flex flex-col gap-4">
             <div>
               <h3 className="text-sm font-semibold">{selectedPos.agent.slug}</h3>
@@ -453,8 +483,9 @@ export function OrchestratorCanvas({
               Chọn 1 cạnh (edge) trên canvas rồi nhấn Delete/Backspace để gỡ delegation đó.
             </p>
           </div>
-        )}
+        ) : null}
       </aside>
+      )}
     </div>
   );
 }

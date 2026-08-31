@@ -1,12 +1,13 @@
 'use client';
 
-import { Bot, BookOpen, Settings, Users, Wrench } from 'lucide-react';
+import { ArrowLeft, Bot, BookOpen, Cpu, Settings, Users, Wrench } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { getApiErrorMessage } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { AgentToolManager, useAgentTools } from '@/features/tool';
 import { AgentKnowledgeBaseManager, useAgentKnowledgeBases } from '@/features/knowledge-base';
 import { useModels } from '@/features/model';
@@ -19,6 +20,11 @@ import { DelegationManager } from './DelegationManager';
 import { OrchestratorCanvas } from './OrchestratorCanvas';
 
 type AgentDetailTab = 'info' | 'kb' | 'tools' | 'sub-agents';
+
+// Dùng chung cho cả nội dung chính lẫn 2 trạng thái loading/error bên dưới — trước đó early-return
+// loading/error mất hẳn padding này (do bỏ `PageShell`), khiến `LoadingState`/`EmptyState` dính
+// sát mép màn hình (finding thật từ `code-reviewer`).
+const PAGE_CONTAINER_CLASS = 'mx-auto flex min-h-full max-w-5xl flex-col gap-4 px-4 py-5 sm:px-6';
 
 const TAB_VALUES: AgentDetailTab[] = ['info', 'kb', 'tools', 'sub-agents'];
 
@@ -45,9 +51,19 @@ export function AgentDetailView({ id }: { id: number }) {
   const { data: agentKnowledgeBases } = useAgentKnowledgeBases(id);
   const { data: subAgents } = useSubAgents(id);
 
-  if (isPending) return <LoadingState label="Đang tải agent…" />;
+  if (isPending) {
+    return (
+      <div className={PAGE_CONTAINER_CLASS}>
+        <LoadingState label="Đang tải agent…" />
+      </div>
+    );
+  }
   if (isError || !agent) {
-    return <EmptyState icon={Bot} tone="destructive" title="Không tải được agent." />;
+    return (
+      <div className={PAGE_CONTAINER_CLASS}>
+        <EmptyState icon={Bot} tone="destructive" title="Không tải được agent." />
+      </div>
+    );
   }
 
   const model = models?.find((m) => m.id === agent.model_id);
@@ -62,58 +78,95 @@ export function AgentDetailView({ id }: { id: number }) {
   const readinessItems = [
     {
       key: 'model',
+      icon: Cpu,
       label: 'Model',
       ok: Boolean(model),
-      value: model ? `${model.name}` : '—',
+      value: model ? model.name : 'Chưa gán model',
     },
     {
       key: 'tools',
-      label: 'Tool',
+      icon: Wrench,
+      label: 'Tool đã gán',
       ok: Boolean(agentTools && agentTools.length > 0),
-      value: (agentTools?.length ?? 0).toString(),
+      value: `${agentTools?.length ?? 0} tool`,
     },
     {
       key: 'kbs',
-      label: 'Knowledge Base',
+      icon: BookOpen,
+      label: 'Knowledge Base đã gán',
       ok: Boolean(agentKnowledgeBases && agentKnowledgeBases.length > 0),
-      value: (agentKnowledgeBases?.length ?? 0).toString(),
+      value: `${agentKnowledgeBases?.length ?? 0} KB`,
     },
     {
       key: 'sub-agents',
-      label: 'Sub-agent',
+      icon: Users,
+      label: 'Sub-agent đã gán',
       ok: Boolean(agent.is_orchestrator && subAgents && subAgents.length > 0),
-      value: agent.is_orchestrator ? (subAgents?.length ?? 0).toString() : 'n/a',
+      value: agent.is_orchestrator ? `${subAgents?.length ?? 0} sub-agent` : 'Không phải orchestrator',
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_1fr]">
-      <aside className="h-fit rounded-xl border border-border bg-card p-4">
-        <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Bot className="size-5" />
+    <div className={PAGE_CONTAINER_CLASS}>
+      {/* Header — trước đây thông tin này (avatar/tên/slug/readiness) nằm ở 1 cột trái riêng,
+          lặp lại giống hệt nhau ở cả 4 tab, tốn diện tích — feedback user: gộp lên đây, chỉ hiện
+          1 lần. Thêm nút back (trước đó không có cách quay lại /agents ngoài nút trình duyệt).
+          Readiness tách thành hàng riêng bên dưới (thay vì nhét chung 1 hàng với back/avatar/tên/
+          nút xoá) — nhét chung phải ẩn hẳn dưới màn hình rộng (`xl:flex`) mới đủ chỗ, làm readiness
+          biến mất hoàn toàn trên laptop/tablet (finding thật từ `code-reviewer`); hàng riêng +
+          `flex-wrap` thì luôn hiện, tự xuống dòng khi hẹp thay vì biến mất. */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/70 px-5 py-4 shadow-sm backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/agents')}
+            aria-label="Quay lại danh sách agent"
+            className="shrink-0"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Bot className="size-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">{agent.name}</h1>
+            <p className="truncate font-mono text-xs text-muted-foreground">
+              {agent.slug}
+              {agent.is_orchestrator && ' · orchestrator'}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDelete}
+            disabled={deleteAgent.isPending}
+            className="shrink-0 border-destructive text-destructive hover:bg-destructive/10"
+          >
+            {deleteAgent.isPending ? 'Đang xoá…' : 'Xoá agent'}
+          </Button>
         </div>
-        <h2 className="text-base font-semibold text-foreground">{agent.name}</h2>
-        <p className="mb-4 font-mono text-xs text-muted-foreground">
-          {agent.slug}
-          {agent.is_orchestrator && ' · orchestrator'}
-        </p>
-
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/60 pt-3">
           {readinessItems.map((item) => (
-            <div key={item.key} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span
-                className={
-                  'size-1.5 shrink-0 rounded-full ' + (item.ok ? 'bg-emerald-500' : 'bg-muted-foreground/40')
-                }
-              />
-              <span>{item.label}</span>
-              <span className="ml-auto font-mono text-[11px]">{item.value}</span>
+            <div
+              key={item.key}
+              className={cn(
+                'flex items-center gap-1.5 text-xs',
+                item.ok ? 'text-foreground/70' : 'text-muted-foreground/60',
+              )}
+              title={item.label}
+            >
+              <item.icon className="size-3.5 shrink-0" />
+              <span className="whitespace-nowrap">{item.value}</span>
             </div>
           ))}
         </div>
-      </aside>
+      </div>
+      {deleteAgent.isError && (
+        <p className="-mt-2 text-sm text-destructive">{getApiErrorMessage(deleteAgent.error)}</p>
+      )}
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-1 flex-col">
         <div className="rounded-xl border border-border bg-card">
           {/* `Tabs` chỉ dùng cho phần điều hướng (TabsList/TabsTrigger, giữ keyboard nav/ARIA) —
               nội dung mỗi tab tự render theo `activeTab` bên dưới thay vì qua `TabsContent`:
@@ -169,20 +222,6 @@ export function AgentDetailView({ id }: { id: number }) {
                 <DelegationManager agent={agent} />
               ))}
           </div>
-        </div>
-
-        <div className="border-t border-border pt-4">
-          <Button
-            variant="outline"
-            onClick={handleDelete}
-            disabled={deleteAgent.isPending}
-            className="border-destructive text-destructive hover:bg-destructive/10"
-          >
-            {deleteAgent.isPending ? 'Đang xoá…' : 'Xoá agent'}
-          </Button>
-          {deleteAgent.isError && (
-            <p className="mt-2 text-sm text-destructive">{getApiErrorMessage(deleteAgent.error)}</p>
-          )}
         </div>
       </div>
     </div>
