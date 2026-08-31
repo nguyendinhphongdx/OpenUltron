@@ -54,10 +54,12 @@ class AgentRuntime(Protocol):
         `{"type": "delta"|"tool_call_start"|"tool_call_end"|"approval_required"|"done"|"error",
         ...}`. Truyền `(history, user_text)` để bắt đầu turn MỚI, HOẶC `resume_decision`
         (`"approve"`/`"reject"`) để resume turn đang chờ duyệt — đúng 1 trong 2, không cả hai.
-        Event `"done"` có `{"text": <accumulated>, "sources": [...]}` — `sources` là danh sách
-        chunk KB đã retrieve trong turn (docs/features/kb-citation.md, rỗng nếu turn không gọi tool
-        KB nào) — KHÔNG tự persist Message gì, caller (`ChatService`) tự quyết lưu gì dựa trên
-        event nhận được."""
+        `tool_call_start` có thêm `run_id`/`input` (args), `tool_call_end` có thêm `run_id`/`output`
+        (kết quả tool, text) — `run_id` ổn định xuyên suốt 1 lần gọi tool, phân biệt 2 lần gọi cùng
+        tên tool trong 1 turn (docs/features/agent-execution-trace.md). Event `"done"` có
+        `{"text": <accumulated>, "sources": [...]}` — `sources` là danh sách chunk KB đã retrieve
+        trong turn (docs/features/kb-citation.md, rỗng nếu turn không gọi tool KB nào) — KHÔNG tự
+        persist Message gì, caller (`ChatService`) tự quyết lưu gì dựa trên event nhận được."""
         ...
 
     async def run_sync(
@@ -98,6 +100,19 @@ def _first_action_request(state: Any) -> dict[str, Any] | None:
     return None
 
 
+_TOOL_TRACE_MAX_LEN = 2000
+
+
+def _tool_output_text(output: Any) -> str:
+    """`on_tool_end`'s `data.output` là `ToolMessage` khi tool call có `tool_call_id` (luôn đúng
+    với tool do LangGraph agent gọi) — giá trị thật nằm ở `.content`; fallback `output` trần cho
+    case hiếm không có attr này. Cắt độ dài tránh 1 tool trả về khổng lồ tràn UI trace
+    (docs/features/agent-execution-trace.md)."""
+    content = getattr(output, "content", output)
+    text = str(content)
+    return text if len(text) <= _TOOL_TRACE_MAX_LEN else text[:_TOOL_TRACE_MAX_LEN] + "…"
+
+
 async def _stream_turn(
     executor: Any, config: dict[str, Any], input_data: Any
 ) -> AsyncIterator[dict]:
@@ -112,9 +127,22 @@ async def _stream_turn(
                 accumulated.append(text)
                 yield {"type": "delta", "text": text}
         elif kind == "on_tool_start":
-            yield {"type": "tool_call_start", "name": event["name"]}
+            # `run_id` (docs/features/agent-execution-trace.md) — id ổn định xuyên suốt 1 lần
+            # gọi tool cụ thể, PHÂN BIỆT được 2 lần gọi cùng 1 tool trong 1 turn (khác `name`,
+            # trùng khi gọi lặp lại — bug thật nếu chỉ dùng `name` làm id ở tầng AG-UI phía trên).
+            yield {
+                "type": "tool_call_start",
+                "run_id": str(event["run_id"]),
+                "name": event["name"],
+                "input": event["data"].get("input", {}),
+            }
         elif kind == "on_tool_end":
-            yield {"type": "tool_call_end", "name": event["name"]}
+            yield {
+                "type": "tool_call_end",
+                "run_id": str(event["run_id"]),
+                "name": event["name"],
+                "output": _tool_output_text(event["data"].get("output")),
+            }
 
     state = await executor.aget_state(config)
     if state.next:

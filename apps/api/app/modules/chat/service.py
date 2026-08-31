@@ -295,7 +295,6 @@ class ChatService:
         thread_id = str(conversation_id)
         message_id = f"msg-{uuid4()}"
         text_started = False
-        active_tool_call_ids: dict[str, str] = {}
 
         yield {"type": "RUN_STARTED", "threadId": thread_id, "runId": run_id}
 
@@ -337,17 +336,28 @@ class ChatService:
                     }
                     text_started = True
                 tool_name = str(event.get("name", "unknown"))
-                tool_call_id = f"tool-{uuid4()}"
-                active_tool_call_ids[tool_name] = tool_call_id
+                # `run_id` (agent_runtime.py, docs/features/agent-execution-trace.md) — id ổn định
+                # từ LangChain xuyên suốt 1 lần gọi tool, dùng thẳng làm `toolCallId` thay vì dict
+                # tra cứu theo tên tool (bug cũ: tên trùng khi gọi cùng 1 tool 2 lần trong 1 turn).
+                tool_call_id = f"tool-{event.get('run_id', uuid4())}"
                 yield {
                     "type": "TOOL_CALL_START",
                     "toolCallId": tool_call_id,
                     "toolCallName": tool_name,
                     "parentMessageId": message_id,
                 }
+                yield {
+                    "type": "TOOL_CALL_ARGS",
+                    "toolCallId": tool_call_id,
+                    "delta": _json_dumps_compact(event.get("input", {})),
+                }
             elif event_type == "tool_call_end":
-                tool_name = str(event.get("name", "unknown"))
-                tool_call_id = active_tool_call_ids.pop(tool_name, f"tool-{uuid4()}")
+                tool_call_id = f"tool-{event.get('run_id', uuid4())}"
+                yield {
+                    "type": "TOOL_CALL_RESULT",
+                    "toolCallId": tool_call_id,
+                    "content": str(event.get("output", "")),
+                }
                 yield {"type": "TOOL_CALL_END", "toolCallId": tool_call_id}
             elif event_type == "approval_required":
                 if not text_started:

@@ -6,6 +6,7 @@ import { MessagePartPrimitive, MessagePrimitive } from '@assistant-ui/react';
 import { cn } from '@/lib/utils';
 import { CitationSources } from './CitationSources';
 import { MarkdownTextPart } from './MarkdownTextPart';
+import { ToolCallStep } from './ToolCallStep';
 
 function ChatTextParts({ markdown = false }: { markdown?: boolean }) {
   return (
@@ -18,6 +19,7 @@ function ChatTextParts({ markdown = false }: { markdown?: boolean }) {
             smooth
           />
         ),
+        tools: { Fallback: ToolCallStep },
       }}
     />
   );

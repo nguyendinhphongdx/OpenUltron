@@ -105,8 +105,18 @@ async def test_send_streams_delta_and_tool_events_in_order(monkeypatch: pytest.M
     events = [
         {"event": "on_chain_start", "data": {}},  # noise — phải bị bỏ qua, không forward
         {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content="Hello")}},
-        {"event": "on_tool_start", "name": "research-agent", "data": {}},
-        {"event": "on_tool_end", "name": "research-agent", "data": {}},
+        {
+            "event": "on_tool_start",
+            "name": "research-agent",
+            "run_id": "run-1",
+            "data": {"input": {"query": "abc"}},
+        },
+        {
+            "event": "on_tool_end",
+            "name": "research-agent",
+            "run_id": "run-1",
+            "data": {"output": "result-1"},
+        },
         {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content=" world")}},
     ]
 
@@ -122,8 +132,18 @@ async def test_send_streams_delta_and_tool_events_in_order(monkeypatch: pytest.M
 
     assert received == [
         {"type": "delta", "text": "Hello"},
-        {"type": "tool_call_start", "name": "research-agent"},
-        {"type": "tool_call_end", "name": "research-agent"},
+        {
+            "type": "tool_call_start",
+            "run_id": "run-1",
+            "name": "research-agent",
+            "input": {"query": "abc"},
+        },
+        {
+            "type": "tool_call_end",
+            "run_id": "run-1",
+            "name": "research-agent",
+            "output": "result-1",
+        },
         {"type": "delta", "text": " world"},
         {"type": "done", "message_id": 2, "seq": 2},
     ]
@@ -216,8 +236,18 @@ async def test_approve_resumes_and_persists_assistant_message(
 async def test_send_agui_maps_stream_to_ag_ui_events(monkeypatch: pytest.MonkeyPatch) -> None:
     events = [
         {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content="Xin")}},
-        {"event": "on_tool_start", "name": "research-agent", "data": {}},
-        {"event": "on_tool_end", "name": "research-agent", "data": {}},
+        {
+            "event": "on_tool_start",
+            "name": "research-agent",
+            "run_id": "run-1",
+            "data": {"input": {"query": "abc"}},
+        },
+        {
+            "event": "on_tool_end",
+            "name": "research-agent",
+            "run_id": "run-1",
+            "data": {"output": "result-1"},
+        },
         {"event": "on_chat_model_stream", "data": {"chunk": SimpleNamespace(content=" chào")}},
     ]
 
@@ -245,6 +275,8 @@ async def test_send_agui_maps_stream_to_ag_ui_events(monkeypatch: pytest.MonkeyP
         "TEXT_MESSAGE_START",
         "TEXT_MESSAGE_CONTENT",
         "TOOL_CALL_START",
+        "TOOL_CALL_ARGS",
+        "TOOL_CALL_RESULT",
         "TOOL_CALL_END",
         "TEXT_MESSAGE_CONTENT",
         "TEXT_MESSAGE_END",
@@ -254,10 +286,72 @@ async def test_send_agui_maps_stream_to_ag_ui_events(monkeypatch: pytest.MonkeyP
     assert received[0]["runId"] == "run-1"
     assert received[2]["delta"] == "Xin"
     assert received[3]["toolCallName"] == "research-agent"
-    assert received[3]["toolCallId"] == received[4]["toolCallId"]
+    tool_call_id = received[3]["toolCallId"]
+    assert received[4]["toolCallId"] == tool_call_id
+    assert received[4]["delta"] == '{"query":"abc"}'
+    assert received[5]["toolCallId"] == tool_call_id
+    assert received[5]["content"] == "result-1"
+    assert received[6]["toolCallId"] == tool_call_id
     assert received[-1]["outcome"] == {"type": "success"}
     assert message_service.appended[0].content == "hi"
     assert message_service.appended[1].content == "Xin chào"
+
+
+@pytest.mark.asyncio
+async def test_send_agui_gives_distinct_tool_call_ids_for_repeated_tool_in_same_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bug đã fix (docs/features/agent-execution-trace.md): trước đây `toolCallId` tra theo tên
+    tool (dict `active_tool_call_ids`), gọi lặp lại cùng 1 tool trong 1 turn có thể lẫn id — giờ
+    dùng thẳng `run_id` (id ổn định từ LangChain) nên 2 lần gọi cùng tên tool vẫn tách biệt."""
+    events = [
+        {
+            "event": "on_tool_start",
+            "name": "search-knowledge-base-kb",
+            "run_id": "run-1",
+            "data": {"input": {"query": "câu hỏi 1"}},
+        },
+        {
+            "event": "on_tool_end",
+            "name": "search-knowledge-base-kb",
+            "run_id": "run-1",
+            "data": {"output": "result-1"},
+        },
+        {
+            "event": "on_tool_start",
+            "name": "search-knowledge-base-kb",
+            "run_id": "run-2",
+            "data": {"input": {"query": "câu hỏi 2"}},
+        },
+        {
+            "event": "on_tool_end",
+            "name": "search-knowledge-base-kb",
+            "run_id": "run-2",
+            "data": {"output": "result-2"},
+        },
+    ]
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor(events)
+
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
+
+    service = _make_service(FakeMessageService())
+    request = AgUiRunRequest(
+        threadId="1",
+        runId="run-x",
+        messages=[{"id": "user-1", "role": "user", "content": "hi"}],
+        state={},
+        tools=[],
+        context=[],
+        forwardedProps={},
+    )
+
+    received = [event async for event in service.send_agui(1, request)]
+
+    result_events = [e for e in received if e["type"] == "TOOL_CALL_RESULT"]
+    assert [e["content"] for e in result_events] == ["result-1", "result-2"]
+    assert result_events[0]["toolCallId"] != result_events[1]["toolCallId"]
 
 
 @pytest.mark.asyncio
