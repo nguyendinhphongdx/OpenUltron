@@ -82,7 +82,16 @@ export function NewConversationView() {
             <label className="text-xs font-medium text-muted-foreground">Agent trả lời</label>
             <Select value={agentId ?? undefined} onValueChange={(value) => setAgentId(value ?? null)}>
               <SelectTrigger className="h-11 w-full rounded-2xl bg-white/80">
-                <SelectValue placeholder="Chọn agent để bắt đầu…" />
+                {/* base-ui SelectValue chỉ hiện raw value (vd "3") trừ khi truyền children dạng
+                 * hàm map value → label hiển thị — khác Radix (tự lấy label từ SelectItem đang
+                 * chọn). Cùng bug đã fix ở AgentForm.tsx/ModelForm.tsx. */}
+                <SelectValue placeholder="Chọn agent để bắt đầu…">
+                  {(value: string | null) => {
+                    if (value === 'default') return 'Agent mặc định từ Settings';
+                    const selected = agents?.find((agent) => agent.id.toString() === value);
+                    return selected?.name ?? 'Chọn agent để bắt đầu…';
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="default">Agent mặc định từ Settings</SelectItem>

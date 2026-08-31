@@ -140,6 +140,28 @@ Trước khi thêm hook/component/service mới, đọc (không chỉ file đị
 3. `src/lib/` (`utils.ts`, `api/`) — helper cần đã có chưa.
 4. `apps/api/app/modules/<name>/schemas.py` thật — không đoán shape field.
 
+## Gotcha đã biết — `Select` (`@base-ui/react`) hiện raw value thay vì label
+
+`src/components/ui/select.tsx` bọc `@base-ui/react` (KHÔNG phải Radix) — `SelectValue` mặc định
+chỉ hiện **raw value** đang chọn (vd `"3"`) thay vì label đọc được, khác hành vi quen thuộc của
+Radix Select (tự lấy label từ `SelectItem` đang active). Đã tái diễn ≥ 2 lần trong repo (fix ở
+`AgentForm.tsx`/`ModelForm.tsx` và 3 file khác trước đó, rồi lại quên ở `NewConversationView.tsx`).
+
+**Luôn** truyền `children` dạng hàm cho `SelectValue` khi Select có nhiều option cần hiện label
+khác value (id số, slug...):
+
+```tsx
+<SelectValue placeholder="— Chọn model —">
+  {(value: string | null) => {
+    const selected = models?.find((m) => m.id.toString() === value);
+    return selected ? selected.name : '— Chọn model —';
+  }}
+</SelectValue>
+```
+
+Chỉ bỏ qua pattern này khi value và label vốn đã giống hệt nhau (vd option cố định như
+`"default"` → hiện y hệt chữ "default").
+
 ## Anti-pattern (tránh over-engineering do AI tự thêm)
 
 - ❌ Thêm tenant/workspace/session-refresh/multi-locale khi chưa có ADR quyết định khác — vi phạm
