@@ -126,13 +126,19 @@ class ChatService:
         self.runtime: AgentRuntime = runtime or LangGraphAgentRuntime()
 
     async def _resolve_sub_agent_spec(
-        self, agent: AgentRead, task_description: str | None, *, depth: int = 0
+        self,
+        agent: AgentRead,
+        task_description: str | None,
+        *,
+        delegation_id: int | None = None,
+        depth: int = 0,
     ) -> SubAgentSpec:
         """`task_description` là mô tả nhiệm vụ RIÊNG theo cạnh `AgentDelegation` gọi tới agent
         này (docs/features/orchestrator-v2.md Phase B) — ưu tiên trước `agent.description` (mô tả
         CHUNG, có thể khác nhau theo nhiều orchestrator cùng gọi 1 sub-agent). Default cứng cuối
         cùng (`f"Delegate task to '{slug}'"`) nằm ở `chat/graph.py::_build_sub_agent_tool`, không
-        đổi ở đây."""
+        đổi ở đây. `delegation_id` (Phase C) là id của chính cạnh này — dùng để ghi "lần chạy gần
+        nhất" khi orchestrator thật sự gọi sub-agent này."""
         model_row = await self.model_service.get_or_404(agent.model_id)
         sub_agents: list[SubAgentSpec] = []
         # Đa tầng (ADR-0006 mở rộng): 1 sub-agent có is_orchestrator=true vẫn được tiếp tục gọi
@@ -140,7 +146,10 @@ class ChatService:
         if agent.is_orchestrator and depth < MAX_DELEGATION_DEPTH:
             sub_agents = [
                 await self._resolve_sub_agent_spec(
-                    detail.sub_agent, detail.task_description, depth=depth + 1
+                    detail.sub_agent,
+                    detail.task_description,
+                    delegation_id=detail.id,
+                    depth=depth + 1,
                 )
                 for detail in await self.agent_service.list_delegation_details(agent.id)
             ]
@@ -154,6 +163,7 @@ class ChatService:
             sub_agents=sub_agents,
             tools=[_to_tool_spec(t) for t in tool_reads],
             knowledge_bases=[_to_kb_spec(kb) for kb in kb_reads],
+            delegation_id=delegation_id,
         )
 
     async def _resolve_default_model(self) -> ModelConfig:
@@ -189,7 +199,9 @@ class ChatService:
                 system_prompt += _KB_CITATION_INSTRUCTION
             if agent.is_orchestrator:
                 sub_agent_specs = [
-                    await self._resolve_sub_agent_spec(detail.sub_agent, detail.task_description)
+                    await self._resolve_sub_agent_spec(
+                        detail.sub_agent, detail.task_description, delegation_id=detail.id
+                    )
                     for detail in await self.agent_service.list_delegation_details(agent.id)
                 ]
         else:

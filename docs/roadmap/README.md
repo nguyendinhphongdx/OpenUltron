@@ -30,7 +30,7 @@ input/output adapter.
 | Quản lý provider credential (API key) qua DB + UI (dialog 3 cột: provider → model+capabilities → credential), thay vì chỉ `.env` | ✅ Đã có | [`docs/features/model-credential-management.md`](../features/model-credential-management.md), [research](../research/model-credential-management.md), [mockup](../mockups/model-credential-management.html), [ADR-0010](../adr/0010-provider-credential-in-db.md) |
 | Pull model Ollama qua UI (catalog browse + progress bar, SSE) | ✅ Đã có | [ADR-0011](../adr/0011-ollama-pull-sse-streaming.md) |
 | Provider adapter abstraction (đổi/thêm provider không sửa if/elif rải rác) + seed model catalog hosted vào DB | ✅ Đã có | [ADR-0012](../adr/0012-provider-adapter-abstraction.md) |
-| Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A+B xong (edge contract, readiness, cả backend+canvas), Phase C/D chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
+| Orchestrator v2 — setup/run/debug đúng nghĩa (graph editor ReactFlow, custom được) | 🚧 Phase A+B+C xong (edge contract, readiness, saved layout, trace inspector "lần chạy gần nhất"), Phase D (run simulator) chưa code | [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md), [research](../research/orchestrator-v2.md), [mockup](../mockups/orchestrator-v2.html), [addendum ADR-0014](../adr/0014-tool-approval-gate.md) |
 | Agent creation wizard + Knowledge Base binding UI + nâng cấp trang chi tiết Agent | ✅ Đã có (2026-08-30) — chưa live-verify qua browser (thiếu Postgres/Ollama trong sandbox) | [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md), [research](../research/agent-creation-wizard.md), [mockup](../mockups/agent-creation-wizard.html) |
 | Agent Execution Trace (xem lại think→tool-call→...→trả lời trong 1 turn) — Phase 1 xem, Phase 2 chỉnh sửa reasoning loop để sau (cần ADR riêng) | ✅ Phase 1 xong (2026-08-31) — chưa live-verify qua browser (thiếu Postgres/model trong sandbox) | [`docs/features/agent-execution-trace.md`](../features/agent-execution-trace.md) |
 | Unified agent runtime + chuẩn hoá stream/chat UI (wire contract FE↔BE) | ✅ Đã có (phần wire contract) | [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md), [ADR-0019](../adr/0019-ag-ui-assistant-ui-runtime.md) — chuẩn hoá text stream bằng AG-UI + assistant-ui; phần backend-internal interface (LangGraph leak vào `ChatService`) tách sang dòng "Agent runtime abstraction" dưới |
@@ -486,7 +486,13 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 
 ## Đang làm / tiếp theo
 
-- [ ] **P0 — Orchestrator v2: setup/run/debug đúng nghĩa** — hiện tại orchestrator mới là
+- [ ] **P0 — Orchestrator v2: setup/run/debug đúng nghĩa** — **Cập nhật 2026-08-31**: 6 câu hỏi mở
+      dưới đây đã được trả lời từ 2026-08-30 (xem "Câu hỏi mở — đã trả lời" trong
+      `docs/features/orchestrator-v2.md`) — Phase A (nested approval fail-closed), Phase B (edge
+      contract + readiness check) và Phase C (saved layout + trace inspector "lần chạy gần nhất")
+      đều đã xong. Chỉ còn **Phase D (run simulator)** — persist thật qua `ChatService`/
+      `AgentRuntime`, chưa code. Giữ nguyên phần lịch sử bên dưới để tham khảo ngữ cảnh quyết định.
+      Trạng thái gốc lúc mới ghi bullet này:
       `Agent.is_orchestrator=true` + `AgentDelegation` edge đơn giản + canvas xem/thêm/gỡ cạnh.
       Cần thiết kế lại như 1 graph/app có thể chạy ổn định: edge có mô tả nhiệm vụ/contract rõ ràng
       (khi nào gọi sub-agent, input/output mong đợi), readiness check trước khi run (agent thiếu

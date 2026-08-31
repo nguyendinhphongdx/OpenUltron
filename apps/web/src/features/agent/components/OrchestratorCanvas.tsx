@@ -29,6 +29,7 @@ import { useAgents } from '../hooks/useAgents';
 import { orchestratorTreeQueryKey, useOrchestratorTree } from '../hooks/useOrchestratorTree';
 import { useReadiness } from '../hooks/useReadiness';
 import { useRemoveDelegation } from '../hooks/useRemoveDelegation';
+import { useUpdateAgent } from '../hooks/useUpdateAgent';
 import { useUpdateDelegation } from '../hooks/useUpdateDelegation';
 import type { Agent, AgentNodeReadiness, OrchestratorTreeNode } from '../types/agent.types';
 
@@ -62,11 +63,19 @@ interface PosNode {
   key: string;
   x: number;
   y: number;
+  /** Vị trí đã lưu ở BE (Phase C) — `null` nếu node chưa từng được kéo/lưu, dùng `x`/`y` (auto
+   * layout) làm fallback. */
+  savedX: number | null;
+  savedY: number | null;
   agent: Agent;
   parentKey: string | null;
   parentAgentId: number | null;
   delegationId: number | null;
   taskDescription: string | null;
+  lastRunAt: string | null;
+  lastRunOutput: string | null;
+  lastRunError: string | null;
+  lastRunDurationMs: number | null;
 }
 
 interface EdgeData {
@@ -74,6 +83,10 @@ interface EdgeData {
   subAgentId: number;
   delegationId: number;
   taskDescription: string | null;
+  lastRunAt: string | null;
+  lastRunOutput: string | null;
+  lastRunError: string | null;
+  lastRunDurationMs: number | null;
 }
 
 function layout(
@@ -85,33 +98,29 @@ function layout(
   out: PosNode[],
 ): number {
   const key = parentKey ? `${parentKey}::${node.agent.id}` : `${node.agent.id}`;
-  if (node.children.length === 0) {
-    const x = counter.n * COL_WIDTH;
-    counter.n += 1;
-    out.push({
-      key,
-      x,
-      y: depth * ROW_HEIGHT,
-      agent: node.agent,
-      parentKey,
-      parentAgentId,
-      delegationId: node.delegationId,
-      taskDescription: node.taskDescription,
-    });
-    return x;
-  }
-  const childXs = node.children.map((c) => layout(c, depth + 1, key, node.agent.id, counter, out));
-  const x = (Math.min(...childXs) + Math.max(...childXs)) / 2;
-  out.push({
+  const common = {
     key,
-    x,
-    y: depth * ROW_HEIGHT,
     agent: node.agent,
     parentKey,
     parentAgentId,
     delegationId: node.delegationId,
     taskDescription: node.taskDescription,
-  });
+    savedX: node.posX,
+    savedY: node.posY,
+    lastRunAt: node.lastRunAt,
+    lastRunOutput: node.lastRunOutput,
+    lastRunError: node.lastRunError,
+    lastRunDurationMs: node.lastRunDurationMs,
+  };
+  if (node.children.length === 0) {
+    const x = counter.n * COL_WIDTH;
+    counter.n += 1;
+    out.push({ ...common, x, y: depth * ROW_HEIGHT });
+    return x;
+  }
+  const childXs = node.children.map((c) => layout(c, depth + 1, key, node.agent.id, counter, out));
+  const x = (Math.min(...childXs) + Math.max(...childXs)) / 2;
+  out.push({ ...common, x, y: depth * ROW_HEIGHT });
   return x;
 }
 
@@ -211,6 +220,28 @@ function EdgeContractPanel({
         {isSaving ? 'Đang lưu…' : 'Lưu'}
       </Button>
       {isError && <p className="text-xs text-red-500">Không lưu được task description.</p>}
+
+      <div>
+        <p className="mb-1 font-mono text-xs uppercase tracking-wide text-foreground/50">
+          Lần chạy gần nhất
+        </p>
+        {data.lastRunAt === null ? (
+          <p className="text-xs text-foreground/50">Chưa chạy lần nào.</p>
+        ) : (
+          <div className="flex flex-col gap-1 text-xs">
+            <p className="text-foreground/60">
+              {new Date(data.lastRunAt).toLocaleString('vi-VN')}
+              {data.lastRunDurationMs !== null && ` · ${data.lastRunDurationMs}ms`}
+            </p>
+            {data.lastRunError !== null ? (
+              <p className="whitespace-pre-wrap text-red-500">{data.lastRunError}</p>
+            ) : (
+              <p className="whitespace-pre-wrap text-foreground/80">{data.lastRunOutput}</p>
+            )}
+          </div>
+        )}
+      </div>
+
       <p className="text-xs text-foreground/50">
         Chọn cạnh rồi nhấn Delete/Backspace để gỡ delegation đó.
       </p>
@@ -236,12 +267,13 @@ export function OrchestratorCanvas({
   const { data: readiness } = useReadiness(rootAgentId);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  // Vị trí node user tự kéo — auto-layout (`layout()`) chỉ dùng làm vị trí KHỞI TẠO; không lưu
-  // đè lên đây thì mọi re-render (vd đổi `selectedAgentId` lúc click chọn node) sẽ tính lại
-  // `nodes` từ đầu và snap ngược về vị trí auto-layout, y như kéo không có tác dụng gì (bug thật
-  // — ReactFlow là "controlled" component khi tự truyền `nodes` prop, cần tự lưu + merge lại vị
-  // trí qua `onNodesChange`, không tự nhớ giùm). Chỉ session hiện tại — chưa lưu xuống backend
-  // (Agent chưa có field toạ độ), mất khi rời trang; đủ cho nhu cầu "kéo sắp xếp lại lúc đang xem".
+  // Vị trí node user tự kéo TRONG session này — auto-layout (`layout()`)/vị trí đã lưu ở BE
+  // (`p.savedX/savedY`, Phase C) chỉ dùng làm vị trí KHỞI TẠO; không lưu đè lên đây thì mọi
+  // re-render (vd đổi `selectedAgentId` lúc click chọn node) sẽ tính lại `nodes` từ đầu và snap
+  // ngược về vị trí ban đầu, y như kéo không có tác dụng gì (bug thật — ReactFlow là "controlled"
+  // component khi tự truyền `nodes` prop, cần tự lưu + merge lại vị trí qua `onNodesChange`, không
+  // tự nhớ giùm). Khi thả chuột (`handleNodesChange` phát hiện `dragging: false`), vị trí được lưu
+  // xuống BE luôn (`useUpdateAgent`/`useUpdateDelegation`) — không chỉ sống trong session nữa.
   const [manualPositions, setManualPositions] = useState<Record<string, { x: number; y: number }>>(
     {},
   );
@@ -253,6 +285,9 @@ export function OrchestratorCanvas({
   const addDelegation = useAddDelegation(selectedAgentId ?? -1, rootAgentId);
   const removeDelegation = useRemoveDelegation(rootAgentId);
   const updateDelegation = useUpdateDelegation(rootAgentId);
+  // Lưu vị trí node GỐC — tái dùng `PATCH /agents/{id}` có sẵn (`AgentUpdate` đã hỗ trợ
+  // `pos_x`/`pos_y`, Phase C) thay vì dựng route/hook riêng cho "layout".
+  const updateAgentLayout = useUpdateAgent(rootAgentId);
 
   const modelLabel = (modelId: number) =>
     models?.find((m) => m.id === modelId)?.slug ?? `model #${modelId}`;
@@ -271,7 +306,9 @@ export function OrchestratorCanvas({
     const nodes: Node[] = out.map((p) => ({
       id: p.key,
       type: 'agentNode',
-      position: manualPositions[p.key] ?? { x: p.x, y: p.y },
+      position:
+        manualPositions[p.key] ??
+        (p.savedX !== null && p.savedY !== null ? { x: p.savedX, y: p.savedY } : { x: p.x, y: p.y }),
       data: {
         agent: p.agent,
         modelLabel: modelLabel(p.agent.model_id),
@@ -296,6 +333,10 @@ export function OrchestratorCanvas({
           subAgentId: p.agent.id,
           delegationId: p.delegationId as number,
           taskDescription: p.taskDescription,
+          lastRunAt: p.lastRunAt,
+          lastRunOutput: p.lastRunOutput,
+          lastRunError: p.lastRunError,
+          lastRunDurationMs: p.lastRunDurationMs,
         } satisfies EdgeData,
       }));
 
@@ -310,6 +351,24 @@ export function OrchestratorCanvas({
       for (const n of updated) next[n.id] = n.position;
       return next;
     });
+
+    // Chỉ lưu xuống BE lúc THẢ chuột (`dragging: false`, đúng vị trí cuối) — không phải mỗi
+    // frame di chuột lúc đang kéo (Phase C, docs/features/orchestrator-v2.md).
+    for (const change of changes) {
+      if (change.type !== 'position' || change.dragging !== false) continue;
+      const p = positions.find((pos) => pos.key === change.id);
+      if (!p || !change.position) continue;
+      if (p.parentAgentId === null) {
+        updateAgentLayout.mutate({ pos_x: change.position.x, pos_y: change.position.y });
+      } else {
+        updateDelegation.mutate({
+          orchestratorId: p.parentAgentId,
+          subAgentId: p.agent.id,
+          posX: change.position.x,
+          posY: change.position.y,
+        });
+      }
+    }
   };
 
   if (isPending) return <LoadingState label="Đang tải graph…" />;

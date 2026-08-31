@@ -18,11 +18,15 @@ export function useUpdateDelegation(rootAgentId: number) {
       orchestratorId,
       subAgentId,
       taskDescription,
+      posX,
+      posY,
     }: {
       orchestratorId: number;
       subAgentId: number;
-      taskDescription: string | null;
-    }) => agentService.updateDelegation(orchestratorId, subAgentId, taskDescription),
+      taskDescription?: string | null;
+      posX?: number;
+      posY?: number;
+    }) => agentService.updateDelegation(orchestratorId, subAgentId, { taskDescription, posX, posY }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: orchestratorTreeQueryKey(rootAgentId) });
       queryClient.invalidateQueries({ queryKey: readinessQueryKey(rootAgentId) });

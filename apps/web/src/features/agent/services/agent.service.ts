@@ -57,14 +57,18 @@ export const agentService = {
     return res.data;
   },
 
+  /** Partial update (BE đọc qua `exclude_unset` — field không truyền ở `update` giữ nguyên giá
+   * trị cũ, xem `AgentDelegationUpdate`/`AgentService.update_delegation`). Dùng chung cho cả sửa
+   * task description (panel) lẫn lưu vị trí node kéo thả (Phase C, canvas) — 2 nơi gọi độc lập,
+   * không được ghi đè field của nhau. */
   updateDelegation: async (
     orchestratorId: number,
     subAgentId: number,
-    taskDescription: string | null,
+    update: { taskDescription?: string | null; posX?: number; posY?: number },
   ): Promise<AgentDelegation> => {
     const res = await apiClient.patch<AgentDelegation>(
       endpoints.agents.unassignDelegation(orchestratorId, subAgentId),
-      { task_description: taskDescription },
+      { task_description: update.taskDescription, pos_x: update.posX, pos_y: update.posY },
     );
     return res.data;
   },

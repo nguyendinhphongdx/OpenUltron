@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from langchain.agents import create_agent
@@ -52,6 +53,10 @@ class SubAgentSpec:
     sub_agents: list[SubAgentSpec] = field(default_factory=list)
     tools: list[ToolSpec] = field(default_factory=list)
     knowledge_bases: list[KnowledgeBaseSpec] = field(default_factory=list)
+    # Id của `AgentDelegation` (cạnh orchestrator → sub-agent này) — `None` khi resolve ngoài
+    # context 1 cạnh cụ thể. Dùng để ghi "lần chạy gần nhất" (orchestrator-v2.md Phase C) — KHÔNG
+    # dùng cho logic thực thi, chỉ để `_build_sub_agent_tool` biết ghi trace vào đâu.
+    delegation_id: int | None = None
 
 
 async def run_sub_agent(
@@ -172,9 +177,42 @@ def _build_sub_agent_tool(sub_agent: SubAgentSpec, *, session: AsyncSession, dep
         sub_agent.slug, description=sub_agent.description or f"Delegate task to '{sub_agent.slug}'"
     )
     async def _delegate(task: str) -> str:
-        return await run_sub_agent(sub_agent, task, session=session, depth=depth)
+        start = time.monotonic()
+        try:
+            output = await run_sub_agent(sub_agent, task, session=session, depth=depth)
+        except Exception as exc:
+            await _record_delegation_run(sub_agent, session=session, start=start, error=str(exc))
+            raise
+        await _record_delegation_run(sub_agent, session=session, start=start, output=output)
+        return output
 
     return _delegate
+
+
+async def _record_delegation_run(
+    sub_agent: SubAgentSpec,
+    *,
+    session: AsyncSession,
+    start: float,
+    output: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Ghi "lần chạy gần nhất" của cạnh delegation này (docs/features/orchestrator-v2.md Phase C)
+    — no-op khi `sub_agent` không gắn với 1 cạnh cụ thể (vd resolve ngoài context orchestrator).
+    Lazy import + build `AgentService` inline — cùng pattern `_build_kb_search_tool`."""
+    if sub_agent.delegation_id is None:
+        return
+    from app.modules.agent.repository import AgentRepository
+    from app.modules.agent.service import AgentService
+    from app.modules.model.repository import ModelRepository
+    from app.modules.model.service import ModelService
+
+    model_service = ModelService(ModelRepository(session))
+    agent_service = AgentService(AgentRepository(session), model_service)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    await agent_service.record_delegation_run(
+        sub_agent.delegation_id, output=output, error=error, duration_ms=duration_ms
+    )
 
 
 def _human_in_the_loop_middleware(tools: list[ToolSpec]) -> list[AgentMiddleware]:

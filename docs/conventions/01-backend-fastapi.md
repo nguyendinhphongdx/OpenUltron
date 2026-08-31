@@ -116,6 +116,15 @@ giải thích rõ — KHÔNG phải thiếu sót khi review):
   `scripts/check_module_boundaries.py`.
 - Method service nên **1 hành động nghiệp vụ = 1 method** (`create`, `delete`, `add_delegation`) —
   không gộp nhiều hành động khác nhau vào 1 method có flag `mode: str` để chọn nhánh.
+- **Domain (service/repository) cung cấp giải pháp tái dùng được; router/module khác chỉ gọi/phối
+  hợp giải pháp đó** — không phải "cần gì code đó" cho đúng 1 case trước mắt. Trước khi thêm
+  method/route/schema mới, tự hỏi: cái này generalize được để chỗ khác cũng dùng lại không, hay chỉ
+  đang vá cho 1 nơi gọi cụ thể? Có thể bổ sung giải pháp mới (method/field mới) khi domain thật sự
+  chưa hỗ trợ, nhưng KHÔNG dựng 1 route/schema/service method song song chỉ để né việc mở rộng cái
+  đã có. Ví dụ thật đã tự bắt lỗi (2026-08-31, Orchestrator v2 Phase C): định thêm
+  `PATCH /agents/{id}/layout` riêng chỉ để lưu toạ độ node gốc canvas — thừa, vì `PATCH /agents/{id}`
+  (`AgentUpdate`, đã `exclude_unset`) là đúng chỗ, chỉ cần thêm field `pos_x`/`pos_y` vào schema có
+  sẵn thay vì tạo 1 route/schema/service method riêng chỉ phục vụ đúng 1 use case.
 
 ## Repository
 

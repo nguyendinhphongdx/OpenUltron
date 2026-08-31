@@ -1,7 +1,8 @@
 # Feature: Orchestrator v2 — graph editor + run/debug đúng nghĩa
 
 Status: accepted (2026-08-30) — chia phase, xem "Câu hỏi mở — đã trả lời" dưới. Nested-approval
-fail-closed đã ghi thành ADR ([addendum ADR-0014](../adr/0014-tool-approval-gate.md)).
+fail-closed đã ghi thành ADR ([addendum ADR-0014](../adr/0014-tool-approval-gate.md)). Phase
+A/B/C xong (2026-08-31), chỉ còn Phase D (run simulator).
 
 ## Vấn đề / động lực
 
@@ -124,18 +125,27 @@ Chi tiết câu hỏi gốc (giữ lại tham khảo ngữ cảnh quyết địn
       (`staleTime: 0`) + invalidate sau add/remove/update delegation.
       **Chưa live-verify qua browser** — migration `task_description` mới áp vào DB thật của user
       (xem "Đã xong" ở roadmap), cần user tự thử canvas.
-- [ ] Kéo sắp xếp lại vị trí node, rời trang rồi quay lại vẫn giữ đúng vị trí đã kéo (persist, không
-      chỉ session).
+- [x] **Phase C xong (2026-08-31)**: Kéo sắp xếp lại vị trí node, rời trang rồi quay lại vẫn giữ
+      đúng vị trí đã kéo (persist, không chỉ session) — migration `c2d3e4f5a6b7` thêm `pos_x/pos_y`
+      cho `agents` (node gốc, tái dùng `PATCH /agents/{id}` có sẵn) và `agent_delegations` (node
+      con, theo edge — vì 1 sub-agent có thể ở nhiều canvas khác nhau tại vị trí khác nhau, mở rộng
+      `PATCH /agents/{id}/delegations/{sub_agent_id}` có sẵn với `exclude_unset`). Canvas lưu lúc
+      thả chuột (`onNodesChange` phát hiện `dragging: false`), không lưu mỗi frame lúc đang kéo.
 - [ ] Chạy thử graph với 1 input mẫu ngay trong canvas, thấy được path/token stream đi qua node nào
-      theo thời gian thực.
-- [ ] Xem lại được ít nhất lần chạy gần nhất của graph theo từng node/edge (input/output, có/không
-      lỗi).
+      theo thời gian thực. (Phase D — chưa làm)
+- [x] **Phase C xong (2026-08-31)**: Xem lại được lần chạy gần nhất của MỖI EDGE (task đã gửi ngầm
+      định qua `task_description`, kết quả/lỗi, thời gian, duration) — `AgentDelegation.last_run_*`
+      ghi bởi `chat/graph.py::_build_sub_agent_tool` mỗi lần orchestrator thật sự gọi sub-agent đó
+      (`SubAgentSpec.delegation_id` thread từ `ChatService._resolve_sub_agent_spec`). Canvas: panel
+      "Cạnh đang chọn" thêm khối "Lần chạy gần nhất". Không giữ full history (chỉ 1 lần gần nhất,
+      đúng insight Dify "Last Run" đã chốt).
+      **Chưa live-verify qua browser** — migration mới chưa áp vào DB thật của user, cần tự
+      `alembic upgrade head` rồi thử kéo node/xem trace.
 - [x] **Phase A xong (2026-08-30)**: Có tài liệu/cơ chế rõ ràng cho việc sub-agent gọi tool cần
       approval — không còn tình trạng "âm thầm bỏ qua gate" như hiện tại. Fail-closed: `run_sub_agent`
       (`chat/graph.py`) loại tool trong `TOOLS_REQUIRING_APPROVAL`/`kind=mcp` khỏi tool list của
       sub-agent trước khi build (addendum [ADR-0014](../adr/0014-tool-approval-gate.md)), test mới
-      `tests/unit/chat/test_run_sub_agent_fail_closed.py`. Phase B/C/D (edge contract, readiness
-      check, saved layout, trace inspector, run simulator) vẫn chưa làm.
+      `tests/unit/chat/test_run_sub_agent_fail_closed.py`. Phase D (run simulator) vẫn chưa làm.
 
 ## Mockup
 

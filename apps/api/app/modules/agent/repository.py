@@ -39,6 +39,12 @@ class AgentRepository:
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
+    async def get_delegation_by_id(self, delegation_id: int) -> AgentDelegation | None:
+        """Tra theo PK `id` (khác `get_delegation` tra theo cặp orchestrator/sub-agent) — dùng khi
+        chỉ có `delegation_id` sẵn, vd `chat/graph.py` ghi trace lần chạy gần nhất
+        (docs/features/orchestrator-v2.md Phase C)."""
+        return await self.session.get(AgentDelegation, delegation_id)
+
     async def add_delegation(
         self,
         orchestrator_agent_id: int,

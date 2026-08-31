@@ -28,6 +28,11 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = None
     model_id: int | None = None
     is_orchestrator: bool | None = None
+    # Vị trí node của agent này khi nó là GỐC canvas orchestrator của chính nó
+    # (docs/features/orchestrator-v2.md Phase C) — tái dùng `PATCH /agents/{id}` có sẵn (đã
+    # `exclude_unset` ở `AgentService.update`) thay vì tạo route/schema riêng cho "layout".
+    pos_x: float | None = None
+    pos_y: float | None = None
 
 
 class AgentRead(BaseModel):
@@ -38,6 +43,8 @@ class AgentRead(BaseModel):
     system_prompt: str
     model_id: int
     is_orchestrator: bool
+    pos_x: float | None
+    pos_y: float | None
     created_at: datetime
     updated_at: datetime
 
@@ -48,7 +55,15 @@ class AgentDelegationCreate(BaseModel):
 
 
 class AgentDelegationUpdate(BaseModel):
+    """Partial update — chỉ field THẬT SỰ có mặt trong request mới được áp dụng (đọc qua
+    `model_dump(exclude_unset=True)` ở `AgentService.update_delegation`). Bắt buộc vì `pos_x`/
+    `pos_y` (kéo node liên tục) và `task_description` (sửa qua panel) là 2 chỗ gọi độc lập — không
+    dùng `exclude_unset` thì mỗi lần kéo node sẽ vô tình gửi `task_description=None`, xoá mất mô tả
+    đã lưu."""
+
     task_description: str | None = None
+    pos_x: float | None = None
+    pos_y: float | None = None
 
 
 class AgentDelegationRead(BaseModel):
@@ -56,6 +71,12 @@ class AgentDelegationRead(BaseModel):
     orchestrator_agent_id: int
     sub_agent_id: int
     task_description: str | None
+    pos_x: float | None
+    pos_y: float | None
+    last_run_at: datetime | None
+    last_run_output: str | None
+    last_run_error: str | None
+    last_run_duration_ms: int | None
 
 
 class AgentDelegationDetailRead(BaseModel):
@@ -67,6 +88,12 @@ class AgentDelegationDetailRead(BaseModel):
     orchestrator_agent_id: int
     sub_agent_id: int
     task_description: str | None
+    pos_x: float | None
+    pos_y: float | None
+    last_run_at: datetime | None
+    last_run_output: str | None
+    last_run_error: str | None
+    last_run_duration_ms: int | None
     sub_agent: AgentRead
 
 
