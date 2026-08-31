@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { CitationSources } from './CitationSources';
 import { MarkdownTextPart } from './MarkdownTextPart';
 import { ToolCallStep } from './ToolCallStep';
+import { TurnFlowDialog } from './TurnFlowDialog';
 
 function ChatTextParts({ markdown = false }: { markdown?: boolean }) {
   return (
@@ -53,6 +54,7 @@ export function AssistantChatMessage() {
       >
         <ChatTextParts markdown />
         <CitationSources />
+        <TurnFlowDialog />
         <MessagePrimitive.Error>
           <p className="text-sm text-destructive">Không chạy được phản hồi này.</p>
         </MessagePrimitive.Error>

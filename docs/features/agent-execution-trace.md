@@ -1,6 +1,9 @@
 # Feature: Agent Execution Trace (Phase 1 — xem)
 
-Status: done (Phase 1, 2026-08-31)
+Status: done (Phase 1, 2026-08-31). **2026-08-31**: đã thêm 1 cách xem KHÁC cho cùng data này —
+graph ReactFlow (`TurnFlowGraph.tsx`/`TurnFlowDialog.tsx`) bên cạnh step chip (`ToolCallStep.tsx`)
+đã có — chi tiết ở mục "Thiết kế" bên dưới, phần "chỉnh sửa được" (Phase 2 thật sự, cần ADR) vẫn
+chưa làm và không đổi.
 
 ## Vấn đề / động lực
 
@@ -42,7 +45,16 @@ chỉ ReAct mặc định) cần 1 ADR riêng, không nằm trong scope tài li�
   tool-call part, không cần đăng ký riêng theo tên tool. Hiện dạng step chip thu gọn (`<details>`),
   mở ra thấy args (JSON) + kết quả.
 - Thứ tự hiển thị đúng tự nhiên vì AG-UI's run-aggregator giữ nguyên thứ tự chronological trong
-  `content` array của message — không cần logic sắp xếp riêng ở FE.
+  `content` array của message — không cần logic sắp xếp riêng ở FE (xác nhận qua đọc
+  `run-aggregator.ts::startToolCall`: mỗi `TOOL_CALL_START` reset `activeTextMessageId`, buộc text
+  sau đó thành 1 part text MỚI thay vì gộp — nên "think" trước/sau tool-call luôn tách đúng thành
+  nhiều part riêng, không chỉ 1 khối text duy nhất).
+- **`TurnFlowGraph.tsx`/`TurnFlowDialog.tsx`** (mới, 2026-08-31) — cùng data (`message.parts`)
+  nhưng vẽ thành graph `@xyflow/react` (chuỗi node tuần tự think→tool→think→...→trả lời) thay vì
+  step chip, mở qua nút "Xem dạng graph" (chỉ hiện khi turn có ≥1 tool-call part). Click node hiện
+  chi tiết đầy đủ. Không persist vị trí node (ephemeral, chỉ trong phiên xem) — khác hẳn
+  Orchestrator Canvas (đó là graph GIỮA các agent, persist thật; đây là graph TRONG 1 turn, chỉ
+  xem). Không đổi backend/dữ liệu.
 
 ## Câu hỏi mở
 
