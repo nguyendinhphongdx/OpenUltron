@@ -13,6 +13,7 @@ from app.modules.agent.schemas import AgentRead
 from app.modules.agent.service import AgentService
 from app.modules.chat.graph import (
     MAX_DELEGATION_DEPTH,
+    ExecutionStrategy,
     KnowledgeBaseSpec,
     ModelConfig,
     SubAgentSpec,
@@ -96,6 +97,7 @@ class ChatContext:
     sub_agents: list[SubAgentSpec]
     tools: list[ToolSpec]
     knowledge_bases: list[KnowledgeBaseSpec]
+    execution_strategy: ExecutionStrategy = "react"
 
 
 class ChatService:
@@ -185,12 +187,14 @@ class ChatService:
         sub_agent_specs: list[SubAgentSpec] = []
         tool_specs: list[ToolSpec] = []
         kb_specs: list[KnowledgeBaseSpec] = []
+        execution_strategy = "react"
         if conversation.agent_id is not None:
             # ON DELETE SET NULL không xoá conversation nên agent chắc chắn còn tồn tại;
             # vẫn dùng get_or_404 (qua AgentService) thay vì assert cho phòng thủ chắc chắn hơn.
             agent = await self.agent_service.get_or_404(conversation.agent_id)
             model_row = await self.model_service.get_or_404(agent.model_id)
             system_prompt, model = agent.system_prompt, _to_config(model_row)
+            execution_strategy = agent.execution_strategy
             tool_reads = await self.tool_service.list_for_agent(agent.id)
             tool_specs = [_to_tool_spec(t) for t in tool_reads]
             kb_reads = await self.kb_service.list_for_agent(agent.id)
@@ -212,6 +216,7 @@ class ChatService:
             sub_agents=sub_agent_specs,
             tools=tool_specs,
             knowledge_bases=kb_specs,
+            execution_strategy=execution_strategy,
         )
 
     async def _stream_and_persist(
@@ -273,6 +278,7 @@ class ChatService:
             sub_agents=ctx.sub_agents,
             tools=ctx.tools,
             knowledge_bases=ctx.knowledge_bases,
+            execution_strategy=ctx.execution_strategy,
         )
         async for event in self._stream_and_persist(
             conversation_id, config, history=history, user_text=user_text
@@ -291,6 +297,7 @@ class ChatService:
             sub_agents=ctx.sub_agents,
             tools=ctx.tools,
             knowledge_bases=ctx.knowledge_bases,
+            execution_strategy=ctx.execution_strategy,
         )
         async for event in self._stream_and_persist(
             conversation_id, config, resume_decision=decision

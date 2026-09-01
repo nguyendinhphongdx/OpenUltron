@@ -26,6 +26,7 @@ def agent_to_read(row: Agent) -> AgentRead:
         system_prompt=row.system_prompt,
         model_id=row.model_id,
         is_orchestrator=row.is_orchestrator,
+        execution_strategy=row.execution_strategy,
         pos_x=row.pos_x,
         pos_y=row.pos_y,
         created_at=row.created_at,

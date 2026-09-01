@@ -3,6 +3,11 @@
  * service/hook/component không tự đoán field.
  */
 
+/** ADR-0021 — "react" (mặc định, ReAct interleave) | "plan_execute" (lập plan trước rồi thực thi
+ * tuần tự). Chỉ có ý nghĩa khi agent chạy như top-level (chat trực tiếp/orchestrator gốc); khi
+ * agent này được dùng làm sub-agent, field bị bỏ qua ở backend (luôn `react`). */
+export type ExecutionStrategy = 'react' | 'plan_execute';
+
 export interface Agent {
   id: number;
   slug: string;
@@ -11,6 +16,7 @@ export interface Agent {
   system_prompt: string;
   model_id: number;
   is_orchestrator: boolean;
+  execution_strategy: ExecutionStrategy;
   /** Vị trí node của CHÍNH agent này khi nó là GỐC canvas orchestrator của nó
    * (docs/features/orchestrator-v2.md Phase C) — vị trí khi nó là node CON của 1 orchestrator
    * khác nằm ở `AgentDelegationDetail.pos_x/pos_y` (theo edge). */
@@ -27,12 +33,20 @@ export interface AgentCreateInput {
   system_prompt: string;
   model_id: number;
   is_orchestrator?: boolean;
+  execution_strategy?: ExecutionStrategy;
 }
 
 export type AgentUpdateInput = Partial<
   Pick<
     Agent,
-    'name' | 'description' | 'system_prompt' | 'model_id' | 'is_orchestrator' | 'pos_x' | 'pos_y'
+    | 'name'
+    | 'description'
+    | 'system_prompt'
+    | 'model_id'
+    | 'is_orchestrator'
+    | 'execution_strategy'
+    | 'pos_x'
+    | 'pos_y'
   >
 >;
 

@@ -26,6 +26,12 @@ class Agent(Base):
     system_prompt: Mapped[str] = mapped_column()
     model_id: Mapped[int] = mapped_column(ForeignKey("models.id"))
     is_orchestrator: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Chiến lược thực thi turn top-level (ADR-0021): "react" (mặc định, `create_agent` ReAct
+    # interleave) | "plan_execute" (lập plan trước rồi thực thi tuần tự). Field nằm chung bảng cho
+    # MỌI agent (kể cả agent đang được dùng làm sub-agent) — "sub-agent luôn react" là ràng buộc ở
+    # tầng chạy turn (`SubAgentSpec`/`run_sub_agent` không đọc field này), không phải ràng buộc dữ
+    # liệu, vì 1 agent vẫn có thể vừa là top-level vừa được delegate (ADR-0006).
+    execution_strategy: Mapped[str] = mapped_column(String(20), default="react")
     # Vị trí node của CHÍNH agent này khi nó là GỐC canvas orchestrator của nó
     # (docs/features/orchestrator-v2.md Phase C) — vị trí khi agent này là node CON của 1
     # orchestrator khác nằm ở `AgentDelegation.pos_x/pos_y` (theo edge, vì 1 sub-agent có thể ở

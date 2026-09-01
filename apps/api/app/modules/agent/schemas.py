@@ -1,9 +1,12 @@
 import re
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{1,79}$")
+
+ExecutionStrategy = Literal["react", "plan_execute"]
 
 
 class AgentCreate(BaseModel):
@@ -13,6 +16,10 @@ class AgentCreate(BaseModel):
     system_prompt: str
     model_id: int
     is_orchestrator: bool = False
+    # ADR-0021 — chỉ có ý nghĩa khi agent chạy như top-level (chat trực tiếp/orchestrator gốc);
+    # khi agent này được dùng làm sub-agent, field bị bỏ qua (`SubAgentSpec` không đọc), luôn chạy
+    # `react`. Mặc định "react" giữ nguyên hành vi cũ.
+    execution_strategy: ExecutionStrategy = "react"
 
     @field_validator("slug")
     @classmethod
@@ -28,6 +35,7 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = None
     model_id: int | None = None
     is_orchestrator: bool | None = None
+    execution_strategy: ExecutionStrategy | None = None
     # Vị trí node của agent này khi nó là GỐC canvas orchestrator của chính nó
     # (docs/features/orchestrator-v2.md Phase C) — tái dùng `PATCH /agents/{id}` có sẵn (đã
     # `exclude_unset` ở `AgentService.update`) thay vì tạo route/schema riêng cho "layout".
@@ -43,6 +51,7 @@ class AgentRead(BaseModel):
     system_prompt: str
     model_id: int
     is_orchestrator: bool
+    execution_strategy: ExecutionStrategy
     pos_x: float | None
     pos_y: float | None
     created_at: datetime

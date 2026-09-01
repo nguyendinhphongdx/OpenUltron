@@ -15,6 +15,7 @@ from langgraph.types import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.chat.graph import (
+    ExecutionStrategy,
     KnowledgeBaseSpec,
     ModelConfig,
     SubAgentSpec,
@@ -34,6 +35,9 @@ class AgentRunConfig:
     sub_agents: list[SubAgentSpec]
     tools: list[ToolSpec]
     knowledge_bases: list[KnowledgeBaseSpec]
+    # ADR-0021 — "react" (mặc định) | "plan_execute". Chỉ có ý nghĩa cho turn top-level (dùng ở
+    # đây); sub-agent (`run_sync`) luôn `react`, không đọc field này.
+    execution_strategy: ExecutionStrategy = "react"
 
 
 class AgentRuntime(Protocol):
@@ -179,6 +183,7 @@ class LangGraphAgentRuntime:
             knowledge_bases=config.knowledge_bases,
             session=session,
             citation_sources=citation_sources,
+            execution_strategy=config.execution_strategy,
         )
         graph_config = {"configurable": {"thread_id": thread_id}}
         input_data: Any

@@ -38,6 +38,7 @@ def _agent(*, description: str | None) -> AgentRead:
         system_prompt="you are a researcher",
         model_id=1,
         is_orchestrator=False,
+        execution_strategy="react",
         pos_x=None,
         pos_y=None,
         created_at=datetime.now(UTC),

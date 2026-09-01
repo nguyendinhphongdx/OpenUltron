@@ -1,6 +1,7 @@
 # Feature: Agent Execution Strategy (ReAct mặc định / Plan-Execute tuỳ chọn)
 
-Status: draft
+Status: done (2026-09-02) — chưa live-verify qua browser/model thật (thiếu Postgres/model trong
+sandbox lúc code, xem Acceptance criteria).
 
 ## Vấn đề / động lực
 
@@ -69,9 +70,22 @@ Sơ bộ (chưa chốt, sẽ vào ADR):
 
 ## Acceptance criteria
 
-- [ ] ADR-0021 (chiến lược execution, shape `StateGraph` cho `plan_execute`) ở trạng thái accepted.
-- [ ] `Agent.execution_strategy` field + migration, mặc định `react`, không đổi hành vi agent cũ.
-- [ ] UI tab chọn chiến lược trong form tạo/sửa agent top-level (không hiện cho sub-agent).
-- [ ] Chat với agent `plan_execute` chạy đúng: sinh plan → thực thi từng bước → trả lời tổng hợp.
-- [ ] Tool/KB/sub-agent vẫn hoạt động đúng trong cả 2 chiến lược.
-- [ ] Approval gate (ADR-0014) vẫn chặn đúng tool rủi ro cao ở cả 2 nhánh.
+- [x] ADR-0021 (chiến lược execution, shape `StateGraph` cho `plan_execute`) ở trạng thái accepted.
+- [x] `Agent.execution_strategy` field + migration (`e4f5a6b7c8d9`), mặc định `react`, không đổi
+      hành vi agent cũ.
+- [x] UI tab ("Cách thực thi") chọn chiến lược trong `AgentForm.tsx` (dùng chung cho create + edit
+      + wizard) — ghi chú rõ field không có tác dụng khi agent là sub-agent, thay vì ẩn hẳn tab
+      (tránh phải query thêm "agent này có đang là sub-agent của ai không" chỉ để ẩn UI).
+- [x] Chat với agent `plan_execute` chạy đúng: sinh plan → thực thi từng bước (tự lặp ReAct
+      model⇄tools nếu cần) → tổng hợp câu trả lời — verify bằng 2 test thật chạy qua
+      `build_plan_execute_executor(...).ainvoke(...)` (không mock trơn `create_agent` như các test
+      cũ), `tests/unit/chat/test_plan_execute_graph.py`.
+- [x] Tool/KB/sub-agent vẫn hoạt động đúng trong cả 2 chiến lược (test thứ 2 exercise nhánh có
+      tool-call thật qua `ToolNode`).
+- [x] Approval gate (ADR-0014) dùng chung 1 instance `HumanInTheLoopMiddleware` cho cả 2 nhánh (xem
+      `_human_in_the_loop_middleware` trong `chat/graph.py`) — chưa có test riêng cho pause/resume
+      của nhánh `plan_execute` (đã có test cho nhánh `react` từ trước); rủi ro thấp vì cùng 1 hàm
+      `after_model`, không phải logic mới.
+- [ ] Chưa live-verify qua browser/model thật (thiếu Postgres/model trong sandbox lúc code) — user
+      tự test: tạo agent chọn "Plan-Execute" ở tab mới, chat 1 câu cần vài bước + gọi tool, xác
+      nhận thấy plan được lập rồi thực thi tuần tự, câu trả lời cuối hợp lý.

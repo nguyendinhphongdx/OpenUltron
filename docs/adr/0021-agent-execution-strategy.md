@@ -1,8 +1,8 @@
 # ADR-0021 — Agent execution strategy: `react` (mặc định) và `plan_execute`
 
-🟡 Proposed
+🟢 Accepted
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-09-02
 
 ## Context
