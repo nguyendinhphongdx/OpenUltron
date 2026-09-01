@@ -291,6 +291,7 @@ async def test_send_agui_maps_stream_to_ag_ui_events(monkeypatch: pytest.MonkeyP
     assert received[4]["delta"] == '{"query":"abc"}'
     assert received[5]["toolCallId"] == tool_call_id
     assert received[5]["content"] == "result-1"
+    assert received[5]["messageId"] == received[1]["messageId"]
     assert received[6]["toolCallId"] == tool_call_id
     assert received[-1]["outcome"] == {"type": "success"}
     assert message_service.appended[0].content == "hi"

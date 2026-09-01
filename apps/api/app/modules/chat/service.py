@@ -367,6 +367,7 @@ class ChatService:
                 tool_call_id = f"tool-{event.get('run_id', uuid4())}"
                 yield {
                     "type": "TOOL_CALL_RESULT",
+                    "messageId": message_id,
                     "toolCallId": tool_call_id,
                     "content": str(event.get("output", "")),
                 }

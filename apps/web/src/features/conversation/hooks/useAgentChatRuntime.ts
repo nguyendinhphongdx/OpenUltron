@@ -91,7 +91,13 @@ export function useAgentChatRuntime(conversationId: number, persistedMessages: M
   const runtime = useAgUiRuntime({
     agent,
     adapters: { history },
-    unstable_enableMessageQueue: true,
+    // Tắt (bug nghi vấn): API còn `unstable_` — cơ chế dispatch-transform tính lại `parentId` lúc
+    // tin nhắn rời hàng đợi (`@assistant-ui/core`'s `external-store-thread-runtime-core.ts`) có
+    // thể gắn sai parent, làm lịch sử cũ (đã load) mất kết nối khỏi branch đang hiển thị — đúng
+    // triệu chứng thật gặp phải: gửi tin mới trong 1 conversation có sẵn lịch sử → chỉ turn mới
+    // hiện, lịch sử cũ biến mất tới lúc F5 (server data vẫn nguyên, chỉ là render sai branch).
+    // Ultron 1 người dùng không cần queue nhiều tin nhắn cùng lúc khi đang chạy — tắt để loại trừ.
+    unstable_enableMessageQueue: false,
     onError: (error) => setRuntimeError(error.message),
   });
 

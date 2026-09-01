@@ -14,8 +14,18 @@ const CITATION_TAG = 'citation';
 // rồi map `components.citation` để render `CitationBadge`. KHÔNG dùng markdown link (`[N](cite:N)`)
 // — thử trước, bị Streamdown's link-safety layer tự chặn hiện "[blocked]" (link-safety chỉ áp cho
 // element `<a>` thật, tag tự đặt tên không đụng layer đó).
+// Model đôi khi không tuân thủ đúng hướng dẫn (gộp nhiều id vào 1 tag kiểu `[cite:1, 3]` thay vì
+// tách riêng `[cite:1][cite:3]`) — regex chấp nhận cả danh sách id cách nhau bởi dấu phẩy để không
+// hiện nguyên text thô khi model lệch format.
 function withCitationTags(text: string): string {
-  return text.replace(/\[cite:(\d+)\]/g, `<${CITATION_TAG} id="$1"></${CITATION_TAG}>`);
+  return text.replace(/\[cite:([\d\s,]+)\]/g, (_match, idsRaw: string) =>
+    idsRaw
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .map((id) => `<${CITATION_TAG} id="${id}"></${CITATION_TAG}>`)
+      .join(''),
+  );
 }
 
 export function MarkdownTextPart() {
