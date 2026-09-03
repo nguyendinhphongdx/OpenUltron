@@ -529,17 +529,30 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       [ADR-0020](../adr/0020-agent-runtime-interface.md). Đã gộp bullet "Hợp nhất Voice Agent vào
       agent runtime thường" cũ vào đây cho phần backend interface; phần unify voice TOP-LEVEL turn
       (Gemini Live) vẫn CHƯA làm, xem bullet "Voice là input modality" bên dưới.
-- [ ] **P0 — Provider-neutral realtime voice** — hiện voice đã có provider adapter nhưng thực tế vẫn
-      neo sâu vào Gemini Live protocol; cần mở đường cho OpenAI Realtime/GPT voice và self-host
-      speech stack (STT/TTS + LLM) mà không sửa UI/agent capability. Nên tách rõ 3 lớp:
-      transport/audio codec, realtime model provider, và agent runtime/tool execution.
+- [x] ~~P0 — Provider-neutral realtime voice (tách 3 lớp: transport/audio codec, realtime model
+      provider, agent runtime/tool execution)~~ — **Đọc lại (2026-09-04): đã xong sẵn từ
+      [ADR-0018](../adr/0018-live-voice-provider-adapter.md) (2026-08-29), dòng roadmap này bị
+      stale.** Xác nhận qua code thật (`app/modules/voice/provider_adapter.py`): `VoiceProviderAdapter`
+      (khai `default_model_id`/`input_audio_format`/`output_audio_format`/`build_client`) +
+      `VoiceSessionClient` protocol + registry tĩnh `VOICE_PROVIDERS` đã tách đúng 3 lớp —
+      `VoiceService` chỉ gọi qua registry/`VoiceEvent` chung, không import thẳng
+      `GeminiLiveClient`. Thêm OpenAI Realtime sau này = thêm 1
+      `OpenAIRealtimeVoiceClient`/`OpenAIRealtimeVoiceAdapter` + registry entry, không phải sửa
+      kiến trúc. **Còn lại thật sự** (không phải kiến trúc, là *implement* provider thứ 2 — để đó
+      chủ đích, chưa có OpenAI Realtime API key/access để live-test, xem nguyên tắc "live-test
+      trước khi báo done" — không build 1 provider mù không verify được): implement
+      `OpenAIRealtimeVoiceClient` thật khi có key; nếu chọn WebRTC trực tiếp browser↔OpenAI (thay
+      vì WebSocket relay qua `apps/api` như Gemini) thì cần ADR/feature riêng cho phần transport
+      frontend (đã ghi sẵn ở ADR-0018 Consequences, ⚠️ thứ nhất).
 - [x] ~~P1 — Agent creation wizard + Knowledge Base binding UI~~ — **Đã xong (2026-08-30)**, xem
       mục "Đã xong" bên dưới + [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md)
       (Status: done). Chưa live-verify qua browser thật (môi trường code không có Postgres/Ollama).
-- [ ] **P1 — Conversation UX v2** — ngoài visual refresh đã có, cần flow tạo hội thoại mới tốt hơn:
-      chọn agent trước khi vào chat, empty state có starter prompts, pin/archive/search/filter, rename
-      inline, grouping theo thời gian/agent, keyboard shortcuts, trạng thái stream/approval rõ ràng.
-      Việc này nên đi sau stream contract để UI không tiếp tục mọc state tạm.
+- [ ] **P1 — Conversation UX v2** — spec đã viết (2026-09-04,
+      [`docs/features/conversation-ux-v2.md`](../features/conversation-ux-v2.md)) sau khi đọc lại
+      code thật: chọn agent trước khi chat/search/trạng thái stream-approval **đã xong sẵn** (dòng
+      roadmap cũ bị stale) — phạm vi còn lại: pin/archive, rename inline, grouping theo thời
+      gian/agent, starter prompts, keyboard shortcuts. Cần `solution-architect` lập plan (schema
+      `Conversation.pinned/archived_at` + route) trước khi code.
 - [x] ~~Migrate `app/core/errors.py` sang `UltronError` toàn bộ service~~ — **Đã xong
       (2026-09-04), hoá ra gần như đã xong sẵn từ trước**: audit lại
       (`grep -rn "raise HTTPException(" app/`) xác nhận **0 chỗ nào** trong `app/modules/` còn
