@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from app.core.logging import logger
+
 
 class UltronError(Exception):
     """Base cho mọi domain error — service raise cái này (hoặc subclass), KHÔNG raise
@@ -87,15 +89,38 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        # Giữ format cũ cho code cũ raise HTTPException trực tiếp (tech debt — chưa migrate sang
-        # UltronError) — apps/web hiện đọc đúng shape này (`{status_code, error, message, ...}`),
-        # KHÔNG đổi ở đây để tránh phá contract đang dùng ngoài scope task này.
+        # Service code (app/modules/) không còn nơi nào raise HTTPException trực tiếp nữa (đã qua
+        # UltronError hết) — handler này giờ chỉ bắt HTTPException do chính FastAPI/Starlette tự
+        # raise (404 route không khớp, 405 method not allowed...), giữ cùng shape response để FE
+        # không cần phân biệt nguồn gốc lỗi.
         return JSONResponse(
             status_code=exc.status_code,
             content={
                 "status_code": exc.status_code,
                 "error": exc.__class__.__name__,
                 "message": exc.detail,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "path": request.url.path,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        # Lưới an toàn cuối — bug/edge case không lường trước (không phải UltronError/HTTPException)
+        # trước đây rơi thẳng vào default handler của Starlette: không có body JSON đúng shape, và
+        # ở debug mode có thể leak traceback Python thẳng ra response (anti-pattern đã ghi trong
+        # 04-error-handling.md). Log đầy đủ traceback qua structlog (07-logging-observability.md),
+        # response chỉ có message ngắn, không có chi tiết nội bộ.
+        logger.error(
+            "http.unhandled_exception", path=request.url.path, method=request.method, exc_info=exc
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status_code": 500,
+                "error": "internal.unknown",
+                "message": "Đã có lỗi không mong muốn xảy ra.",
+                "details": None,
                 "timestamp": datetime.now(UTC).isoformat(),
                 "path": request.url.path,
             },

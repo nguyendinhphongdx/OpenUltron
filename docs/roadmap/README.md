@@ -540,17 +540,29 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       chọn agent trước khi vào chat, empty state có starter prompts, pin/archive/search/filter, rename
       inline, grouping theo thời gian/agent, keyboard shortcuts, trạng thái stream/approval rõ ràng.
       Việc này nên đi sau stream contract để UI không tiếp tục mọc state tạm.
-- [ ] **Áp dụng phần còn lại của convention 03-08 vào code thật** — `testcontainers[postgres]` +
-      `tests/conftest.py` cho integration test, migrate `app/core/errors.py` sang `UltronError`
-      (xem [ADR-0008](../adr/0008-testing-logging-foundations.md) +
-      [04-error-handling.md](../conventions/04-error-handling.md)); logging + unit test đầu tiên
-      đã xong (xem mục "Đã xong"). **`UltronError`/`ValidationFailedError` đã code hoá (2026-08-24,
-      cùng feature Tool execution)** nhưng CHỈ áp dụng cho `tool/service.py` mới, giữ nguyên wire
-      shape cũ (top-level `message`) — migrate toàn bộ service khác sang raise `UltronError` +
-      đổi wire shape sang `{error:{code,message,details}}` (đúng như convention doc mô tả) +
-      thêm `parseApiError` phía `apps/web` (đọc `04-error-handling.md` mục "apps/web đọc lỗi") —
-      **vẫn chưa làm**, là 1 thay đổi cross-cutting ảnh hưởng mọi service + mọi component đọc lỗi,
-      nên tách riêng, không làm ngầm trong 1 feature nhỏ. Cài Vitest cho `apps/web` (chưa cài).
+- [x] ~~Migrate `app/core/errors.py` sang `UltronError` toàn bộ service~~ — **Đã xong
+      (2026-09-04), hoá ra gần như đã xong sẵn từ trước**: audit lại
+      (`grep -rn "raise HTTPException(" app/`) xác nhận **0 chỗ nào** trong `app/modules/` còn
+      raise `HTTPException` trực tiếp — mọi service đều đã raise `UltronError`/subclass từ lâu.
+      Dòng roadmap này bị stale (nói "vẫn chưa làm" nhưng thực ra convention doc
+      ([04-error-handling.md](../conventions/04-error-handling.md)) đã tự sửa lại: quyết định GIỮ
+      wire shape **flat** (`{status_code, error, message, details, ...}`) làm canonical thay vì đổi
+      sang `{error:{code,message}}` lồng — `apps/web/src/lib/api/errors.ts` đã đọc đúng shape này
+      từ trước, không cần `parseApiError` mới. **Gap thật duy nhất còn sót**: thiếu 1 handler
+      catch-all cho `Exception` trần (bug/edge case không lường trước) — trước đây rơi thẳng vào
+      default handler của Starlette (không đúng shape JSON, có thể leak traceback ở debug mode).
+      Đã thêm `@app.exception_handler(Exception)` (`app/core/errors.py`) trả đúng
+      `{error: "internal.unknown", status_code: 500, ...}`, log traceback qua structlog thay vì
+      leak ra response. Test: `tests/unit/core/test_errors.py` (3 case — dựng 1 FastAPI app tối
+      giản, `TestClient`, xác nhận cả 3 handler `UltronError`/`HTTPException`/`Exception` trả cùng
+      shape).
+- [ ] `testcontainers[postgres]` + `tests/conftest.py` cho integration test `apps/api` — vẫn chưa
+      làm (xem [ADR-0008](../adr/0008-testing-logging-foundations.md)). Vitest cho `apps/web` —
+      **đã cấu hình xong** (2026-09-04, `vitest.config.ts`/`test/setup/`) nhưng sandbox lúc code
+      không ghi được vào pnpm/npm store toàn cục (EPERM cả 2 cách) — `package.json` đã khai
+      devDependencies, cần user tự chạy `pnpm install` 1 lần trước khi `pnpm --filter @ultron/web
+      test`/`typecheck`/`lint` chạy được (typecheck/lint sẽ fail cho tới lúc đó vì thiếu package
+      thật trong `node_modules`).
 - [ ] **OpenAI/SGLang provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `OPENAI_API_KEY` hay SGLang server chạy để test thật. **Gemini đã live-test** (2026-08-24, credential thêm qua UI): chat text (`gemini-3.7-flash`) và Voice (xem "Đã xong" ADR-0009) đều chạy đúng qua provider adapter.
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
 - [x] ~~Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls`~~ — **Đã xong
