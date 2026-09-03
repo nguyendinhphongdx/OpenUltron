@@ -8,8 +8,11 @@ không phải app CRUD phụ, mà là **ambient companion runtime** cho voice/ag
 Mobile là surface dùng hằng ngày khi user không muốn mở laptop/browser:
 
 - Nói/nghe với agent qua điện thoại hoặc tai nghe.
-- Handoff sang web khi cần xem trace dài, cấu hình agent/tool/KB/model.
+- Handoff sang web khi cần xem trace dài, nhưng mobile vẫn phải xem/quản lý được agent,
+  conversation, tool, KB và setting chính.
 - Chuẩn bị đường lên smartwatch/smart glasses bằng input/output adapter, không tạo agent flow riêng.
+- Auth/authz sẽ làm sau, nhưng shell/navigation phải **auth-ready**: không hardcode giả định app mãi
+  là local single-screen.
 
 ## Stack bắt buộc
 
@@ -47,14 +50,38 @@ library, sau khi cập nhật convention này.
 - Phase 1 chỉ có 1 screen → giữ `App.tsx` bootstrap mỏng + `src/screens/HomeScreen.tsx`.
 - Khi có từ **2 screen độc lập trở lên** hoặc cần deep link/handoff (`conversation/:id`, settings,
   debug trace) → thêm **Expo Router**. Không tự dựng navigation state bằng `useState`.
+- Mobile shell dài hạn dùng **bottom tabs + drawer/sidebar mở bằng nút menu**:
+  - Bottom tabs cho surface dùng thường xuyên: `Conversations`, `Agents`, `Tools`,
+    `Knowledge Bases`, `Settings`.
+  - Primary: `Conversations`, `Agents`, `Tools`, `Knowledge Bases`, `Models`, `Settings`.
+  - Secondary/debug: `Orchestrators`, `Credentials`, `Runtime logs` khi có implementation tương ứng.
+  - Drawer không phải full admin menu nặng; ưu tiên quick switch conversation/agent và trạng thái
+    runtime đang hoạt động.
+- Route dự kiến khi thêm Expo Router:
+  - `/` hoặc `/conversations` — conversation inbox + active voice/chat entry.
+  - `/conversations/[id]` — chat/voice session.
+  - `/agents`, `/agents/[id]` — agent list/detail.
+  - `/tools`, `/knowledge-bases`, `/models` — mobile management surface đủ dùng.
+  - `/settings` — power settings cho API, voice, background, wake phrase, device, privacy.
 - Route file chỉ compose View/screen; logic feature vẫn nằm trong `src/features/**`.
 - Navigation params phải là primitive/string. Object phức tạp đi qua cache/store/service, không nhồi
   JSON vào route.
 
+## Auth/authz readiness
+
+- Chưa implement auth/authz trong MVP, nhưng code mobile không được chặn đường thêm auth sau này.
+- API client phải có chỗ cắm `getAccessToken()`/auth header ở `src/shared/services/api`, dù ban đầu
+  trả `null`.
+- Route/screen nên phân biệt rõ public/onboarding/settings với authenticated app shell khi thêm auth.
+- Không nhồi user/workspace/RBAC vào domain hiện tại khi backend chưa có ADR; chỉ chuẩn bị seam ở
+  API client/navigation.
+- Token nhạy cảm sau này lưu qua secure storage wrapper, không component nào tự gọi storage trực tiếp.
+
 ## State management
 
 - **Server state**: dùng React Query khi có list/detail/mutation thật (`conversations`, `agents`,
-  `health`, `voice sessions`). Query key đặt gần service/hook của feature.
+  `health`, `voice sessions`, `tools`, `knowledge bases`, `models`, `settings`). Query key đặt gần
+  service/hook của feature.
 - **Local UI state**: `useState`/`useReducer` trong component/hook; không thêm global store.
 - **Global client state** chỉ dùng khi có state share nhiều screen không phải server state
   (`apiBaseUrl`, last selected conversation, theme). Mặc định lưu qua storage wrapper trong
@@ -67,7 +94,8 @@ library, sau khi cập nhật convention này.
 - Tạo wrapper storage trước khi dùng thư viện cụ thể:
   - `src/shared/services/storage/storage.service.ts`
   - export function typed: `getApiBaseUrl`, `setApiBaseUrl`, `getLastConversationId`,
-    `setLastConversationId`.
+    `setLastConversationId`, `getWakePhrase`, `setWakePhrase`, `getBackgroundMode`,
+    `setBackgroundMode`.
 - Không gọi trực tiếp `AsyncStorage`/`SecureStore`/`MMKV` từ component.
 - Dữ liệu thường (`apiBaseUrl`, last conversation id, UI preference) dùng async storage/MMKV khi
   thêm dependency.
@@ -75,6 +103,22 @@ library, sau khi cập nhật convention này.
 - Nếu sau này cần token nhạy cảm cho companion pairing, dùng `expo-secure-store` hoặc keychain-backed
   storage qua wrapper; không dùng plain async storage.
 - Config build-time đặt trong `app.config.ts`/Expo config; config user nhập runtime nằm trong storage.
+
+## Feature surfaces
+
+- `conversation` — danh sách hội thoại, tạo hội thoại mới, chat/voice trong 1 conversation, load
+  history sau reload.
+- `agent` — danh sách agent, agent detail/readiness, chọn agent mặc định cho conversation mới.
+- `tool` — danh sách tool, trạng thái enabled/approval, detail đủ đọc/debug; chỉnh sửa sâu có thể
+  handoff web nếu mobile chưa đủ.
+- `knowledge-base` — danh sách KB/folder/file, trạng thái indexing, search/read chunk tối thiểu.
+- `model`/`credential` — xem trạng thái provider/model; credential secret ưu tiên quản lý ở web/API,
+  mobile chỉ hiển thị/readiness hoặc pairing sau này.
+- `settings` — power surface cho API base URL, auth/pairing, voice provider, wake phrase, background,
+  device/audio, privacy, logs.
+
+Tên feature folder dùng singular giống web khi đã có convention (`agent`, `conversation`,
+`knowledge-base`, `tool`, `model`, `settings`, `voice`).
 
 ## API và transport client
 
@@ -135,6 +179,8 @@ service không import React; component không hardcode protocol chi tiết nếu
 - Mic permission copy phải rõ lý do: Ultron cần ghi âm để gửi voice session tới agent cá nhân.
 - Foreground voice session là scope mặc định. Background recording/always-listening/wake word là
   quyết định riêng vì ảnh hưởng battery, privacy, Android foreground service và iOS background mode.
+- Wake phrase là **power setting**, không hardcode. Default ban đầu nên disabled; user bật thủ công.
+- Wake phrase thay đổi behavior nghe nền → cần spec/ADR riêng trước khi code wake/background thật.
 - Barge-in phải ưu tiên UX tức thì: client dừng playback/local queue ngay khi nhận interrupted event,
   không đợi backend turn hoàn tất.
 - Audio buffer/playback/recorder object phải có lifecycle cleanup trong hook/service; không tạo object
@@ -148,6 +194,8 @@ service không import React; component không hardcode protocol chi tiết nếu
   dựng URL rải rác.
 - Base URL là setting runtime. Trên device thật phải hỗ trợ IP LAN, không giả định `localhost`.
 - Voice/audio là input adapter của agent thường; không tạo domain `MobileConversation` riêng.
+- Khi mobile có full resource screens, ưu tiên reuse endpoint hiện có của web/API thay vì tạo endpoint
+  “mobile-only” nếu shape domain giống nhau.
 
 ## Testing, lint, và quality gate
 
@@ -180,6 +228,8 @@ service không import React; component không hardcode protocol chi tiết nếu
 - ❌ Mobile gọi provider AI trực tiếp và bypass credential/tool/KB/orchestrator của backend.
 - ❌ Thêm Redux/Zustand/MobX chỉ để lưu form/local UI state.
 - ❌ Background always-listening/wake word khi chưa có spec/ADR về permission, battery, privacy.
+- ❌ Thiết kế mobile như 1 màn voice duy nhất, làm cụt đường tới drawer/resource/settings full app.
+- ❌ Chỉ có drawer mà không có bottom tabs cho các surface người dùng chạm hằng ngày.
 - ❌ Component trực tiếp đọc/ghi storage hoặc tự dựng WebSocket URL khi đã có service wrapper.
 - ❌ Cài UI kit/state/form/test library mới mà không cập nhật convention trước.
 
@@ -187,6 +237,9 @@ service không import React; component không hardcode protocol chi tiết nếu
 
 - [ ] Đã đọc Expo SDK 57 docs theo `apps/mobile/AGENTS.md` trước khi dùng API Expo mới?
 - [ ] File mới đặt đúng `features/<name>/{types,services,hooks,components}` hoặc `shared/*`?
+- [ ] Nếu app có nhiều hơn 1 surface, đã dùng bottom tabs + drawer/Expo Router thay vì `useState`
+      đổi màn?
+- [ ] API client có seam auth-ready, nhưng không tự thêm RBAC/user domain khi backend chưa có ADR?
 - [ ] Service/hook/component tách rõ, `App.tsx` bootstrap mỏng?
 - [ ] UI dùng token/shared primitive, không hardcode style rải rác?
 - [ ] REST/WebSocket/storage đi qua service wrapper, không gọi trực tiếp từ component?

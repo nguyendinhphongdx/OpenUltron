@@ -11,6 +11,13 @@ export const colors = {
   danger: '#DC2626',
 } as const;
 
+export const typography = {
+  title: 28,
+  heading: 22,
+  body: 16,
+  caption: 13,
+} as const;
+
 export const radius = {
   sm: 12,
   md: 18,

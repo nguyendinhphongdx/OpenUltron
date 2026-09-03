@@ -1,3 +1,4 @@
+import { Mic2, Volume2 } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, radius } from '../../../shared/theme/tokens';
 import { VoiceState } from '../services/voiceSession.service';
@@ -23,7 +24,14 @@ export function VoiceStatusOrb({ state }: VoiceStatusOrbProps) {
   return (
     <View style={styles.container}>
       <View style={[styles.orb, active && styles.activeOrb, state === 'error' && styles.errorOrb]}>
-        <View style={[styles.core, state === 'speaking' && styles.speakingCore]} />
+        <View style={styles.ring} />
+        <View style={[styles.core, state === 'speaking' && styles.speakingCore]}>
+          {state === 'speaking' ? (
+            <Volume2 color={colors.surface} size={25} strokeWidth={2.6} />
+          ) : (
+            <Mic2 color={colors.surface} size={25} strokeWidth={2.6} />
+          )}
+        </View>
       </View>
       <Text style={styles.label}>{stateLabel[state]}</Text>
     </View>
@@ -36,8 +44,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   orb: {
-    width: 132,
-    height: 132,
+    position: 'relative',
+    width: 168,
+    height: 168,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -58,10 +67,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
   core: {
-    width: 52,
-    height: 52,
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.pill,
     backgroundColor: colors.accent,
+  },
+  ring: {
+    position: 'absolute',
+    width: 118,
+    height: 118,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    borderRadius: radius.pill,
   },
   speakingCore: {
     backgroundColor: colors.action,

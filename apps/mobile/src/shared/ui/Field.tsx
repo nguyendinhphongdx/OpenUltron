@@ -4,18 +4,20 @@ import { colors, radius, spacing } from '../theme/tokens';
 type FieldProps = TextInputProps & {
   label: string;
   helper?: string;
+  error?: string;
 };
 
-export function Field({ label, helper, style, ...inputProps }: FieldProps) {
+export function Field({ label, helper, error, style, ...inputProps }: FieldProps) {
   return (
     <View style={styles.group}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         placeholderTextColor={colors.textSecondary}
         selectionColor={colors.accent}
-        style={[styles.input, style]}
+        style={[styles.input, error && styles.inputError, style]}
         {...inputProps}
       />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       {helper ? <Text style={styles.helper}>{helper}</Text> : null}
     </View>
   );
@@ -43,6 +45,16 @@ const styles = StyleSheet.create({
   helper: {
     color: colors.textSecondary,
     fontSize: 13,
+    lineHeight: 18,
+  },
+  inputError: {
+    borderColor: colors.danger,
+    backgroundColor: '#FEF2F2',
+  },
+  error: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '700',
     lineHeight: 18,
   },
 });

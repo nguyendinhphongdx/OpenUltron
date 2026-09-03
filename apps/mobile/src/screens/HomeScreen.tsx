@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiSettingsCard } from '../features/settings';
 import { VoiceSessionCard, checkApiConnection } from '../features/voice';
+import { getDefaultApiBaseUrl } from '../shared/services';
 import { colors, spacing } from '../shared/theme/tokens';
 
 export function HomeScreen() {
-  const [apiBaseUrl, setApiBaseUrl] = useState('http://localhost:8000');
+  const [apiBaseUrl, setApiBaseUrl] = useState(getDefaultApiBaseUrl());
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'online' | 'offline'>('idle');
 
   async function handleCheckConnection() {

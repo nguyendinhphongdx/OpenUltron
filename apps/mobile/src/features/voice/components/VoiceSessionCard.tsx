@@ -31,6 +31,10 @@ export function VoiceSessionCard({ apiBaseUrl }: VoiceSessionCardProps) {
           <Text style={styles.title}>Nói chuyện với agent</Text>
           <Text style={styles.subtitle}>Mobile là companion runtime; tai nghe là surface nghe/nói.</Text>
         </View>
+        <View style={styles.livePill}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>{running ? 'Live session' : 'Standby'}</Text>
+        </View>
       </View>
 
       <VoiceStatusOrb state={session.state} />
@@ -74,7 +78,10 @@ export function VoiceSessionCard({ apiBaseUrl }: VoiceSessionCardProps) {
 
 const styles = StyleSheet.create({
   header: {
-    gap: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
   },
   eyebrow: {
     color: colors.accent,
@@ -95,6 +102,26 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  livePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: colors.accent,
+  },
+  liveText: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
   },
   debugBox: {
     gap: spacing.sm,

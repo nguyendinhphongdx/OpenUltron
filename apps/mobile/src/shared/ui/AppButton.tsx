@@ -6,9 +6,16 @@ type AppButtonProps = {
   onPress: () => void;
   disabled?: boolean;
   tone?: 'primary' | 'secondary' | 'danger';
+  block?: boolean;
 };
 
-export function AppButton({ label, onPress, disabled = false, tone = 'primary' }: AppButtonProps) {
+export function AppButton({
+  label,
+  onPress,
+  disabled = false,
+  tone = 'primary',
+  block = false,
+}: AppButtonProps) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -19,6 +26,7 @@ export function AppButton({ label, onPress, disabled = false, tone = 'primary' }
         tone === 'primary' && styles.primary,
         tone === 'secondary' && styles.secondary,
         tone === 'danger' && styles.danger,
+        block && styles.block,
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
       ]}
@@ -43,6 +51,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radius.pill,
     paddingHorizontal: 18,
+  },
+  block: {
+    alignSelf: 'stretch',
   },
   primary: {
     backgroundColor: colors.textPrimary,

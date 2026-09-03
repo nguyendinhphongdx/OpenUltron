@@ -45,9 +45,9 @@ export function ApiSettingsCard({
         keyboardType="url"
         label="API base URL"
         onChangeText={onApiBaseUrlChange}
-        placeholder="http://localhost:8000"
+        placeholder="http://10.0.2.2:8000"
         value={apiBaseUrl}
-        helper="Trên điện thoại thật, dùng IP LAN của máy chạy backend thay vì localhost."
+        helper="Android emulator dùng 10.0.2.2 để gọi máy host; điện thoại thật dùng IP LAN của máy chạy backend."
       />
       <AppButton
         disabled={connectionStatus === 'checking'}

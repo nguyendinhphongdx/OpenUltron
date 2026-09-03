@@ -30,6 +30,7 @@ export class VoiceSessionClient {
   private socket: WebSocket | null = null;
   private readonly onEvent: (event: VoiceSessionEvent) => void;
   private readonly url: string;
+  private opened = false;
 
   constructor({ apiBaseUrl, conversationId, onEvent }: VoiceSessionClientOptions) {
     this.url = buildWsUrl(apiBaseUrl, `/conversations/${conversationId}/voice`);
@@ -40,9 +41,42 @@ export class VoiceSessionClient {
     const socket = new WebSocket(this.url);
     this.socket = socket;
 
-    socket.onopen = () => this.onEvent({ type: 'opened' });
-    socket.onclose = () => this.onEvent({ type: 'closed' });
-    socket.onerror = () => this.onEvent({ type: 'error', message: 'Voice WebSocket lỗi kết nối.' });
+    socket.onopen = () => {
+      this.opened = true;
+      this.onEvent({ type: 'opened' });
+    };
+    socket.onclose = (event) => {
+      if (!this.opened) {
+        this.onEvent({
+          type: 'error',
+          message: `Không mở được voice WebSocket tới ${this.url}. Kiểm tra backend, API base URL và conversation ID.`,
+        });
+        return;
+      }
+
+      if (event.code === 1008) {
+        this.onEvent({
+          type: 'error',
+          message: 'Backend từ chối voice session. Conversation ID có thể không tồn tại hoặc chưa có agent.',
+        });
+        return;
+      }
+
+      if (event.code === 1011) {
+        this.onEvent({
+          type: 'error',
+          message: 'Backend mở voice provider thất bại. Kiểm tra credential Gemini/voice provider ở API.',
+        });
+        return;
+      }
+
+      this.onEvent({ type: 'closed' });
+    };
+    socket.onerror = () =>
+      this.onEvent({
+        type: 'error',
+        message: `Voice WebSocket lỗi kết nối tới ${this.url}. Android emulator phải dùng http://10.0.2.2:8000.`,
+      });
     socket.onmessage = (message) => {
       if (typeof message.data !== 'string') {
         const byteLength = typeof message.data?.size === 'number' ? message.data.size : 0;
