@@ -86,14 +86,17 @@ Provider Gemini/OpenAI/Ollama qua HTTP → mock ở boundary `core/providers.py`
 
 ## `apps/web` — Frontend testing
 
-### Tooling & setup (lần đầu cần — chưa cài)
+### Tooling & setup
 
-```bash
-pnpm --filter @ultron/web add -D vitest @testing-library/react @testing-library/jest-dom jsdom
-```
+Đã cấu hình (`vitest.config.ts`, `test/setup/vitest-setup.ts`, `test/setup/render.tsx`) — package
+(`vitest`/`@testing-library/react`/`@testing-library/jest-dom`/`jsdom`/`@vitejs/plugin-react`) đã
+khai trong `devDependencies` nhưng **cần `pnpm install` 1 lần** để lockfile thật + `node_modules`
+có (sandbox lúc thêm không tải được package mới qua pnpm store — chỉ khai package.json, chưa
+install). Chạy: `pnpm --filter @ultron/web test` (once) hoặc `pnpm --filter @ultron/web test:watch`.
 
-`vitest.config.ts`: `environment: 'jsdom'` cho test component, tách riêng nếu sau cần thêm unit
-test kiểu `environment: 'node'` cho pure util (không bắt buộc ngay, thêm khi có nhu cầu thật).
+`environment: 'jsdom'` cho test component — tách riêng `environment: 'node'` nếu sau cần thêm unit
+test pure util không đụng DOM (không bắt buộc ngay, `test/lib/utils.spec.ts` hiện chạy chung
+jsdom, đủ nhanh ở quy mô hiện tại).
 
 ### Folder
 
