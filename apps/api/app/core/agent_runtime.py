@@ -59,8 +59,10 @@ class AgentRuntime(Protocol):
         ...}`. Truyền `(history, user_text)` để bắt đầu turn MỚI, HOẶC `resume_decision`
         (`"approve"`/`"reject"`) để resume turn đang chờ duyệt — đúng 1 trong 2, không cả hai.
         `tool_call_start` có thêm `run_id`/`input` (args), `tool_call_end` có thêm `run_id`/`output`
-        (kết quả tool, text) — `run_id` ổn định xuyên suốt 1 lần gọi tool, phân biệt 2 lần gọi cùng
-        tên tool trong 1 turn (docs/features/agent-execution-trace.md). Event `"done"` có
+        (kết quả tool, text)/`is_error` (`True` khi tool raise exception — bắt qua `on_tool_error`,
+        `output` là text lỗi thay vì kết quả) — `run_id` ổn định xuyên suốt 1 lần gọi tool, phân
+        biệt 2 lần gọi cùng tên tool trong 1 turn (docs/features/agent-execution-trace.md). Event
+        `"done"` có
         `{"text": <accumulated>, "sources": [...]}` — `sources` là danh sách chunk KB đã retrieve
         trong turn (docs/features/kb-citation.md, rỗng nếu turn không gọi tool KB nào) — KHÔNG tự
         persist Message gì, caller (`ChatService`) tự quyết lưu gì dựa trên event nhận được."""
@@ -146,6 +148,19 @@ async def _stream_turn(
                 "run_id": str(event["run_id"]),
                 "name": event["name"],
                 "output": _tool_output_text(event["data"].get("output")),
+                "is_error": False,
+            }
+        elif kind == "on_tool_error":
+            # Trước đây KHÔNG bắt event này — tool raise exception thì không bao giờ có
+            # `tool_call_end` nào bắn ra, cả UI trace lẫn `tool_calls` DB (docs/features/
+            # agent-execution-trace.md, ChatService._persist_tool_calls) đều không thấy call đó,
+            # trông như agent "treo" ở tool đó thay vì báo lỗi rõ ràng.
+            yield {
+                "type": "tool_call_end",
+                "run_id": str(event["run_id"]),
+                "name": event["name"],
+                "output": _tool_output_text(event["data"].get("error")),
+                "is_error": True,
             }
 
     state = await executor.aget_state(config)

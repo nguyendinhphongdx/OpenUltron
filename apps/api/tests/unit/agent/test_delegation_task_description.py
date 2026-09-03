@@ -29,6 +29,10 @@ class FakeKbService:
         return []
 
 
+class FakeToolCallService:
+    pass
+
+
 def _agent(*, description: str | None) -> AgentRead:
     return AgentRead(
         id=1,
@@ -55,6 +59,7 @@ def _make_service() -> ChatService:
         message_service=None,  # type: ignore[arg-type]
         tool_service=FakeToolService(),  # type: ignore[arg-type]
         kb_service=FakeKbService(),  # type: ignore[arg-type]
+        tool_call_service=FakeToolCallService(),  # type: ignore[arg-type]
         session=None,  # type: ignore[arg-type]
     )
 

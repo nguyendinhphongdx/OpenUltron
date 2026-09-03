@@ -1,3 +1,4 @@
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_runtime import AgentRunConfig, AgentRuntime, LangGraphAgentRuntime
 from app.core.config import settings
+from app.core.logging import logger
 from app.core.provider_adapter import ProviderConfigError
 from app.modules.agent.schemas import AgentRead
 from app.modules.agent.service import AgentService
@@ -23,6 +25,8 @@ from app.modules.conversation.message.schemas import MessageCreate
 from app.modules.conversation.message.service import MessageService
 from app.modules.conversation.models import Message
 from app.modules.conversation.service import ConversationService
+from app.modules.conversation.tool_call.schemas import ToolCallComplete, ToolCallCreate
+from app.modules.conversation.tool_call.service import ToolCallService
 from app.modules.knowledge_base.schemas import KnowledgeBaseRead
 from app.modules.knowledge_base.service import KnowledgeBaseService
 from app.modules.model.models import Model
@@ -112,6 +116,7 @@ class ChatService:
         message_service: MessageService,
         tool_service: ToolService,
         kb_service: KnowledgeBaseService,
+        tool_call_service: ToolCallService,
         session: AsyncSession,
         runtime: AgentRuntime | None = None,
     ) -> None:
@@ -122,6 +127,7 @@ class ChatService:
         self.message_service = message_service
         self.tool_service = tool_service
         self.kb_service = kb_service
+        self.tool_call_service = tool_call_service
         self.session = session  # dùng để tra credential provider (ADR-0010) khi build chat model
         # ADR-0020 — LangGraph không lộ ra ngoài `AgentRuntime`; mặc định `LangGraphAgentRuntime`
         # (chỉ 1 implementation thật, không cần registry — xem "Modular/swappable component").
@@ -219,13 +225,52 @@ class ChatService:
             execution_strategy=execution_strategy,
         )
 
+    async def _persist_tool_calls(self, message_id: int, completed: list[dict[str, Any]]) -> None:
+        """Ghi lại tool-call của turn vào bảng `tool_calls` (`conversation/tool_call/`, module đã
+        có sẵn model/schema/repo/service từ trước nhưng chưa ai gọi tới — gap có ghi trong
+        roadmap). Tái dùng nguyên `create`(pending) + `complete` đã có, không thêm method mới —
+        turn đã chạy xong hoàn toàn lúc gọi hàm này nên gọi 2 bước liền nhau, không thật sự cần
+        trạng thái "pending" hiển thị cho ai. Không raise ra ngoài — lỗi ghi trace không được làm
+        hỏng turn đã chạy thành công (giống tinh thần `_record_delegation_run` ở `chat/graph.py`,
+        chỉ khác là ở đây log thay vì no-op lặng lẽ vì đây là dữ liệu chính, không phải phụ)."""
+        for call in completed:
+            try:
+                created = await self.tool_call_service.create(
+                    message_id,
+                    ToolCallCreate(tool_name=call["name"], arguments=call["arguments"]),
+                )
+                await self.tool_call_service.complete(
+                    created.id,
+                    ToolCallComplete(
+                        status="error" if call["is_error"] else "success",
+                        result=None if call["is_error"] else {"output": call["output"]},
+                        error=call["output"] if call["is_error"] else None,
+                        latency_seconds=call["latency_seconds"],
+                    ),
+                )
+            except Exception as exc:
+                logger.error(
+                    "chat.tool_call_persist_failed",
+                    message_id=message_id,
+                    tool_name=call["name"],
+                    exc_info=exc,
+                )
+
     async def _stream_and_persist(
         self, conversation_id: int, config: AgentRunConfig, **runtime_kwargs: Any
     ) -> AsyncIterator[dict]:
         """Gọi `AgentRuntime.run_streaming` (ADR-0020) rồi persist assistant message khi turn xong
         (event `done` nội bộ chỉ có text, KHÔNG tự persist — `ChatService` mới biết `Message`
         model). Dùng chung cho `send()`/`approve()` — 2 method đó chỉ khác input (turn mới vs
-        resume), phần "chạy rồi lưu" giống hệt nhau."""
+        resume), phần "chạy rồi lưu" giống hệt nhau.
+
+        Tiện thể track tool-call của turn (`tool_call_start`/`tool_call_end`, ADR-0020) để persist
+        vào bảng `tool_calls` khi turn xong — cần `message_id` của assistant message nên chỉ ghi
+        được ở nhánh `done`; turn dừng giữa chừng vì `approval_required`/`error` KHÔNG persist tool
+        call đã chạy trước đó (nhất quán với việc turn đó cũng không có assistant `Message` nào
+        được tạo — không phải regression, chỉ là biết trước giới hạn)."""
+        pending: dict[str, dict[str, Any]] = {}
+        completed: list[dict[str, Any]] = []
         try:
             async for event in self.runtime.run_streaming(
                 config=config,
@@ -233,6 +278,24 @@ class ChatService:
                 session=self.session,
                 **runtime_kwargs,
             ):
+                if event["type"] == "tool_call_start":
+                    pending[event["run_id"]] = {
+                        "name": event["name"],
+                        "arguments": event.get("input") or {},
+                        "started": time.monotonic(),
+                    }
+                elif event["type"] == "tool_call_end":
+                    entry = pending.pop(event.get("run_id", ""), None)
+                    if entry is not None:
+                        completed.append(
+                            {
+                                **entry,
+                                "output": event.get("output", ""),
+                                "is_error": bool(event.get("is_error", False)),
+                                "latency_seconds": time.monotonic() - entry["started"],
+                            }
+                        )
+
                 if event["type"] == "done":
                     sources = event.get("sources")
                     metadata = {"sources": sources} if sources else None
@@ -240,6 +303,7 @@ class ChatService:
                         conversation_id,
                         MessageCreate(role="assistant", content=event["text"], metadata=metadata),
                     )
+                    await self._persist_tool_calls(assistant_message.id, completed)
                     yield {
                         "type": "done",
                         "message_id": assistant_message.id,

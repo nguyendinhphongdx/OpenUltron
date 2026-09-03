@@ -52,6 +52,26 @@ class FakeKbService:
         return []
 
 
+class FakeToolCallService:
+    """Ghi lại đúng thứ tự `create`/`complete` được gọi — đủ để test
+    `ChatService._persist_tool_calls` gọi đúng dữ liệu, không cần DB thật (03-testing.md)."""
+
+    def __init__(self) -> None:
+        self.created: list[tuple[int, object]] = []
+        self.completed: list[tuple[int, object]] = []
+        self._next_id = 1
+
+    async def create(self, message_id: int, input: object):
+        self.created.append((message_id, input))
+        row_id = self._next_id
+        self._next_id += 1
+        return SimpleNamespace(id=row_id)
+
+    async def complete(self, tool_call_id: int, input: object):
+        self.completed.append((tool_call_id, input))
+        return SimpleNamespace(id=tool_call_id)
+
+
 class FakeState:
     def __init__(self, *, next_nodes: tuple = (), interrupt_value: dict | None = None) -> None:
         self.next = next_nodes
@@ -75,7 +95,9 @@ class FakeExecutor:
         return self._state
 
 
-def _make_service(message_service: FakeMessageService) -> ChatService:
+def _make_service(
+    message_service: FakeMessageService, tool_call_service: FakeToolCallService | None = None
+) -> ChatService:
     service = ChatService(
         conversation_service=None,  # type: ignore[arg-type]
         agent_service=None,  # type: ignore[arg-type]
@@ -84,6 +106,7 @@ def _make_service(message_service: FakeMessageService) -> ChatService:
         message_service=message_service,
         tool_service=FakeToolService(),  # type: ignore[arg-type]
         kb_service=FakeKbService(),  # type: ignore[arg-type]
+        tool_call_service=tool_call_service or FakeToolCallService(),  # type: ignore[arg-type]
         session=None,  # type: ignore[arg-type]
     )
 
@@ -143,12 +166,116 @@ async def test_send_streams_delta_and_tool_events_in_order(monkeypatch: pytest.M
             "run_id": "run-1",
             "name": "research-agent",
             "output": "result-1",
+            "is_error": False,
         },
         {"type": "delta", "text": " world"},
         {"type": "done", "message_id": 2, "seq": 2},
     ]
     assert [m.role for m in message_service.appended] == ["user", "assistant"]
     assert message_service.appended[1].content == "Hello world"
+
+
+@pytest.mark.asyncio
+async def test_send_persists_tool_call_to_tool_calls_table_on_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gap có ghi trong roadmap ("Ghi lại tool-call của orchestrator... chưa persist ra bảng đã
+    thiết kế") — `tool_calls` (module `conversation/tool_call/`) có sẵn model/schema/service từ
+    trước nhưng chưa ai gọi. Giờ `ChatService._persist_tool_calls` gọi `create`+`complete` khi turn
+    xong (`done`), dùng `message_id` của assistant message vừa persist."""
+    events = [
+        {
+            "event": "on_tool_start",
+            "name": "weather-lookup",
+            "run_id": "run-1",
+            "data": {"input": {"city": "Hà Nội"}},
+        },
+        {
+            "event": "on_tool_end",
+            "name": "weather-lookup",
+            "run_id": "run-1",
+            "data": {"output": "28 độ C, nắng"},
+        },
+        {
+            "event": "on_chat_model_stream",
+            "data": {"chunk": SimpleNamespace(content="Hôm nay 28 độ")},
+        },
+    ]
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor(events)
+
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    tool_call_service = FakeToolCallService()
+    service = _make_service(message_service, tool_call_service)
+
+    received = [event async for event in service.send(1, "thời tiết Hà Nội thế nào")]
+
+    done_event = received[-1]
+    assert done_event["type"] == "done"
+    assistant_message_id = done_event["message_id"]
+
+    assert len(tool_call_service.created) == 1
+    created_message_id, create_input = tool_call_service.created[0]
+    assert created_message_id == assistant_message_id
+    assert create_input.tool_name == "weather-lookup"
+    assert create_input.arguments == {"city": "Hà Nội"}
+
+    assert len(tool_call_service.completed) == 1
+    _, complete_input = tool_call_service.completed[0]
+    assert complete_input.status == "success"
+    assert complete_input.result == {"output": "28 độ C, nắng"}
+    assert complete_input.error is None
+
+
+@pytest.mark.asyncio
+async def test_send_persists_tool_call_as_error_when_tool_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`on_tool_error` (LangChain) trước đây không được bắt ở `_stream_turn` — tool raise exception
+    thì không bao giờ có `tool_call_end` nào cả, cả UI trace lẫn bảng `tool_calls` đều không thấy
+    call đó (trông như agent treo ở tool đó). Giờ bắt riêng, đánh dấu `status="error"`."""
+    events = [
+        {
+            "event": "on_tool_start",
+            "name": "run-command",
+            "run_id": "run-2",
+            "data": {"input": {"command": "ls /khong-ton-tai"}},
+        },
+        {
+            "event": "on_tool_error",
+            "name": "run-command",
+            "run_id": "run-2",
+            "data": {"error": RuntimeError("No such file or directory")},
+        },
+        {
+            "event": "on_chat_model_stream",
+            "data": {"chunk": SimpleNamespace(content="Không chạy được lệnh đó.")},
+        },
+    ]
+
+    async def fake_build_agent_executor(**kwargs: object) -> FakeExecutor:
+        return FakeExecutor(events)
+
+    monkeypatch.setattr(agent_runtime_module, "build_agent_executor", fake_build_agent_executor)
+
+    message_service = FakeMessageService()
+    tool_call_service = FakeToolCallService()
+    service = _make_service(message_service, tool_call_service)
+
+    received = [event async for event in service.send(1, "chạy ls thư mục lạ")]
+
+    tool_call_end = next(e for e in received if e["type"] == "tool_call_end")
+    assert tool_call_end["is_error"] is True
+    assert "No such file or directory" in tool_call_end["output"]
+
+    assert len(tool_call_service.completed) == 1
+    _, complete_input = tool_call_service.completed[0]
+    assert complete_input.status == "error"
+    assert complete_input.result is None
+    assert "No such file or directory" in complete_input.error
 
 
 @pytest.mark.asyncio

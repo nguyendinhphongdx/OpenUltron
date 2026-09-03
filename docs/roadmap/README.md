@@ -553,7 +553,18 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       nên tách riêng, không làm ngầm trong 1 feature nhỏ. Cài Vitest cho `apps/web` (chưa cài).
 - [ ] **OpenAI/SGLang provider chưa live-test** — code đã viết (`core/providers.py`), nhưng môi trường hiện tại không có `OPENAI_API_KEY` hay SGLang server chạy để test thật. **Gemini đã live-test** (2026-08-24, credential thêm qua UI): chat text (`gemini-3.7-flash`) và Voice (xem "Đã xong" ADR-0009) đều chạy đúng qua provider adapter.
 - [ ] **Migrate `create_react_agent` → `langchain.agents.create_agent` chưa live-test** — đổi do upstream deprecate (LangGraph ≥ 1.2), build graph + import đã verify OK, nhưng môi trường hiện tại không có Ollama chạy để verify thật 1 turn chat + orchestrator gọi sub-agent như lần verify trước (`boss-agent`/`echo-agent`). Cần chạy lại kịch bản đó.
-- [ ] Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls` — hiện `create_react_agent` tự quản lý tool call nội bộ, chưa persist ra bảng đã thiết kế
+- [x] ~~Ghi lại tool-call của orchestrator (gọi sub-agent) vào bảng `tool_calls`~~ — **Đã xong
+      (2026-09-04)**. `ChatService._persist_tool_calls` (`chat/service.py`) gọi
+      `ToolCallService.create`+`complete` (module `conversation/tool_call/` đã có sẵn từ trước,
+      chưa ai gọi tới) khi turn xong (`done`), dùng `message_id` của assistant message vừa
+      persist. Tiện thể fix gap liên quan: `agent_runtime.py::_stream_turn` trước đây không bắt
+      `on_tool_error` — tool raise exception thì không bao giờ có `tool_call_end` nào cả (trace
+      lẫn DB đều không thấy call đó, trông như agent "treo"); giờ bắt riêng, đánh dấu
+      `is_error=True`/`status="error"`. **Giới hạn đã biết**: turn dừng giữa chừng vì
+      `approval_required`/`error` (chưa tới `done`) không persist tool call đã chạy trước đó —
+      nhất quán vì turn đó cũng không có assistant `Message` nào được tạo (cần `message_id` làm
+      FK). Test: `tests/unit/chat/test_chat_service.py` (2 case mới — success path + tool raise
+      exception → `status="error"`).
 - [ ] Live Voice Agent — spec chuyển "accepted" (2026-08-24, xem
       [`docs/features/live-voice-agent.md`](../features/live-voice-agent.md)). `apps/api` module
       `voice` đã có event `state` (listening/thinking/speaking/using_tool, suy từ event Gemini có
