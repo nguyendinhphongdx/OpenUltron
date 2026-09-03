@@ -39,7 +39,7 @@ class ModelConfig:
 class KnowledgeBaseSpec:
     """DTO thuần — tách graph khỏi ORM `KnowledgeBase`. KB gán cho agent qua `AgentKnowledgeBase`
     (quan hệ riêng, khác `Tool`/`AgentTool` — ADR-0013), map trực tiếp sang 1 tool RAG tự động
-    trong `_build_kb_search_tool`, không đi qua `ToolBuilder` registry."""
+    trong `build_kb_search_tool`, không đi qua `ToolBuilder` registry."""
 
     id: int
     slug: str
@@ -96,7 +96,7 @@ async def run_sub_agent(
     own_tools = await build_tools(safe_tools, session=session)
     # Sub-agent KHÔNG surface citation (Non-goal v1, docs/features/kb-citation.md) — `sources`
     # mặc định `None`, tool trả text chunk trơn, không bọc `<source id="N">`.
-    kb_tools = [_build_kb_search_tool(kb, session=session) for kb in sub_agent.knowledge_bases]
+    kb_tools = [build_kb_search_tool(kb, session=session) for kb in sub_agent.knowledge_bases]
     executor = create_agent(
         chat_model,
         tools=[*own_tools, *nested_tools, *kb_tools],
@@ -116,7 +116,7 @@ def _truncate_snippet(content: str, max_len: int = _CITATION_SNIPPET_MAX_LEN) ->
     return content[: max_len - 1].rstrip() + "…"
 
 
-def _build_kb_search_tool(
+def build_kb_search_tool(
     kb: KnowledgeBaseSpec, *, session: AsyncSession, sources: list[dict] | None = None
 ):
     """Tool RAG tự động cho 1 `KnowledgeBase` đã gán agent
@@ -211,7 +211,7 @@ async def _record_delegation_run(
 ) -> None:
     """Ghi "lần chạy gần nhất" của cạnh delegation này (docs/features/orchestrator-v2.md Phase C)
     — no-op khi `sub_agent` không gắn với 1 cạnh cụ thể (vd resolve ngoài context orchestrator).
-    Lazy import + build `AgentService` inline — cùng pattern `_build_kb_search_tool`."""
+    Lazy import + build `AgentService` inline — cùng pattern `build_kb_search_tool`."""
     if sub_agent.delegation_id is None:
         return
     from app.modules.agent.repository import AgentRepository
@@ -306,7 +306,7 @@ async def build_plan_execute_executor(
     )
     sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
     kb_tools = [
-        _build_kb_search_tool(kb, session=session, sources=citation_sources)
+        build_kb_search_tool(kb, session=session, sources=citation_sources)
         for kb in knowledge_bases
     ]
     all_tools = [*(await build_tools(tools, session=session)), *sub_agent_tools, *kb_tools]
@@ -436,7 +436,7 @@ async def build_agent_executor(
 
     `citation_sources` (docs/features/kb-citation.md) — list dùng chung cho cả turn, caller
     (`LangGraphAgentRuntime.run_streaming`) tạo mới mỗi turn rồi đọc lại sau khi turn xong để trả
-    cho FE. `None` (mặc định) = không track/bọc tag citation, xem `_build_kb_search_tool`.
+    cho FE. `None` (mặc định) = không track/bọc tag citation, xem `build_kb_search_tool`.
 
     `execution_strategy` (ADR-0021) — "react" (mặc định, giữ nguyên `create_agent` như trước) hoặc
     "plan_execute" (rẽ sang `build_plan_execute_executor`, 1 `StateGraph` tự build riêng). Chỉ có ý
@@ -457,7 +457,7 @@ async def build_agent_executor(
     )
     sub_agent_tools = [_build_sub_agent_tool(sa, session=session) for sa in sub_agents]
     kb_tools = [
-        _build_kb_search_tool(kb, session=session, sources=citation_sources)
+        build_kb_search_tool(kb, session=session, sources=citation_sources)
         for kb in knowledge_bases
     ]
     all_tools = [*(await build_tools(tools, session=session)), *sub_agent_tools, *kb_tools]

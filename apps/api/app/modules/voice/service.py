@@ -3,15 +3,17 @@ from typing import Literal
 
 from fastapi import WebSocket
 from fastapi import status as ws_status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.agent_runtime import LangGraphAgentRuntime
 from app.core.logging import logger
 from app.db.session import async_session_factory
-from app.modules.chat.graph import SubAgentSpec
+from app.modules.chat.graph import KnowledgeBaseSpec, SubAgentSpec, build_kb_search_tool
 from app.modules.chat.service import ChatService
 from app.modules.conversation.message.deps import get_message_service
 from app.modules.conversation.message.schemas import MessageCreate
 from app.modules.conversation.models import Message
+from app.modules.tool.builder import TOOLS_REQUIRING_APPROVAL, ToolSpec, build_tools
 from app.modules.voice.contracts import VoiceHistoryTurn, VoiceToolDeclaration
 from app.modules.voice.events import (
     AudioDelta,
@@ -56,15 +58,13 @@ def _to_voice_turn(row: Message) -> VoiceHistoryTurn | None:
     return None
 
 
-def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[VoiceToolDeclaration]:
+def _sub_agent_declarations(sub_agents: list[SubAgentSpec]) -> list[VoiceToolDeclaration]:
     """Khai cho voice provider biết agent orchestrator có thể delegate sub-agent nào.
 
     Chỉ khai tool ở tầng ngoài (không đệ quy sub-agent của sub-agent) — đủ cho scope hiện tại; nếu
     provider gọi 1 sub-agent orchestrator, `AgentRuntime.run_sync` (ADR-0020) vẫn tự xử lý đệ quy
     nội bộ như chat text.
     """
-    if not sub_agents:
-        return []
     return [
         VoiceToolDeclaration(
             name=sa.slug,
@@ -79,11 +79,102 @@ def _tool_declarations(sub_agents: list[SubAgentSpec]) -> list[VoiceToolDeclarat
     ]
 
 
+def _kb_search_declarations(knowledge_bases: list[KnowledgeBaseSpec]) -> list[VoiceToolDeclaration]:
+    """Khai tool RAG cho KB gán trực tiếp agent chính — cùng slug/description/param shape với
+    `build_kb_search_tool` (`chat/graph.py`) để consistent với chat text, nhưng KHÔNG build tool
+    thật ở đây (không cần session — schema `{query: string}` cố định, biết trước)."""
+    return [
+        VoiceToolDeclaration(
+            name=f"search-knowledge-base-{kb.slug}",
+            description=(
+                f"Tìm thông tin liên quan trong knowledge base '{kb.name}'"
+                + (f" — {kb.description}" if kb.description else "")
+            ),
+            parameters={
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+        )
+        for kb in knowledge_bases
+    ]
+
+
+async def _own_tool_declarations(
+    tools: list[ToolSpec], *, session: AsyncSession
+) -> list[VoiceToolDeclaration]:
+    """Khai tool gắn TRỰC TIẾP trên agent chính (khác sub-agent delegate/KB — gap đã ghi trong
+    roadmap: voice trước đây chỉ thấy sub-agent, không thấy tool/MCP gắn thẳng agent chính).
+
+    Fail-closed (cùng lý do addendum ADR-0014 áp cho `run_sub_agent`): voice relay thẳng qua
+    WebSocket, KHÔNG đi qua LangGraph checkpointer/approval-gate — tool rủi ro cao hoặc MCP (không
+    biết trước server làm gì) không được khai cho voice gọi trực tiếp.
+
+    Build tool 1 LẦN ở đây chỉ để lấy schema khai báo cho provider (`args_schema` runtime từ
+    `ToolBuilder`, không có cách nào lấy schema mà không build) — KHÔNG giữ lại object build được
+    để gọi sau: `session` truyền vào là session request-scoped của `ChatService`, không đủ sống lâu
+    suốt voice session. Gọi tool thật (`_call_own_tool`) build lại với session riêng ngắn, cùng
+    pattern `_agent_runtime.run_sync`/`_flush_transcript` đã dùng."""
+    safe_tools = [t for t in tools if t.slug not in TOOLS_REQUIRING_APPROVAL and t.kind != "mcp"]
+    built = await build_tools(safe_tools, session=session)
+    declarations = []
+    for lc_tool in built:
+        schema = lc_tool.args_schema.model_json_schema() if lc_tool.args_schema else {}
+        declarations.append(
+            VoiceToolDeclaration(
+                name=lc_tool.name,
+                description=lc_tool.description or lc_tool.name,
+                parameters={
+                    "type": "object",
+                    "properties": schema.get("properties", {}),
+                    "required": schema.get("required", []),
+                },
+            )
+        )
+    return declarations
+
+
+async def _call_own_tool(
+    name: str,
+    arguments: dict,
+    *,
+    tools: list[ToolSpec],
+    knowledge_bases: list[KnowledgeBaseSpec],
+) -> str | None:
+    """Gọi 1 tool/KB search gắn trực tiếp agent chính (khác sub-agent, xem
+    `handle_tool_call`/`_own_tool_declarations`) — trả `None` nếu `name` không khớp tool/KB nào (để
+    caller tự phân biệt "không tìm thấy" với kết quả rỗng hợp lệ). Mở session riêng ngắn ngay lúc
+    gọi — không tái dùng session request-scoped của `ChatService` (không đủ sống lâu suốt voice
+    session, cùng lý do `_agent_runtime.run_sync` tự mở session riêng thay vì tái dùng)."""
+    kb = next(
+        (k for k in knowledge_bases if f"search-knowledge-base-{k.slug}" == name),
+        None,
+    )
+    async with async_session_factory() as session:
+        if kb is not None:
+            search_tool = build_kb_search_tool(kb, session=session)
+            return str(await search_tool.ainvoke(arguments))
+
+        safe_tools = [
+            t
+            for t in tools
+            if t.slug == name and t.slug not in TOOLS_REQUIRING_APPROVAL and t.kind != "mcp"
+        ]
+        if not safe_tools:
+            return None
+        built = await build_tools(safe_tools, session=session)
+        if not built:
+            return None
+        return str(await built[0].ainvoke(arguments))
+
+
 class VoiceService:
     """Relay 1 voice session: browser WebSocket ↔ voice provider (ADR-0009, ADR-0018).
 
-    KHÔNG viết lại orchestrator — resolve agent/model/sub-agent qua `ChatService.resolve_context`,
-    tool-call forward vào `run_sub_agent` (chat/graph.py) — y như chat text, transport khác nhau.
+    KHÔNG viết lại orchestrator — resolve agent/model/sub-agent/tool/KB qua
+    `ChatService.resolve_context`, tool-call forward vào `run_sub_agent` (sub-agent) hoặc
+    `_call_own_tool` (tool/KB gắn trực tiếp agent chính, chat/graph.py) — y như chat text, transport
+    khác nhau.
     """
 
     def __init__(self, chat_service: ChatService) -> None:
@@ -107,10 +198,15 @@ class VoiceService:
             # ADR-0018: chỉ Gemini là voice provider thật trong scope hiện tại. Tách qua registry
             # để thêm OpenAI Realtime/self-host pipeline sau này mà không sửa relay orchestration.
             provider = get_voice_provider("gemini")
+            tool_declarations = [
+                *_sub_agent_declarations(sub_agents),
+                *_kb_search_declarations(ctx.knowledge_bases),
+                *(await _own_tool_declarations(ctx.tools, session=self.chat_service.session)),
+            ]
             client = provider.build_client(
                 model_id=provider.default_model_id,
                 system_instruction=ctx.system_prompt + _VOICE_LANGUAGE_INSTRUCTION,
-                tools=_tool_declarations(sub_agents),
+                tools=tool_declarations,
             )
             # Session DB ngắn hạn chỉ để tra credential Gemini (ADR-0010) — không phải session
             # sống suốt voice session (giống lý do `_flush_transcript` mở session riêng).
@@ -168,18 +264,29 @@ class VoiceService:
         async def handle_tool_call(event: ToolCallRequested) -> None:
             try:
                 sub_agent = next((sa for sa in sub_agents if sa.slug == event.name), None)
-                if sub_agent is None:
-                    await client.send_tool_result(
-                        event.call_id, {"error": f"Không tìm thấy sub-agent '{event.name}'"}
+                if sub_agent is not None:
+                    task_text = event.arguments.get("task", "")
+                    # Session DB ngắn hạn riêng cho lần build chat model này (ADR-0010) — không
+                    # giữ mở suốt lúc sub-agent LangGraph chạy (có thể vài giây).
+                    async with async_session_factory() as session:
+                        result = await _agent_runtime.run_sync(
+                            sub_agent=sub_agent, task=task_text, session=session
+                        )
+                else:
+                    # Không phải sub-agent → thử tool/KB search gắn trực tiếp agent chính
+                    # (`_own_tool_declarations`/`_kb_search_declarations` — gap đã ghi trong
+                    # roadmap: trước đây voice chỉ thấy được sub-agent).
+                    result = await _call_own_tool(
+                        event.name,
+                        event.arguments,
+                        tools=ctx.tools,
+                        knowledge_bases=ctx.knowledge_bases,
                     )
-                    return
-                task_text = event.arguments.get("task", "")
-                # Session DB ngắn hạn riêng cho lần build chat model này (ADR-0010) — không giữ
-                # mở suốt lúc sub-agent LangGraph chạy (có thể vài giây).
-                async with async_session_factory() as session:
-                    result = await _agent_runtime.run_sync(
-                        sub_agent=sub_agent, task=task_text, session=session
-                    )
+                    if result is None:
+                        await client.send_tool_result(
+                            event.call_id, {"error": f"Không tìm thấy tool '{event.name}'"}
+                        )
+                        return
                 await client.send_tool_result(event.call_id, {"result": result})
                 logger.info(
                     "voice.tool_call_completed",

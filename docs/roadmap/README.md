@@ -604,6 +604,19 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
       voice "Kết quả phép cộng vừa nãy là bao nhiêu?" trên 1 conversation đã có sẵn text-chat lịch
       sử ("...là 42") → model trả lời đúng "**42**" — xác nhận lịch sử cũ đã nạp đúng vào session
       Gemini Live mới.
+      **Gap thứ 4 fix (2026-09-04)**: voice trước đây CHỈ khai/gọi được sub-agent
+      (`_tool_declarations` cũ chỉ duyệt `sub_agents`) — hỏi thẳng qua voice "tìm trong KB..." hay
+      1 tool gắn trực tiếp agent chính (không qua sub-agent) thì model không có tool nào để gọi,
+      im lặng trả lời bừa. Tách `_sub_agent_declarations`/`_kb_search_declarations`/
+      `_own_tool_declarations` (mới) — khai đủ cả 3 loại cho provider; `_call_own_tool` (mới) gọi
+      thật KB search (tái dùng nguyên `build_kb_search_tool`, đổi tên từ `_build_kb_search_tool`
+      private → public cho đúng tinh thần "domain cung cấp giải pháp") hoặc tool khác gán agent.
+      **Fail-closed 2 lớp** (cùng lý do addendum ADR-0014 áp cho `run_sub_agent`): tool trong
+      `TOOLS_REQUIRING_APPROVAL`/`kind=mcp` bị lọc cả lúc khai báo (model không thấy) lẫn lúc gọi
+      thật (`_call_own_tool` tự lọc lại, không tin mù model chỉ gọi tool đã khai) — voice relay
+      thẳng qua WebSocket, không đi qua LangGraph checkpointer nên không có approval gate. Test:
+      `tests/unit/voice/test_voice_tool_declarations.py` (5 case — schema đúng, lọc gated/mcp lúc
+      khai báo, gọi KB đúng, not-found trả `None`, fail-closed lúc gọi thật).
 - [x] `apps/web` — KB folder tree UI + redesign nhiều trang (`Files`/`Search`/`Settings`), có endpoint stats/chunk list/file search ở `apps/api`; xem [`docs/features/knowledge-base-ui-redesign.md`](../features/knowledge-base-ui-redesign.md)
 - [ ] `apps/mobile` — Expo (React Native), bắt đầu tại [`docs/features/mobile-ambient-companion.md`](../features/mobile-ambient-companion.md)
 - [ ] `apps/desktop` — Tauri

@@ -38,6 +38,9 @@ class FakeChatService:
 
     def __init__(self, history_rows: list | None = None) -> None:
         self.message_service = FakeMessageService(history_rows)
+        # `_own_tool_declarations` cần 1 session để build tool lấy schema — `ctx.tools` rỗng ở
+        # test này nên không thực sự đụng tới, chỉ cần thuộc tính tồn tại.
+        self.session = None
 
     async def resolve_context(self, conversation_id: int) -> ChatContext:
         return ChatContext(

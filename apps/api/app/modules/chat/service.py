@@ -39,7 +39,7 @@ from app.modules.tool.service import ToolService
 DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
 
 # Chỉ nối vào system_prompt khi agent có KB gán (docs/features/kb-citation.md) — agent không dùng
-# KB thì prompt giữ nguyên, không thêm hướng dẫn thừa. `<source id="N">` do `_build_kb_search_tool`
+# KB thì prompt giữ nguyên, không thêm hướng dẫn thừa. `<source id="N">` do `build_kb_search_tool`
 # tự bọc quanh mỗi chunk trả về; model chỉ cần lặp lại đúng id đã thấy, không tự bịa.
 _KB_CITATION_INSTRUCTION = (
     "\n\nKhi trả lời dựa trên thông tin lấy từ knowledge base, mỗi đoạn tool trả về sẽ được bọc "

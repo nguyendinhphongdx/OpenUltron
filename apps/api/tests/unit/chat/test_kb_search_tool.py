@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from app.modules.chat.graph import KnowledgeBaseSpec, _build_kb_search_tool
+from app.modules.chat.graph import KnowledgeBaseSpec, build_kb_search_tool
 from app.modules.knowledge_base.service import KnowledgeBaseService
 
 
@@ -47,7 +47,7 @@ async def test_kb_search_tool_calls_service_with_correct_kb_id_and_query(
     monkeypatch.setattr(KnowledgeBaseService, "search", fake_search)
 
     sources: list[dict] = []
-    kb_tool = _build_kb_search_tool(_spec(), session=None, sources=sources)  # type: ignore[arg-type]
+    kb_tool = build_kb_search_tool(_spec(), session=None, sources=sources)  # type: ignore[arg-type]
     assert kb_tool.name == "search-knowledge-base-product-docs"
 
     result = await kb_tool.ainvoke({"query": "giá sản phẩm"})
@@ -80,7 +80,7 @@ async def test_kb_search_tool_ids_continue_across_multiple_calls_in_same_turn(
     monkeypatch.setattr(KnowledgeBaseService, "search", fake_search)
 
     sources: list[dict] = []
-    kb_tool = _build_kb_search_tool(_spec(), session=None, sources=sources)  # type: ignore[arg-type]
+    kb_tool = build_kb_search_tool(_spec(), session=None, sources=sources)  # type: ignore[arg-type]
 
     first = await kb_tool.ainvoke({"query": "lần 1"})
     second = await kb_tool.ainvoke({"query": "lần 2"})
@@ -99,7 +99,7 @@ async def test_kb_search_tool_returns_clear_message_when_no_results(
 
     monkeypatch.setattr(KnowledgeBaseService, "search", fake_search)
 
-    kb_tool = _build_kb_search_tool(_spec(), session=None, sources=[])  # type: ignore[arg-type]
+    kb_tool = build_kb_search_tool(_spec(), session=None, sources=[])  # type: ignore[arg-type]
 
     result = await kb_tool.ainvoke({"query": "không tồn tại"})
 
@@ -107,7 +107,7 @@ async def test_kb_search_tool_returns_clear_message_when_no_results(
 
 
 def test_kb_search_tool_description_includes_name_and_description() -> None:
-    kb_tool = _build_kb_search_tool(_spec(), session=None, sources=[])  # type: ignore[arg-type]
+    kb_tool = build_kb_search_tool(_spec(), session=None, sources=[])  # type: ignore[arg-type]
 
     assert "Product Docs" in kb_tool.description
     assert "Tài liệu sản phẩm" in kb_tool.description
