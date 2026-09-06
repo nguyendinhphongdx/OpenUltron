@@ -18,7 +18,9 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 
 class GitHubConnectorAdapter:
-    async def test_connection(self, secret: str) -> bool:
+    async def test_connection(self, secret: str, passphrase: str | None = None) -> bool:
+        # `passphrase` không dùng — chỉ để khớp `ConnectorAdapter` Protocol (ADR-0022 mở rộng thêm
+        # tham số này cho connector `ssh`, GitHub không có khái niệm passphrase).
         if not secret:
             return False
         try:

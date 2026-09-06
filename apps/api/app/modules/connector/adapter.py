@@ -8,14 +8,16 @@ này + thêm vào `CONNECTORS`, không sửa `credential/service.py`/`tool/build
 from typing import Protocol
 
 from app.modules.connector.github import GitHubConnectorAdapter
+from app.modules.connector.ssh import SshConnectorAdapter
 
 
 class ConnectorAdapter(Protocol):
-    async def test_connection(self, secret: str) -> bool: ...
+    async def test_connection(self, secret: str, passphrase: str | None = None) -> bool: ...
 
 
 CONNECTORS: dict[str, ConnectorAdapter] = {
     "github": GitHubConnectorAdapter(),
+    "ssh": SshConnectorAdapter(),
 }
 
 
