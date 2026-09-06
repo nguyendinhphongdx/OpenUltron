@@ -21,6 +21,29 @@ function interruptArguments(interrupt: AgUiInterrupt) {
   return {};
 }
 
+/** ADR-0022 — `ssh-execute` là tool rủi ro cao nhất từ trước tới nay (không có sandbox path bảo
+ * vệ, host tuỳ ý model chọn) — hiện rõ host/username/command thay vì bắt user tự đọc JSON dump
+ * chung để tránh duyệt nhầm. Chỉ thêm đúng 1 nhánh renderer riêng cho tool này (không tổng quát
+ * hoá thành registry slug → component — chưa có tool thứ 2 cần, AGENTS.md rule 2); tool khác vẫn
+ * fallback JSON dump như cũ. */
+function SshExecuteDetail({ args }: { args: unknown }) {
+  const a = (args ?? {}) as { host?: unknown; port?: unknown; username?: unknown; command?: unknown };
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-amber-200/70 bg-white/70 p-2.5 font-mono text-xs">
+      <p>
+        <span className="text-muted-foreground">Host: </span>
+        <span className="font-semibold text-foreground">
+          {String(a.username ?? '?')}@{String(a.host ?? '?')}:{String(a.port ?? 22)}
+        </span>
+      </p>
+      <p className="whitespace-pre-wrap break-all">
+        <span className="text-muted-foreground">Lệnh: </span>
+        <span className="font-semibold text-foreground">{String(a.command ?? '')}</span>
+      </p>
+    </div>
+  );
+}
+
 export function ApprovalInterruptPanel() {
   const interrupts = useAgUiInterrupts();
   const submitInterruptResponses = useAgUiSubmitInterruptResponses();
@@ -49,9 +72,20 @@ export function ApprovalInterruptPanel() {
             {interrupts.map(interruptToolName).join(', ')}
           </p>
         </div>
-        <pre className="max-h-52 overflow-auto rounded-lg border border-amber-200/70 bg-white/70 p-2 font-mono text-xs text-muted-foreground">
-          {JSON.stringify(interrupts.map(interruptArguments), null, 2)}
-        </pre>
+        <div className="flex max-h-52 flex-col gap-2 overflow-auto">
+          {interrupts.map((interrupt) =>
+            interruptToolName(interrupt) === 'ssh-execute' ? (
+              <SshExecuteDetail key={interrupt.id} args={interruptArguments(interrupt)} />
+            ) : (
+              <pre
+                key={interrupt.id}
+                className="overflow-auto rounded-lg border border-amber-200/70 bg-white/70 p-2 font-mono text-xs text-muted-foreground"
+              >
+                {JSON.stringify(interruptArguments(interrupt), null, 2)}
+              </pre>
+            ),
+          )}
+        </div>
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
