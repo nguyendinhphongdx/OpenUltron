@@ -1,18 +1,31 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Archive,
   ArrowUpRight,
   Bot,
   CalendarClock,
   MessageSquareText,
   MessagesSquare,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
   Search,
   Sparkles,
 } from 'lucide-react';
 
+import { useAgents } from '@/features/agent';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { EmptyState, LoadingState } from '@/components/shared/EmptyState';
 import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/format';
@@ -20,6 +33,8 @@ import { cn } from '@/lib/utils';
 
 import { NewConversationButton } from './NewConversationButton';
 import { useConversations } from '../hooks/useConversations';
+import { useUpdateConversation } from '../hooks/useUpdateConversation';
+import { groupConversations, type ConversationGroupBy } from '../lib/groupConversations';
 
 function formatRelativeDate(value: string) {
   const date = new Date(value);
@@ -33,8 +48,21 @@ function formatRelativeDate(value: string) {
 }
 
 export function ConversationList() {
-  const { data, isPending, isError } = useConversations();
   const [query, setQuery] = useState('');
+  const [groupBy, setGroupBy] = useState<ConversationGroupBy>('recency');
+  const [showArchived, setShowArchived] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const { data, isPending, isError } = useConversations({ includeArchived: showArchived });
+  const { data: agents } = useAgents();
+  const updateConversation = useUpdateConversation();
+
+  const agentNamesById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const agent of agents ?? []) map.set(agent.id, agent.name);
+    return map;
+  }, [agents]);
 
   const conversations = useMemo(() => {
     const rows = data?.data ?? [];
@@ -44,6 +72,35 @@ export function ConversationList() {
       `${conversation.title ?? ''} ${conversation.channel} ${conversation.id}`.toLowerCase().includes(keyword),
     );
   }, [data?.data, query]);
+
+  const groups = useMemo(
+    () => groupConversations(conversations, groupBy, agentNamesById),
+    [conversations, groupBy, agentNamesById],
+  );
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== '/') return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      event.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const startRename = (id: number, currentTitle: string) => {
+    setEditingId(id);
+    setEditingTitle(currentTitle);
+  };
+
+  const commitRename = () => {
+    if (editingId === null) return;
+    const title = editingTitle.trim();
+    if (title) updateConversation.mutate({ id: editingId, input: { title } });
+    setEditingId(null);
+  };
 
   if (isPending) return <LoadingState label="Đang tải hội thoại…" />;
   if (isError) {
@@ -81,13 +138,47 @@ export function ConversationList() {
           </Badge>
         </div>
 
-        <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+          <div className="flex items-center gap-1 rounded-full border border-border bg-white/80 p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setGroupBy('recency')}
+              className={cn(
+                'cursor-pointer rounded-full px-2.5 py-1 transition-colors',
+                groupBy === 'recency' ? 'bg-foreground text-white' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Theo thời gian
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupBy('agent')}
+              className={cn(
+                'cursor-pointer rounded-full px-2.5 py-1 transition-colors',
+                groupBy === 'agent' ? 'bg-foreground text-white' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              Theo agent
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowArchived((prev) => !prev)}
+            className={cn(
+              'flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-white/80 px-3 py-1.5 text-xs transition-colors',
+              showArchived ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Archive className="size-3.5" />
+            {showArchived ? 'Đang xem archived' : 'Xem archived'}
+          </button>
           <div className="relative min-w-0 sm:w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
+              ref={searchInputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tìm theo tên, kênh, ID…"
+              placeholder="Tìm theo tên, kênh, ID… (phím tắt: /)"
               className="h-10 rounded-2xl bg-white/85 pl-9"
             />
           </div>
@@ -110,53 +201,144 @@ export function ConversationList() {
           />
         </div>
       ) : (
-        <ul className="divide-y divide-border/70">
-          {conversations.map((conversation, index) => {
-            const title = conversation.title ?? `Hội thoại #${conversation.id}`;
-            return (
-              <li key={conversation.id}>
-                <Link
-                  href={`/conversations/${conversation.id}`}
-                  className={cn(
-                    'group grid cursor-pointer gap-3 px-5 py-4 transition-colors duration-200 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 lg:grid-cols-[minmax(0,1.5fr)_140px_150px_120px] lg:items-center',
-                    index === 0 && 'bg-white/45',
-                  )}
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
-                      <MessageSquareText className="size-5" />
-                    </div>
-                    <div className="min-w-0 space-y-1">
-                      <p className="truncate text-sm font-semibold text-foreground">{title}</p>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>#{conversation.id}</span>
-                        <span className="size-1 rounded-full bg-muted-foreground/40" />
-                        <span className="capitalize">{conversation.channel}</span>
+        groups.map((group) => (
+          <div key={group.label}>
+            <div className="bg-[#F2F4F1] px-5 py-1.5 text-xs font-medium text-muted-foreground">
+              {group.label}
+            </div>
+            <ul className="divide-y divide-border/70">
+              {group.items.map((conversation) => {
+                const title = conversation.title ?? `Hội thoại #${conversation.id}`;
+                const isEditing = editingId === conversation.id;
+                return (
+                  <li key={conversation.id}>
+                    <Link
+                      href={`/conversations/${conversation.id}`}
+                      onClick={(event) => {
+                        if (isEditing) event.preventDefault();
+                      }}
+                      className="group grid cursor-pointer gap-3 px-5 py-4 transition-colors duration-200 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 lg:grid-cols-[minmax(0,1.5fr)_140px_150px_120px] lg:items-center"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
+                          <MessageSquareText className="size-5" />
+                        </div>
+                        <div className="min-w-0 space-y-1">
+                          {isEditing ? (
+                            <Input
+                              autoFocus
+                              value={editingTitle}
+                              onChange={(event) => setEditingTitle(event.target.value)}
+                              onClick={(event) => event.preventDefault()}
+                              onBlur={commitRename}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  commitRename();
+                                } else if (event.key === 'Escape') {
+                                  event.preventDefault();
+                                  setEditingId(null);
+                                }
+                              }}
+                              className="h-7 max-w-56 text-sm"
+                            />
+                          ) : (
+                            <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-foreground">
+                              {conversation.pinned && <Pin className="size-3.5 shrink-0 text-primary" />}
+                              {title}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            <span>#{conversation.id}</span>
+                            <span className="size-1 rounded-full bg-muted-foreground/40" />
+                            <span className="capitalize">{conversation.channel}</span>
+                            {conversation.archived_at && (
+                              <>
+                                <span className="size-1 rounded-full bg-muted-foreground/40" />
+                                <span>Đã archive</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Bot className="size-4" />
-                    {conversation.agent_id ? `Agent #${conversation.agent_id}` : 'Default'}
-                  </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Bot className="size-4" />
+                        {conversation.agent_id ? `Agent #${conversation.agent_id}` : 'Default'}
+                      </div>
 
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CalendarClock className="size-4" />
-                    {formatRelativeDate(conversation.updated_at)}
-                  </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <CalendarClock className="size-4" />
+                        {formatRelativeDate(conversation.updated_at)}
+                      </div>
 
-                  <div className="flex items-center justify-between gap-3 lg:justify-end">
-                    <Badge variant="outline" className="rounded-full bg-white/75 text-muted-foreground">
-                      Ready
-                    </Badge>
-                    <ArrowUpRight className="size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+                      <div className="flex items-center justify-between gap-2 lg:justify-end">
+                        <Badge variant="outline" className="rounded-full bg-white/75 text-muted-foreground">
+                          Ready
+                        </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={(event: React.MouseEvent) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                }}
+                                aria-label={`Thao tác với hội thoại "${title}"`}
+                                className="size-7"
+                              />
+                            }
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            onClick={(event: React.MouseEvent) => event.stopPropagation()}
+                          >
+                            <DropdownMenuItem
+                              onClick={() =>
+                                updateConversation.mutate({
+                                  id: conversation.id,
+                                  input: { pinned: !conversation.pinned },
+                                })
+                              }
+                            >
+                              {conversation.pinned ? (
+                                <PinOff className="size-4" data-icon="inline-start" />
+                              ) : (
+                                <Pin className="size-4" data-icon="inline-start" />
+                              )}
+                              {conversation.pinned ? 'Bỏ pin' : 'Pin'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => startRename(conversation.id, title)}>
+                              <Pencil className="size-4" data-icon="inline-start" />
+                              Đổi tên
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                updateConversation.mutate({
+                                  id: conversation.id,
+                                  input: {
+                                    archived_at: conversation.archived_at ? null : new Date().toISOString(),
+                                  },
+                                })
+                              }
+                            >
+                              <Archive className="size-4" data-icon="inline-start" />
+                              {conversation.archived_at ? 'Bỏ archive' : 'Archive'}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <ArrowUpRight className="size-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))
       )}
     </section>
   );
