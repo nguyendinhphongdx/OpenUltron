@@ -19,12 +19,20 @@ class FakeRepository:
     async def get_by_provider(self, provider: str) -> Credential | None:
         return self._rows.get(provider)
 
-    async def create(self, *, provider: str, ciphertext: bytes, is_valid: bool) -> Credential:
+    async def create(
+        self,
+        *,
+        provider: str,
+        ciphertext: bytes,
+        is_valid: bool,
+        passphrase_ciphertext: bytes | None = None,
+    ) -> Credential:
         now = datetime.now(UTC)
         row = Credential(
             id=uuid4(),
             provider=provider,
             ciphertext=ciphertext,
+            passphrase_ciphertext=passphrase_ciphertext,
             is_valid=is_valid,
             created_at=now,
             updated_at=now,
@@ -49,7 +57,9 @@ def test_mask_key_long_key_shows_prefix_suffix() -> None:
 
 @pytest.mark.asyncio
 async def test_upsert_new_provider_never_leaks_plaintext(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_verify(self: CredentialService, provider: str, api_key: str) -> bool:
+    async def fake_verify(
+        self: CredentialService, provider: str, api_key: str, passphrase: str | None = None
+    ) -> bool:
         return True
 
     monkeypatch.setattr(CredentialService, "_verify", fake_verify)
@@ -66,7 +76,9 @@ async def test_upsert_new_provider_never_leaks_plaintext(monkeypatch: pytest.Mon
 async def test_upsert_invalid_key_sets_is_valid_false_not_raise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_verify(self: CredentialService, provider: str, api_key: str) -> bool:
+    async def fake_verify(
+        self: CredentialService, provider: str, api_key: str, passphrase: str | None = None
+    ) -> bool:
         return False
 
     monkeypatch.setattr(CredentialService, "_verify", fake_verify)
@@ -94,7 +106,7 @@ async def test_upsert_connector_provider_accepted_dispatches_to_connector_regist
     calls: list[str] = []
 
     class FakeConnector:
-        async def test_connection(self, secret: str) -> bool:
+        async def test_connection(self, secret: str, passphrase: str | None = None) -> bool:
             calls.append(secret)
             return True
 
@@ -113,7 +125,9 @@ async def test_upsert_connector_provider_accepted_dispatches_to_connector_regist
 async def test_upsert_twice_replaces_ciphertext_same_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_verify(self: CredentialService, provider: str, api_key: str) -> bool:
+    async def fake_verify(
+        self: CredentialService, provider: str, api_key: str, passphrase: str | None = None
+    ) -> bool:
         return True
 
     monkeypatch.setattr(CredentialService, "_verify", fake_verify)
@@ -135,6 +149,52 @@ async def test_get_decrypted_key_returns_none_when_absent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_decrypted_passphrase_returns_none_when_absent() -> None:
+    service = CredentialService(FakeRepository())
+    assert await service.get_decrypted_passphrase("ssh") is None
+
+
+@pytest.mark.asyncio
+async def test_upsert_ssh_with_passphrase_roundtrips_decrypted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0022 — `passphrase` là field mở rộng optional, chỉ provider `ssh` set; provider khác
+    (gemini/openai/github) không set thì `passphrase_ciphertext` luôn `None`."""
+
+    async def fake_verify(
+        self: CredentialService, provider: str, api_key: str, passphrase: str | None = None
+    ) -> bool:
+        return True
+
+    monkeypatch.setattr(CredentialService, "_verify", fake_verify)
+    service = CredentialService(FakeRepository())
+
+    await service.upsert(
+        "ssh", CredentialUpsert(api_key="-----BEGIN KEY-----", passphrase="hunter2")
+    )
+
+    assert await service.get_decrypted_passphrase("ssh") == "hunter2"
+    assert await service.get_decrypted_key("ssh") == "-----BEGIN KEY-----"
+
+
+@pytest.mark.asyncio
+async def test_upsert_without_passphrase_leaves_passphrase_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_verify(
+        self: CredentialService, provider: str, api_key: str, passphrase: str | None = None
+    ) -> bool:
+        return True
+
+    monkeypatch.setattr(CredentialService, "_verify", fake_verify)
+    service = CredentialService(FakeRepository())
+
+    await service.upsert("gemini", CredentialUpsert(api_key="sk-no-passphrase"))
+
+    assert await service.get_decrypted_passphrase("gemini") is None
+
+
+@pytest.mark.asyncio
 async def test_remove_missing_provider_404() -> None:
     service = CredentialService(FakeRepository())
     with pytest.raises(ResourceNotFoundError) as exc_info:
@@ -146,7 +206,9 @@ async def test_remove_missing_provider_404() -> None:
 async def test_test_connection_touches_updated_at_even_if_is_valid_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_verify_true(self: CredentialService, provider: str, api_key: str) -> bool:
+    async def fake_verify_true(
+        self: CredentialService, provider: str, api_key: str, passphrase: str | None = None
+    ) -> bool:
         return True
 
     monkeypatch.setattr(CredentialService, "_verify", fake_verify_true)
