@@ -1,7 +1,7 @@
 # Feature: Agent Execution Strategy (ReAct mặc định / Plan-Execute tuỳ chọn)
 
-Status: done (2026-09-02) — chưa live-verify qua browser/model thật (thiếu Postgres/model trong
-sandbox lúc code, xem Acceptance criteria).
+Status: done (2026-09-06) — đã live-verify qua API thật với model Gemini thật, xem Acceptance
+criteria.
 
 ## Vấn đề / động lực
 
@@ -86,6 +86,12 @@ Sơ bộ (chưa chốt, sẽ vào ADR):
       `_human_in_the_loop_middleware` trong `chat/graph.py`) — chưa có test riêng cho pause/resume
       của nhánh `plan_execute` (đã có test cho nhánh `react` từ trước); rủi ro thấp vì cùng 1 hàm
       `after_model`, không phải logic mới.
-- [ ] Chưa live-verify qua browser/model thật (thiếu Postgres/model trong sandbox lúc code) — user
-      tự test: tạo agent chọn "Plan-Execute" ở tab mới, chat 1 câu cần vài bước + gọi tool, xác
-      nhận thấy plan được lập rồi thực thi tuần tự, câu trả lời cuối hợp lý.
+- [x] **Live-verify qua API thật (2026-09-06)**, model Gemini `gemini-3.6-flash` — tạo agent
+      `execution_strategy: plan_execute` gán tool `ssh-execute`, chat qua `/chat/agui` thật: model
+      sinh plan 3 bước đúng ngôn ngữ tự nhiên, `RUN_FINISHED` trả `outcome.type: "interrupt"` với
+      metadata tool call đúng (host/username/command) — xác nhận approval gate (`HumanInTheLoopMiddleware`)
+      hoạt động đúng trong nhánh `plan_execute` (trước đây chỉ verify nhánh `react`). Approve → tool
+      chạy thật, lỗi trả về đúng format, model tự retry gọi lại tool ở bước kế → pause approval lần
+      2 → reject → model dừng đúng, tổng hợp câu trả lời cuối cùng, không chạy tool. Repro trực tiếp
+      qua `build_plan_execute_executor(...).astream_events(...)` xác nhận `state.next == ("approval",)`
+      + `state.tasks[*].interrupts[*].value["action_requests"]` đúng payload.

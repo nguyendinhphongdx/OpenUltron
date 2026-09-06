@@ -1,7 +1,8 @@
 # Feature: SSH remote execution tool
 
-Status: done (2026-09-04) — chưa live-verify qua SSH host thật (không có máy thật trong sandbox để
-test connect thật, xem Acceptance criteria).
+Status: done (2026-09-06) — live-verify thật qua API + browser (Postgres/Chrome thật trong
+sandbox), xem "Live-verify" bên dưới. Còn thiếu: verify tới 1 host SSH THẬT (chỉ test được tới
+host không tồn tại — xác nhận đúng luồng lỗi, không xác nhận được exec thành công thật).
 
 ## Vấn đề / động lực
 
@@ -94,8 +95,20 @@ sau khi spec này được xác nhận):
       (2 case mới — thiếu credential trả `None`, gọi đúng connector với key+passphrase+args),
       `tests/unit/credential/test_service.py` (3 case mới — roundtrip passphrase, provider khác
       không set passphrase vẫn `None`).
-- [ ] **Chưa live-verify qua SSH host thật** (thiếu máy thật trong sandbox lúc code) — user tự
-      test: tạo credential `ssh` (private key thật), gán tool `ssh-execute` cho 1 agent, chat yêu
-      cầu SSH tới 1 host thật chạy lệnh vô hại (`whoami`/`uptime`), xác nhận approve → chạy đúng
-      trả kết quả thật; reject → không chạy gì; approval card hiện đúng host/user/command trước
-      khi bấm duyệt.
+- [x] **Live-verify qua API thật (2026-09-06)** — tạo credential `ssh` với key thật do `ssh-keygen`
+      sinh (OpenSSH format + passphrase) → `test_connection` trả `is_valid: true` đúng; gán tool
+      `ssh-execute` cho 1 agent, chat qua `/chat/agui` thật (model Gemini `gemini-3.6-flash`) yêu
+      cầu SSH tới `203.0.113.10` (dải IP RFC 5737, không route được) chạy `uptime`: approve → gọi
+      thật `asyncssh.connect()`, timeout đúng, lỗi trả về model dạng text rõ ràng (không crash) →
+      model tự retry gọi lại tool ở bước kế tiếp, pause approval lần 2 → reject → model dừng đúng,
+      không chạy gì, tổng hợp câu trả lời cuối cùng cho user. **Còn thiếu duy nhất**: verify tới 1
+      host SSH thật sự tồn tại chạy lệnh thành công (cần máy thật, không có trong sandbox).
+      **2 bug thật phát hiện + đã fix qua live-verify này**: (1) `asyncssh.pbe.KeyEncryptionError`
+      (raise khi thiếu `bcrypt` — cần cho KDF của OpenSSH private key format có passphrase, KHÔNG
+      phải subclass của `asyncssh.KeyImportError` nên trước đây không bị catch, crash 500 thay vì
+      `is_valid: false`) — thêm dependency `bcrypt`, catch cả 2 exception riêng ở
+      `connector/ssh.py::test_connection`/`execute_command`; test cũ dùng format `pkcs8-pem` (không
+      cần bcrypt) che mất lỗi này — đã sửa lại dùng format `openssh` (đúng format `ssh-keygen` sinh
+      ra thật) để test thật sự exercise code path này. (2) `credential/service.py::_mask_key` không
+      `.strip()` trước khi cắt chuỗi — secret nhiều dòng (PEM) để lại `\n` trong `masked_key`, vỡ
+      layout badge 1 dòng ở `CredentialManageDialog`.
