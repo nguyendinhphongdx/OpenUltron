@@ -16,6 +16,9 @@
    key/`APP_ENCRYPTION_KEY`** (chỉ log `provider`, `is_valid` — xem
    [`07-logging-observability.md`](07-logging-observability.md)); response API (`CredentialRead`)
    chỉ trả `masked_key` (vd `"sk-...ab12"`), không bao giờ trả plaintext hay ciphertext thô.
+   **Cập nhật (ADR-0022)**: `Credential` có thêm cột `passphrase_ciphertext` (nullable, cùng cơ chế
+   mã hoá AES-256-GCM) — secret phụ chỉ provider `ssh` dùng (passphrase mở khoá private key), cùng
+   rule không log plaintext như `ciphertext`.
 2. **Validate ở boundary** — input HTTP qua Pydantic schema (`schemas.py`), không trust input nội
    bộ giữa service (nhưng cũng không validate lại y hệt ở mọi layer — Pydantic ở router/schema là
    đủ, service tin schema đã validate).
@@ -26,6 +29,10 @@
 5. **Tool execution có ranh giới rõ** — tool chạy lệnh trên máy (roadmap "Tool thật tự viết... có
    approval gate") phải qua approval gate trước khi thực thi, không tự động chạy lệnh tuỳ ý từ output
    LLM (prompt injection từ nội dung web/tool result khác không được tự leo quyền chạy lệnh mới).
+   **`ssh-execute` (ADR-0022)** dùng `asyncssh.connect(..., known_hosts=None)` — tắt xác minh
+   host key là quyết định CÓ CHỦ ĐÍCH (hệ quả bắt buộc của "không whitelist host trước", host do
+   model tự điền không thể có sẵn known_hosts entry), không phải lỗ hổng bỏ sót — `code-reviewer`
+   không tự flag lại điểm này khi review connector `ssh.py`.
 
 ## Secret management
 

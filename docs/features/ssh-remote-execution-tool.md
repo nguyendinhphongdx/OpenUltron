@@ -1,6 +1,7 @@
 # Feature: SSH remote execution tool
 
-Status: draft
+Status: done (2026-09-04) — chưa live-verify qua SSH host thật (không có máy thật trong sandbox để
+test connect thật, xem Acceptance criteria).
 
 ## Vấn đề / động lực
 
@@ -80,10 +81,21 @@ sau khi spec này được xác nhận):
 
 ## Acceptance criteria
 
-- [ ] ADR mới (kiến trúc: thư viện SSH client, connector module, credential payload shape) ở
-      trạng thái accepted.
-- [ ] `Credential` lưu được SSH private key (mã hoá tại rest, cùng cơ chế AES-256-GCM đã có).
-- [ ] Tool `ssh-execute` gán được cho agent qua UI (giống tool khác), luôn yêu cầu duyệt.
-- [ ] Approval card hiện rõ host/username/command trước khi user duyệt.
-- [ ] Live-test thật: SSH tới 1 host thật (VD máy ảo test), chạy lệnh vô hại (`whoami`/`uptime`),
-      xác nhận approve → chạy đúng trả kết quả thật; reject → không chạy gì.
+- [x] ADR mới ([ADR-0022](../adr/0022-ssh-remote-execution-tool.md): thư viện SSH client
+      (`asyncssh`), connector module, credential payload shape) ở trạng thái accepted.
+- [x] `Credential` lưu được SSH private key + passphrase optional (mã hoá tại rest, cùng cơ chế
+      AES-256-GCM đã có, cột mới `passphrase_ciphertext`, migration `f5a6b7c8d9e0`).
+- [x] Tool `ssh-execute` gán được cho agent qua UI (giống tool khác, catalog `builtin`), luôn yêu
+      cầu duyệt (`TOOLS_REQUIRING_APPROVAL`, không có cờ tắt).
+- [x] Approval card hiện rõ host/username/command trước khi user duyệt
+      (`ApprovalInterruptPanel.tsx::SshExecuteDetail`, nhánh renderer riêng cho slug `ssh-execute`).
+- [x] Test: `tests/unit/connector/test_ssh_connector.py` (5 case — parse PEM thật do `asyncssh` tự
+      sinh, có/không passphrase, passphrase sai, chuỗi rác), `tests/unit/tool/test_builtin_tool_builder.py`
+      (2 case mới — thiếu credential trả `None`, gọi đúng connector với key+passphrase+args),
+      `tests/unit/credential/test_service.py` (3 case mới — roundtrip passphrase, provider khác
+      không set passphrase vẫn `None`).
+- [ ] **Chưa live-verify qua SSH host thật** (thiếu máy thật trong sandbox lúc code) — user tự
+      test: tạo credential `ssh` (private key thật), gán tool `ssh-execute` cho 1 agent, chat yêu
+      cầu SSH tới 1 host thật chạy lệnh vô hại (`whoami`/`uptime`), xác nhận approve → chạy đúng
+      trả kết quả thật; reject → không chạy gì; approval card hiện đúng host/user/command trước
+      khi bấm duyệt.
