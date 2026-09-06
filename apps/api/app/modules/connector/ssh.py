@@ -21,7 +21,11 @@ class SshConnectorAdapter:
         try:
             asyncssh.import_private_key(secret, passphrase=passphrase)
             return True
-        except asyncssh.KeyImportError as exc:
+        except (asyncssh.KeyImportError, asyncssh.pbe.KeyEncryptionError) as exc:
+            # `KeyEncryptionError` (vd thiếu KDF hỗ trợ, sai passphrase) KHÔNG phải subclass của
+            # `KeyImportError` (bug thật phát hiện qua live-test — key có passphrase làm crash
+            # request thành 500 thay vì trả `is_valid: false`) — bắt cả 2 riêng, không gộp chung
+            # `ValueError` để tránh nuốt nhầm lỗi logic khác không liên quan tới parse key.
             logger.warning("connector.test_connection_invalid_key", connector="ssh", error=str(exc))
             return False
 
@@ -42,7 +46,7 @@ async def execute_command(
     đã ghi rõ ở ADR-0022, không phải lỗ hổng bỏ sót."""
     try:
         client_key = asyncssh.import_private_key(private_key_pem, passphrase=passphrase)
-    except asyncssh.KeyImportError as exc:
+    except (asyncssh.KeyImportError, asyncssh.pbe.KeyEncryptionError) as exc:
         return f"Private key không hợp lệ: {exc}"
 
     try:

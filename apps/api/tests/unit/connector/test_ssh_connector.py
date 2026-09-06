@@ -11,7 +11,11 @@ from app.modules.connector.ssh import SshConnectorAdapter
 def _generate_key_pem(*, passphrase: str | None = None) -> str:
     key = asyncssh.generate_private_key("ssh-ed25519")
     if passphrase:
-        return key.export_private_key("pkcs8-pem", passphrase=passphrase).decode()
+        # Format "openssh" (mặc định thật của `ssh-keygen`) mã hoá bằng bcrypt-pbkdf, KHÁC
+        # "pkcs8-pem" (dùng PBKDF2 chuẩn, không cần thêm dependency) — bug thật phát hiện qua
+        # live-test: dùng "pkcs8-pem" ở đây từng khiến test pass giả trong khi key thật do
+        # `ssh-keygen` sinh ra bị crash 500 (thiếu `bcrypt`, xem `pyproject.toml`).
+        return key.export_private_key("openssh", passphrase=passphrase).decode()
     return key.export_private_key().decode()
 
 

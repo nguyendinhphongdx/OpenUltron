@@ -13,6 +13,10 @@ from app.modules.credential.schemas import CredentialProvider, CredentialRead, C
 
 
 def _mask_key(plaintext: str) -> str:
+    # `.strip()` — bug thật phát hiện qua live-test: secret nhiều dòng (PEM private key, provider
+    # `ssh`) để nguyên trailing newline làm `masked_key` chứa ký tự xuống dòng thật
+    # (vd `"---...---\n"`), vỡ layout khi render trong 1 badge 1 dòng ở `CredentialManageDialog`.
+    plaintext = plaintext.strip()
     if len(plaintext) <= 4:
         return "*" * len(plaintext)
     return f"{plaintext[:3]}...{plaintext[-4:]}"
