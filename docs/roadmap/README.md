@@ -488,39 +488,11 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 
 ## Đang làm / tiếp theo
 
-- [ ] **P0 — Orchestrator v2: setup/run/debug đúng nghĩa** — **Cập nhật 2026-08-31**: 6 câu hỏi mở
-      dưới đây đã được trả lời từ 2026-08-30 (xem "Câu hỏi mở — đã trả lời" trong
-      `docs/features/orchestrator-v2.md`) — Phase A (nested approval fail-closed), Phase B (edge
-      contract + readiness check) và Phase C (saved layout + trace inspector "lần chạy gần nhất")
-      đều đã xong. Chỉ còn **Phase D (run simulator)** — persist thật qua `ChatService`/
-      `AgentRuntime`, chưa code. Giữ nguyên phần lịch sử bên dưới để tham khảo ngữ cảnh quyết định.
-      Trạng thái gốc lúc mới ghi bullet này:
-      `Agent.is_orchestrator=true` + `AgentDelegation` edge đơn giản + canvas xem/thêm/gỡ cạnh.
-      Cần thiết kế lại như 1 graph/app có thể chạy ổn định: edge có mô tả nhiệm vụ/contract rõ ràng
-      (khi nào gọi sub-agent, input/output mong đợi), readiness check trước khi run (agent thiếu
-      model/credential/tool/KB config thì báo ngay), saved layout, run simulator, trace inspector
-      theo từng node/edge, persist `tool_calls`/delegation trace, và chiến lược nested approval khi
-      sub-agent gọi tool rủi ro. Đây là epic riêng, không nên nhét lẫn vào chat UI.
-      **2026-08-30**: user yêu cầu thêm — graph phải visualize + **user tự custom được** qua
-      ReactFlow (không chỉ xem/thêm/gỡ cạnh). `business-analyst` đã viết xong spec draft
-      ([`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md) +
-      [research](../research/orchestrator-v2.md) so sánh n8n/Dify/LangGraph Studio +
-      [mockup](../mockups/orchestrator-v2.html) mở rộng `ultron-orchestrator-canvas.html` cũ) —
-      xác nhận thêm qua đọc code thật: `run_sub_agent()` (sub-agent chạy lồng) **cố ý không gắn
-      checkpointer/approval-gate** (comment sẵn trong `chat/graph.py` giải thích "nested interrupt
-      phức tạp"), nghĩa là sub-agent gọi tool cần duyệt (vd `run-command`) hiện **âm thầm không có
-      gate nào chặn** — không chỉ thiếu tính năng, là khoảng trống an toàn thật. **Cần user trả lời
-      trước khi qua `solution-architect`** (đầy đủ ở "Câu hỏi mở" trong spec):
-      1. Run simulator trong canvas có persist `Conversation`/`Message` thật (tái dùng `ChatService`)
-         hay tách biệt hoàn toàn không lưu gì?
-      2. Trace inspector chỉ giữ "lần chạy gần nhất"/node/edge hay full history nhiều lần chạy?
-      3. Nested approval chọn hướng nào: chặn hẳn sub-agent dùng tool cần duyệt / pause cả turn cha /
-         hướng khác?
-      4. Làm 1 lần cả 6 mục (contract/readiness/layout/simulator/trace/nested-approval) hay chia
-         phase, thứ tự ưu tiên nào trước?
-      5. Edge contract cần structured input/output schema (giống `ai_params` tool `kind=http`) hay
-         mô tả tự do bằng văn bản?
-      6. Readiness check chạy on-demand (nút bấm) hay tự động mỗi khi mở canvas/sửa graph?
+- [x] ~~P0 — Orchestrator v2: setup/run/debug đúng nghĩa~~ — **Đọc lại (2026-09-06): đã xong sẵn cả
+      Phase A/B/C/D** (dòng roadmap cũ ghi "chỉ còn Phase D chưa code" bị stale — commit `9f79eb2`
+      "feat: add run simulator to Orchestrator v2 (Phase D)" đã trên `main` từ 2026-08-31, cùng
+      ngày). Xem mục "Đã xong" + [`docs/features/orchestrator-v2.md`](../features/orchestrator-v2.md)
+      (Status: done, cả 6 câu hỏi mở đã trả lời).
 - [x] ~~P0 — Chuẩn hoá agent runtime + stream contract + chat UI~~ — phần wire contract
       FE↔BE **đã xong** (AG-UI, xem [`docs/features/unified-agent-stream-runtime.md`](../features/unified-agent-stream-runtime.md)
       Status: done, ADR-0019, mục "Harness-hoá convention" ở trên). Phần CÒN LẠI của bullet này —
@@ -548,12 +520,13 @@ Mockup trực quan (HTML, chưa phải implementation) ở [`docs/mockups/`](../
 - [x] ~~P1 — Agent creation wizard + Knowledge Base binding UI~~ — **Đã xong (2026-08-30)**, xem
       mục "Đã xong" bên dưới + [`docs/features/agent-creation-wizard.md`](../features/agent-creation-wizard.md)
       (Status: done). Chưa live-verify qua browser thật (môi trường code không có Postgres/Ollama).
-- [ ] **P1 — Conversation UX v2** — spec đã viết (2026-09-04,
-      [`docs/features/conversation-ux-v2.md`](../features/conversation-ux-v2.md)) sau khi đọc lại
-      code thật: chọn agent trước khi chat/search/trạng thái stream-approval **đã xong sẵn** (dòng
-      roadmap cũ bị stale) — phạm vi còn lại: pin/archive, rename inline, grouping theo thời
-      gian/agent, starter prompts, keyboard shortcuts. Cần `solution-architect` lập plan (schema
-      `Conversation.pinned/archived_at` + route) trước khi code.
+- [x] ~~P1 — Conversation UX v2~~ — **Đã xong (2026-09-06)**, xem
+      [`docs/features/conversation-ux-v2.md`](../features/conversation-ux-v2.md) (Status: done) —
+      pin/archive (`Conversation.pinned`/`archived_at`, migration `a1b2c3d4e5f6`), rename inline,
+      grouping theo thời gian/agent (`groupConversations.ts`), starter prompts
+      (`deriveStarterPrompts.ts`), keyboard shortcuts (`Cmd/Ctrl+K` mở hội thoại mới, `/` focus
+      search). Chưa live-verify qua browser thật (sandbox không có Postgres) — user cần tự chạy
+      migration trước khi dùng field mới.
 - [x] ~~Migrate `app/core/errors.py` sang `UltronError` toàn bộ service~~ — **Đã xong
       (2026-09-04), hoá ra gần như đã xong sẵn từ trước**: audit lại
       (`grep -rn "raise HTTPException(" app/`) xác nhận **0 chỗ nào** trong `app/modules/` còn

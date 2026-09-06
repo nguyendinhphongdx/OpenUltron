@@ -1,6 +1,6 @@
 # Feature: Conversation UX v2
 
-Status: draft
+Status: done (2026-09-06) — chưa live-verify qua browser thật (sandbox không có Postgres).
 
 ## Vấn đề / động lực
 
@@ -66,20 +66,28 @@ Non-goals này được xác nhận):
 - Starter prompts: hàm thuần suy gợi ý từ `Agent` (description/tool slug) — không gọi API mới, tính
   toán ở FE dựa trên data agent đã có sẵn từ `useAgents()`.
 
-## Câu hỏi mở
+## Câu hỏi mở — đã trả lời (2026-09-06, quyết định lúc code, chưa hỏi lại user)
 
-- Archive có xoá được luôn không, hay chỉ ẩn (archive) — xoá vĩnh viễn là hành động riêng, khác
-  scope này?
-- Grouping theo agent hiển thị thế nào khi 1 hội thoại `agent_id = null` (dùng agent mặc định)?
-- Starter prompts: nếu agent không có `description` và không gán tool nào, có hiện gợi ý generic
-  ("Hỏi tôi bất cứ điều gì") hay ẩn hẳn phần starter prompts?
+- **Archive có xoá luôn không?** Không — archive hoàn toàn tách biệt khỏi xoá vĩnh viễn;
+  `DELETE /conversations/{id}` có sẵn vẫn là đường xoá duy nhất.
+- **Grouping theo agent khi `agent_id = null`?** Rơi vào nhóm **"Mặc định"**
+  (`groupConversations.ts`).
+- **Starter prompts khi agent không có description/tool?** Hiện gợi ý generic **"Hỏi tôi bất cứ
+  điều gì"**, không ẩn hẳn (`deriveStarterPrompts.ts`).
 
 ## Acceptance criteria
 
-- [ ] `Conversation.pinned`/`archived_at` + migration, mặc định giữ hành vi cũ.
-- [ ] Pin/archive/unarchive qua UI (danh sách hoặc header trang chat).
-- [ ] Rename inline hoạt động, persist đúng, không phá cơ chế auto-title hiện có cho hội thoại mới.
-- [ ] Danh sách group theo thời gian mặc định, có toggle group theo agent.
-- [ ] Starter prompts hiện đúng khi đã chọn agent ở `/conversations/new`, ẩn/generic khi agent
-      thiếu description và tool.
-- [ ] Keyboard shortcut mở hội thoại mới + focus search hoạt động, không đụng shortcut trình duyệt.
+- [x] `Conversation.pinned`/`archived_at` + migration (`a1b2c3d4e5f6`), mặc định giữ hành vi cũ.
+- [x] Pin/archive/unarchive qua UI (`ConversationList.tsx` — menu `⋮` mỗi row).
+- [x] Rename inline hoạt động, persist qua `PATCH /conversations/{id}` có sẵn (không đổi cơ chế
+      auto-title hiện có cho hội thoại mới).
+- [x] Danh sách group theo thời gian mặc định, có toggle group theo agent
+      (`groupConversations.ts`).
+- [x] Starter prompts hiện đúng khi đã chọn agent ở `/conversations/new`
+      (`deriveStarterPrompts.ts`), generic khi agent thiếu description và tool.
+- [x] Keyboard shortcut mở hội thoại mới (`Cmd/Ctrl+K`, `GlobalShortcuts.tsx`) + focus search
+      (`/`, cục bộ trong `ConversationList.tsx`) — bỏ qua khi đang gõ trong input/textarea khác,
+      không đụng shortcut trình duyệt mặc định.
+- [ ] **Chưa live-verify qua browser thật** (sandbox không có Postgres) — user tự chạy migration
+      (`cd apps/api && uv run alembic upgrade head`) rồi thử: pin/archive/rename 1 hội thoại,
+      toggle group theo agent, mở `/conversations/new` xem starter prompts, bấm `Cmd/Ctrl+K`/`/`.
