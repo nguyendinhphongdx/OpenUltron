@@ -6,12 +6,14 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowUp, Sparkles } from 'lucide-react';
 
 import { useAgents } from '@/features/agent';
+import { useAgentTools } from '@/features/tool';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { getApiErrorMessage } from '@/lib/api';
 
 import { useCreateConversation } from '../hooks/useCreateConversation';
+import { deriveStarterPrompts } from '../lib/deriveStarterPrompts';
 import { stashPendingFirstMessage } from '../services/pending-first-message';
 
 const TITLE_MAX_LENGTH = 80;
@@ -42,6 +44,16 @@ export function NewConversationView() {
 
   const hasAgent = agentId !== null;
   const canSend = hasAgent && text.trim() !== '' && !createConversation.isPending;
+
+  const selectedAgent =
+    agentId && agentId !== 'default' ? agents?.find((agent) => agent.id.toString() === agentId) : undefined;
+  const { data: agentTools } = useAgentTools(selectedAgent ? selectedAgent.id : Number.NaN);
+  const starterPrompts = hasAgent
+    ? deriveStarterPrompts(
+        selectedAgent?.description ?? null,
+        agentTools?.map((tool) => tool.slug) ?? [],
+      )
+    : [];
 
   const handleSend = () => {
     if (!canSend) return;
@@ -104,6 +116,20 @@ export function NewConversationView() {
             </Select>
           </div>
           {!hasAgent && <p className="text-xs text-muted-foreground">Chọn agent để bắt đầu nhắn tin.</p>}
+          {hasAgent && text.trim() === '' && starterPrompts.length > 0 && (
+            <div className="flex w-full max-w-xs flex-wrap justify-center gap-2">
+              {starterPrompts.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => setText(prompt)}
+                  className="cursor-pointer rounded-full border border-border bg-white/80 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-accent hover:text-foreground"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="border-t border-border/70 bg-white/66 px-4 py-3 backdrop-blur-xl">
