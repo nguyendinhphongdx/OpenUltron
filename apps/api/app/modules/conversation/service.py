@@ -18,6 +18,8 @@ def _to_read(row: Conversation) -> ConversationRead:
         external_user_id=row.external_user_id,
         agent_id=row.agent_id,
         title=row.title,
+        pinned=row.pinned,
+        archived_at=row.archived_at,
         metadata=row.metadata_,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -41,10 +43,20 @@ class ConversationService:
         return _to_read(row)
 
     async def list(
-        self, *, channel: str | None, external_user_id: str | None, page: int, page_size: int
+        self,
+        *,
+        channel: str | None,
+        external_user_id: str | None,
+        include_archived: bool = False,
+        page: int,
+        page_size: int,
     ) -> Paginated[ConversationRead]:
         rows, total = await self.repo.list(
-            channel=channel, external_user_id=external_user_id, page=page, page_size=page_size
+            channel=channel,
+            external_user_id=external_user_id,
+            include_archived=include_archived,
+            page=page,
+            page_size=page_size,
         )
         return paginate([_to_read(r) for r in rows], total, page, page_size)
 

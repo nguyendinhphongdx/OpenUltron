@@ -26,6 +26,7 @@ class ConversationRepository:
         *,
         channel: str | None,
         external_user_id: str | None,
+        include_archived: bool = False,
         page: int,
         page_size: int,
     ) -> tuple[list[Conversation], int]:
@@ -37,9 +38,12 @@ class ConversationRepository:
         if external_user_id:
             stmt = stmt.where(Conversation.external_user_id == external_user_id)
             count_stmt = count_stmt.where(Conversation.external_user_id == external_user_id)
+        if not include_archived:
+            stmt = stmt.where(Conversation.archived_at.is_(None))
+            count_stmt = count_stmt.where(Conversation.archived_at.is_(None))
 
         stmt = (
-            stmt.order_by(Conversation.updated_at.desc())
+            stmt.order_by(Conversation.pinned.desc(), Conversation.updated_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

@@ -23,11 +23,16 @@ async def list_conversations(
     service: ConversationServiceDep,
     channel: str | None = Query(default=None),
     external_user_id: str | None = Query(default=None),
+    include_archived: bool = Query(default=False),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
 ) -> Paginated[ConversationRead]:
     return await service.list(
-        channel=channel, external_user_id=external_user_id, page=page, page_size=page_size
+        channel=channel,
+        external_user_id=external_user_id,
+        include_archived=include_archived,
+        page=page,
+        page_size=page_size,
     )
 
 
