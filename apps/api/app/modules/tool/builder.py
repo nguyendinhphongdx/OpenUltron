@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import logger
 from app.core.workspace import resolve_safe_path
 from app.modules.connector import github as github_connector
+from app.modules.connector import ssh as ssh_connector
 from app.modules.tool.schemas import (
     HttpToolConfig,
     McpHttpServerConfig,
@@ -30,6 +31,11 @@ from app.modules.tool.schemas import (
 _HTTP_TIMEOUT_SECONDS = 30.0
 _MAX_RESPONSE_CHARS = 8000
 _RUN_COMMAND_TIMEOUT_SECONDS = 30.0
+# Dài hơn _RUN_COMMAND_TIMEOUT_SECONDS — lệnh SSH chạy trên hạ tầng thật (deploy/build/kiểm tra
+# log) có xu hướng lâu hơn lệnh sandbox cục bộ (ADR-0022). Không cho model tự điền qua argument —
+# đây là giới hạn vận hành cố định, không phải quyết định của agent lúc chạy (cùng lý do
+# WORKSPACE_ROOT không cho agent tự đổi, ADR-0016).
+_SSH_EXECUTE_TIMEOUT_SECONDS = 120.0
 
 _TYPE_MAP: dict[str, Any] = {
     "string": str,
@@ -113,8 +119,15 @@ GITHUB_READ_FILE_SLUG = "github-read-file"
 WRITE_FILE_SLUG = "write-file"
 RUN_COMMAND_SLUG = "run-command"
 EXECUTE_CODE_SLUG = "execute-code"
+SSH_EXECUTE_SLUG = "ssh-execute"
 TOOLS_REQUIRING_APPROVAL: frozenset[str] = frozenset(
-    {APPROVAL_TEST_TOOL_SLUG, WRITE_FILE_SLUG, RUN_COMMAND_SLUG, EXECUTE_CODE_SLUG}
+    {
+        APPROVAL_TEST_TOOL_SLUG,
+        WRITE_FILE_SLUG,
+        RUN_COMMAND_SLUG,
+        EXECUTE_CODE_SLUG,
+        SSH_EXECUTE_SLUG,
+    }
 )
 
 # Catalog builtin tool có sẵn — nguồn cho endpoint `GET /tools/builtin-catalog` (fix UX: form tạo
@@ -139,6 +152,10 @@ BUILTIN_TOOL_CATALOG: dict[str, str] = {
     EXECUTE_CODE_SLUG: (
         "Chạy source code Python hoặc JavaScript trong workspace sandbox (ADR-0016) — khác "
         "'run-command' ở chỗ agent tự viết code thay vì gõ 1 lệnh có sẵn. Cần duyệt trước khi chạy."
+    ),
+    SSH_EXECUTE_SLUG: (
+        "SSH tới 1 host bất kỳ để chạy lệnh — cần credential 'ssh' (ADR-0022), luôn yêu cầu "
+        "duyệt, không whitelist host."
     ),
 }
 
@@ -192,6 +209,13 @@ class _ExecuteCodeArgs(BaseModel):
     )
 
 
+class _SshExecuteArgs(BaseModel):
+    host: str = Field(description="Hostname hoặc IP của máy cần SSH tới")
+    port: int = Field(default=22, description="Port SSH — mặc định 22")
+    username: str = Field(description="Username đăng nhập SSH trên host đích")
+    command: str = Field(description="Lệnh shell cần chạy trên host đích sau khi kết nối SSH")
+
+
 async def _github_token(session: AsyncSession, tool_slug: str) -> str | None:
     from app.core.providers import get_provider_api_key
 
@@ -201,11 +225,25 @@ async def _github_token(session: AsyncSession, tool_slug: str) -> str | None:
     return token
 
 
+async def _ssh_credential(session: AsyncSession, tool_slug: str) -> tuple[str, str | None] | None:
+    """Trả `(private_key_pem, passphrase)` — `None` nếu chưa có credential 'ssh' (ADR-0022)."""
+    from app.core.providers import get_provider_api_key, get_provider_passphrase
+
+    private_key = await get_provider_api_key("ssh", session)
+    if not private_key:
+        logger.warning("tool.ssh_missing_credential", tool_slug=tool_slug)
+        return None
+    passphrase = await get_provider_passphrase("ssh", session)
+    return private_key, passphrase
+
+
 class BuiltinToolBuilder:
     """Dispatch theo `spec.slug` (ADR-0013) — GitHub search/read gọi vào
-    `app/modules/connector/github.py` (ADR-0015); `write-file`/`run-command` gọi vào
-    `app/core/workspace.py::resolve_safe_path` (ADR-0016, sandbox 1 working directory) — không tự
-    viết logic gọi API ngoài/thao tác filesystem trực tiếp ở đây."""
+    `app/modules/connector/github.py` (ADR-0015); `write-file`/`run-command`/`execute-code` gọi
+    vào `app/core/workspace.py::resolve_safe_path` (ADR-0016, sandbox 1 working directory);
+    `ssh-execute` gọi vào `app/modules/connector/ssh.py` (ADR-0022, không có sandbox path — host
+    nằm ngoài `apps/api`) — không tự viết logic gọi API ngoài/thao tác filesystem/SSH trực tiếp ở
+    đây."""
 
     async def build(self, spec: ToolSpec, *, session: AsyncSession) -> BaseTool | None:
         if spec.slug == APPROVAL_TEST_TOOL_SLUG:
@@ -220,6 +258,8 @@ class BuiltinToolBuilder:
             return _build_run_command_tool(spec)
         if spec.slug == EXECUTE_CODE_SLUG:
             return _build_execute_code_tool(spec)
+        if spec.slug == SSH_EXECUTE_SLUG:
+            return await _build_ssh_execute_tool(spec, session)
         return None
 
 
@@ -384,6 +424,33 @@ async def _execute_sandboxed_code(
     output = stdout.decode("utf-8", errors="replace")
     result = f"Exit code: {process.returncode}\n{output}"
     return result[:_MAX_RESPONSE_CHARS]
+
+
+async def _build_ssh_execute_tool(spec: ToolSpec, session: AsyncSession) -> BaseTool | None:
+    credential = await _ssh_credential(session, spec.slug)
+    if credential is None:
+        return None
+    private_key, passphrase = credential
+
+    async def _ssh_execute(host: str, username: str, command: str, port: int = 22) -> str:
+        try:
+            result = await asyncio.wait_for(
+                ssh_connector.execute_command(
+                    private_key, host, port, username, command, passphrase=passphrase
+                ),
+                timeout=_SSH_EXECUTE_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return f"Lệnh SSH quá thời gian cho phép ({_SSH_EXECUTE_TIMEOUT_SECONDS}s), đã bị hủy."
+        return result[:_MAX_RESPONSE_CHARS]
+
+    return StructuredTool.from_function(
+        coroutine=_ssh_execute,
+        name=spec.slug,
+        description=spec.description or BUILTIN_TOOL_CATALOG[SSH_EXECUTE_SLUG],
+        args_schema=_SshExecuteArgs,
+        handle_tool_error=True,
+    )
 
 
 _JSON_SCHEMA_TYPE_MAP: dict[str, Any] = {
