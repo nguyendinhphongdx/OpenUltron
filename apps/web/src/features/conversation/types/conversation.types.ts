@@ -19,6 +19,8 @@ export interface Conversation {
   external_user_id: string | null;
   agent_id: number | null;
   title: string | null;
+  pinned: boolean;
+  archived_at: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -26,6 +28,10 @@ export interface Conversation {
 
 export type ConversationCreateInput = Pick<Conversation, 'channel'> &
   Partial<Pick<Conversation, 'external_user_id' | 'agent_id' | 'title' | 'metadata'>>;
+
+export type ConversationUpdateInput = Partial<
+  Pick<Conversation, 'channel' | 'external_user_id' | 'agent_id' | 'title' | 'pinned' | 'archived_at' | 'metadata'>
+>;
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
