@@ -18,6 +18,9 @@ class Credential(Base):
         String(30), unique=True, index=True
     )  # "gemini" | "openai"
     ciphertext: Mapped[bytes] = mapped_column(LargeBinary)  # AES-256-GCM, xem app/core/crypto.py
+    # Secret phụ, chỉ provider `ssh` dùng (passphrase mở khoá private key, ADR-0022) — NULL cho
+    # mọi provider khác (gemini/openai/github không có khái niệm passphrase).
+    passphrase_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     is_valid: Mapped[bool] = mapped_column(Boolean, default=False)  # set sau test-connection thật
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
