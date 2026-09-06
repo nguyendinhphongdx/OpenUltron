@@ -9,6 +9,48 @@ export const colors = {
   action: '#F97316',
   success: '#16A34A',
   danger: '#DC2626',
+  warning: '#D97706',
+  info: '#2563EB',
+} as const;
+
+/**
+ * Semantic aliases theo vai trò (không phải theo tên màu) — component nên đọc từ đây thay vì
+ * `colors.*` trực tiếp khi ý nghĩa là bg/fg/border/interactive/feedback, để đổi palette sau này
+ * không phải sửa từng component.
+ */
+export const semanticColors = {
+  background: {
+    canvas: colors.appBackground,
+    surface: colors.surface,
+    surfaceMuted: colors.surfaceMuted,
+    overlay: 'rgba(36, 38, 36, 0.5)',
+  },
+  foreground: {
+    primary: colors.textPrimary,
+    secondary: colors.textSecondary,
+    onAccent: colors.surface,
+    onDanger: colors.surface,
+    muted: colors.textSecondary,
+  },
+  border: {
+    default: colors.border,
+    muted: colors.surfaceMuted,
+    focus: colors.accent,
+  },
+  interactive: {
+    primary: colors.textPrimary,
+    primaryPressed: '#3B3D3B',
+    accent: colors.accent,
+    accentPressed: '#0B7A70',
+    secondary: colors.surface,
+    ghost: 'transparent',
+  },
+  feedback: {
+    success: { bg: '#E6F6ED', fg: colors.success, border: '#BEE8CE' },
+    warning: { bg: '#FDF1E0', fg: colors.warning, border: '#F6D9A8' },
+    danger: { bg: '#FBE9E7', fg: colors.danger, border: '#F3C4BE' },
+    info: { bg: '#E7EEFD', fg: colors.info, border: '#C0D2F8' },
+  },
 } as const;
 
 export const typography = {

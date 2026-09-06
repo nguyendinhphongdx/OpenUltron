@@ -1,4 +1,5 @@
 import 'react-native-gesture-handler';
+import '../global.css';
 
 import { Stack } from 'expo-router';
 import { AuthSessionProvider } from '../src/features/auth';

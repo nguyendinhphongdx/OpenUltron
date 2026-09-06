@@ -21,9 +21,19 @@ Mobile là surface dùng hằng ngày khi user không muốn mở laptop/browser
 - **React Native + TypeScript strict**. Không thêm JavaScript file mới.
 - **pnpm workspace**. Không chạy `npm install`/`yarn`.
 - **Expo official template làm runtime base**; không copy nguyên boilerplate bên thứ ba vào repo.
-- **Design system nội bộ** đặt ở `src/shared/theme` và `src/shared/ui` trước. Khi cần component set
-  lớn hơn, ưu tiên hướng **NativeWind + React Native Reusables style** vì gần shadcn/web nhất, nhưng
-  phải thêm có chủ đích, không cài để “cho có”.
+- **Design system**: `src/shared/theme` (token, single source of truth) + `src/shared/ui` (component).
+  Từ 2026-09-04, đã chuyển sang **NativeWind v4 (Tailwind v3.4.x) + `@rn-primitives/*`** (kiến trúc
+  React Native Reusables — headless primitive theo từng component, styled wrapper copy-paste vào
+  `src/shared/ui`, không cài package UI framework nguyên khối). Lý do: cần bộ component đủ lớn
+  (~25+ primitive) mà vẫn giữ tinh thần shadcn (sở hữu source, không lock-in). Token trong
+  `theme/tokens.ts` là nguồn map vào `tailwind.config.js`, không hardcode màu song song trong config
+  Tailwind.
+  - Tailwind version **ghim ở v3.4.x**, không dùng v4 — NativeWind 4 chưa hỗ trợ Tailwind v4
+    (CSS-first config). Nâng version phải cập nhật convention này trước.
+  - Component mới thêm theo pattern: nếu cần trạng thái/accessibility phức tạp (dialog, select,
+    tabs, checkbox...) → cài `@rn-primitives/<name>` làm headless primitive rồi viết styled wrapper
+    trong `src/shared/ui`; component thuần trình bày (Badge, Card, Skeleton...) không cần primitive,
+    viết trực tiếp bằng `View`/`Text` + NativeWind class.
 - **React Query** chỉ thêm khi mobile bắt đầu có server-state REST/cache thật. Không dùng
   `useEffect(fetch)` lặp lại nhiều screen.
 - **Zod/form library** chỉ thêm khi form validation vượt quá 1-2 field đơn giản. Form nhỏ dùng
@@ -44,6 +54,12 @@ Mobile là surface dùng hằng ngày khi user không muốn mở laptop/browser
 Quyết định: bắt đầu từ **Expo SDK 57 official + Ultron feature-folder architecture + shared design
 tokens/primitives**. Chỉ thêm NativeWind/React Native Reusables khi có nhu cầu thật về component
 library, sau khi cập nhật convention này.
+
+**Cập nhật 2026-09-04**: nhu cầu đó đã đến (cần design system đủ lớn, ~25+ component cho toàn bộ
+resource screen của mobile) → chính thức cài **NativeWind v4 + `@rn-primitives/*`**. Không cài
+React Native Reusables như 1 dependency framework; chỉ dùng kiến trúc/pattern của nó (copy-paste
+styled component, headless primitive rời rạc per-component) để giữ đúng tinh thần "sở hữu source"
+đã chốt ở trên.
 
 ## Navigation
 
@@ -162,8 +178,9 @@ service không import React; component không hardcode protocol chi tiết nếu
 - Empty/loading/error state nằm gần thao tác vừa xảy ra, không toast-only cho lỗi quan trọng.
 - Component `src/shared/ui` là primitive có accessibility/touch behavior chuẩn; feature component là
   composition theo domain, không chứa lại style primitive.
-- Nếu thêm NativeWind, utility class chỉ được dùng sau khi map được token Ultron vào theme; không
-  dùng palette Tailwind trực tiếp thay token.
+- NativeWind utility class chỉ dùng token đã map trong `tailwind.config.js` (`bg-surface`,
+  `text-primary`, `rounded-md`...); không dùng palette Tailwind mặc định (`bg-blue-500`...) thay
+  token Ultron.
 
 ## Forms
 
@@ -232,6 +249,8 @@ service không import React; component không hardcode protocol chi tiết nếu
 - ❌ Chỉ có drawer mà không có bottom tabs cho các surface người dùng chạm hằng ngày.
 - ❌ Component trực tiếp đọc/ghi storage hoặc tự dựng WebSocket URL khi đã có service wrapper.
 - ❌ Cài UI kit/state/form/test library mới mà không cập nhật convention trước.
+- ❌ Nâng Tailwind lên v4 khi NativeWind chưa hỗ trợ, hoặc hardcode màu Tailwind mặc định thay vì
+  token đã map trong `tailwind.config.js`.
 
 ## Self-check trước khi xong
 
