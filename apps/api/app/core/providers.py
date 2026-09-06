@@ -8,7 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.provider_adapter import ProviderConfigError, get_provider
 
-__all__ = ["ProviderConfigError", "build_chat_model", "build_embeddings", "get_provider_api_key"]
+__all__ = [
+    "ProviderConfigError",
+    "build_chat_model",
+    "build_embeddings",
+    "get_provider_api_key",
+    "get_provider_passphrase",
+]
 
 
 async def get_provider_api_key(provider: str, session: AsyncSession) -> str | None:
@@ -19,6 +25,15 @@ async def get_provider_api_key(provider: str, session: AsyncSession) -> str | No
     from app.modules.credential.service import CredentialService
 
     return await CredentialService(CredentialRepository(session)).get_decrypted_key(provider)
+
+
+async def get_provider_passphrase(provider: str, session: AsyncSession) -> str | None:
+    """Mirror `get_provider_api_key` cho secret phụ (passphrase, ADR-0022) — chỉ provider `ssh`
+    có giá trị, mọi provider khác luôn `None`."""
+    from app.modules.credential.repository import CredentialRepository
+    from app.modules.credential.service import CredentialService
+
+    return await CredentialService(CredentialRepository(session)).get_decrypted_passphrase(provider)
 
 
 async def build_chat_model(

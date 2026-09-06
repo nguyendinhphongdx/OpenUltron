@@ -10,8 +10,20 @@ class CredentialRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def create(self, *, provider: str, ciphertext: bytes, is_valid: bool) -> Credential:
-        row = Credential(provider=provider, ciphertext=ciphertext, is_valid=is_valid)
+    async def create(
+        self,
+        *,
+        provider: str,
+        ciphertext: bytes,
+        is_valid: bool,
+        passphrase_ciphertext: bytes | None = None,
+    ) -> Credential:
+        row = Credential(
+            provider=provider,
+            ciphertext=ciphertext,
+            passphrase_ciphertext=passphrase_ciphertext,
+            is_valid=is_valid,
+        )
         self.session.add(row)
         await self.session.flush()
         return row

@@ -41,14 +41,17 @@ class CredentialService:
                 "(ollama/sglang self-host, không cần key)"
             )
 
-    async def _verify(self, provider: str, api_key: str) -> bool:
+    async def _verify(self, provider: str, api_key: str, passphrase: str | None = None) -> bool:
         """Gọi thật API rẻ nhất để xác nhận key hợp lệ — model provider (`ProviderAdapter`,
         ADR-0012) và connector provider (`ConnectorAdapter`, ADR-0015) là 2 registry độc lập, thử
-        registry model trước rồi mới connector; không lặp lại if/elif provider ở đây."""
+        registry model trước rồi mới connector; không lặp lại if/elif provider ở đây.
+        `passphrase` (ADR-0022) chỉ connector đọc — model provider không có khái niệm này."""
         if provider in CREDENTIAL_PROVIDERS:
             return await get_provider(provider).test_connection(api_key)
         connector = get_connector(provider)
-        return await connector.test_connection(api_key) if connector is not None else False
+        return (
+            await connector.test_connection(api_key, passphrase) if connector is not None else False
+        )
 
     async def list(self) -> list[CredentialRead]:
         return [_to_read(r) for r in await self.repo.list()]
@@ -61,15 +64,20 @@ class CredentialService:
 
     async def upsert(self, provider: CredentialProvider, input: CredentialUpsert) -> CredentialRead:
         self._ensure_supported(provider)
-        is_valid = await self._verify(provider, input.api_key)
+        is_valid = await self._verify(provider, input.api_key, input.passphrase)
         ciphertext = crypto.encrypt(input.api_key)
+        passphrase_ciphertext = crypto.encrypt(input.passphrase) if input.passphrase else None
         row = await self.repo.get_by_provider(provider)
         if row is None:
             row = await self.repo.create(
-                provider=provider, ciphertext=ciphertext, is_valid=is_valid
+                provider=provider,
+                ciphertext=ciphertext,
+                passphrase_ciphertext=passphrase_ciphertext,
+                is_valid=is_valid,
             )
         else:
             row.ciphertext = ciphertext
+            row.passphrase_ciphertext = passphrase_ciphertext
             row.is_valid = is_valid
         logger.info("credential.upserted", provider=provider, is_valid=is_valid)
         return _to_read(row)
@@ -82,7 +90,10 @@ class CredentialService:
     async def test_connection(self, provider: CredentialProvider) -> CredentialRead:
         row = await self._get_or_404(provider)
         api_key = crypto.decrypt(row.ciphertext)
-        row.is_valid = await self._verify(provider, api_key)
+        passphrase = (
+            crypto.decrypt(row.passphrase_ciphertext) if row.passphrase_ciphertext else None
+        )
+        row.is_valid = await self._verify(provider, api_key, passphrase)
         # `updated_at` là proxy "lần test gần nhất" (ADR-0010/spec) — touch thủ công vì
         # `is_valid` có thể không đổi giá trị (SQLAlchemy chỉ tự chạy `onupdate` khi có cột
         # thật sự dirty).
@@ -104,3 +115,12 @@ class CredentialService:
         if row is None:
             return None
         return crypto.decrypt(row.ciphertext)
+
+    async def get_decrypted_passphrase(self, provider: str) -> str | None:
+        """Mirror `get_decrypted_key` cho secret phụ (ADR-0022) — dùng nội bộ bởi
+        `app/core/providers.py::get_provider_passphrase`, KHÔNG expose qua router. `None` khi
+        credential không tồn tại HOẶC provider không có passphrase (vd private key không mã hoá)."""
+        row = await self.repo.get_by_provider(provider)
+        if row is None or row.passphrase_ciphertext is None:
+            return None
+        return crypto.decrypt(row.passphrase_ciphertext)
