@@ -1,1 +1,4 @@
 data/
+.env
+# git clone thật của NousResearch/hermes-agent — repo Git riêng, không nest vào Ultron
+src/
